@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSidebarStore, HydratedSidebarItem } from '../store/sidebarStore';
 import { useAppStore } from '../store/appStore';
-import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search, FolderOpen } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 
 const getMethodStyles = (method: string) => {
@@ -19,7 +19,7 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
   const [isOpen, setIsOpen] = useState(true);
   const activeRequestId = useAppStore(state => state.activeRequestId);
   const openTab = useAppStore(state => state.openTab);
-  const addItem = useSidebarStore(state => state.addItem);
+  const { addItem } = useSidebarStore();
 
   const paddingLeft = depth * 12 + 12;
 
@@ -125,7 +125,7 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
         }}
       >
         <span className={twMerge("text-[10px] font-bold px-1.5 py-0.5 rounded-md mr-3 min-w-[32px] text-center", getMethodStyles(item.kind.method))}>
-          {item.kind.method.substring(0, 3)}
+          {item.kind.method}
         </span>
         <span className="truncate flex-1">{item.name}</span>
       </div>
@@ -141,7 +141,7 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
 });
 
 export const Sidebar: React.FC = () => {
-  const { tree, fetchSidebar, addItem } = useSidebarStore();
+  const { tree, fetchSidebar, addItem, openWorkspace } = useSidebarStore();
   const [searchQuery, setSearchQuery] = useState('');
   const openTab = useAppStore(state => state.openTab);
 
@@ -187,6 +187,9 @@ export const Sidebar: React.FC = () => {
           Workspace
         </div>
         <div className="flex items-center gap-1">
+          <button onClick={openWorkspace} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" title="Open Workspace">
+            <FolderOpen size={16} />
+          </button>
           <button onClick={handleAddRequest} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" title="New Request">
             <Plus size={16} />
           </button>

@@ -73,3 +73,34 @@ pub fn update_manifest_structure(project_root: String, workspace: Workspace) -> 
 
     save_atomic(manifest_path, &manifest)
 }
+
+#[tauri::command]
+pub fn check_workspace_exists(project_root: String) -> bool {
+    Path::new(&project_root).join("firv.yaml").exists()
+}
+
+#[tauri::command]
+pub fn create_workspace(project_root: String, name: String) -> Result<(), String> {
+    let root_path = Path::new(&project_root);
+    let manifest_path = root_path.join("firv.yaml");
+
+    if manifest_path.exists() {
+        return Err("Workspace already exists in this location".to_string());
+    }
+
+    if !root_path.exists() {
+        std::fs::create_dir_all(&root_path)
+            .map_err(|e| format!("Failed to create project directory: {}", e))?;
+    }
+
+    let manifest = FirvManifest {
+        version: "1.0".to_string(),
+        name,
+        workspace: Workspace {
+            order: vec![],
+            globals: std::collections::HashMap::new(),
+        },
+    };
+
+    save_atomic(manifest_path, &manifest)
+}

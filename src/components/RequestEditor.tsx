@@ -21,14 +21,15 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const [bodyMode, setBodyMode] = useState<'json'|'yaml'|'raw'|'none'>('json');
   
   const { isRunning, setIsRunning, setResponse, addLog } = useAppStore();
-  const { tree, syncTreeToBackend, projectPath } = useSidebarStore();
+  const { tree, syncTreeToBackend, projectPath, ensureWorkspace, getRequestName } = useSidebarStore();
 
   // Hydration
   useEffect(() => {
     async function loadRequest() {
+      if (!projectPath) return; // Don't try to load from disk if no project path is set
       try {
         const req: any = await invoke('get_request', { 
-          projectRoot: '.', 
+          projectRoot: projectPath, 
           id: requestId 
         });
         setMethod(req.method || 'GET');
@@ -87,7 +88,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
   const getFormattedRequest = () => ({
     id: requestId,
-    name: 'Unknown Request', 
+    name: getRequestName(requestId), 
     method,
     url,
     headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
@@ -97,9 +98,14 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   });
 
   const saveRequest = async () => {
+    const ok = await ensureWorkspace();
+    if (!ok) return;
+
+    const { projectPath: currentPath } = useSidebarStore.getState();
+
     try {
       await invoke('update_request', {
-        projectRoot: projectPath || '.',
+        projectRoot: currentPath || '.',
         request: getFormattedRequest()
       });
       await syncTreeToBackend(tree);

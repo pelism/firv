@@ -26,6 +26,10 @@ interface SidebarState {
   syncTreeToBackend: (newTree: HydratedSidebarItem[]) => Promise<void>;
   updateRequestName: (id: string, newName: string) => Promise<void>;
   addItem: (item: HydratedSidebarItem, parentPath?: string[]) => Promise<void>;
+  ensureWorkspace: () => Promise<boolean>;
+  openWorkspace: () => Promise<void>;
+  loadOrphans: () => Promise<void>;
+  getRequestName: (id: string) => string;
 }
 
 const transformToManifestItem = (item: HydratedSidebarItem): any => {
@@ -47,7 +51,7 @@ const transformToManifestItem = (item: HydratedSidebarItem): any => {
 
 export const useSidebarStore = create<SidebarState>((set, get) => ({
   tree: [],
-  projectPath: 'C:\\Repos\\firv', // Default or replace with dynamic project path
+  projectPath: '', // Default or replace with dynamic project path
   setProjectPath: (path) => {
     set({ projectPath: path });
     get().fetchSidebar();
@@ -69,6 +73,14 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
     const { projectPath } = get();
     if (!projectPath) return;
     
+    // Check if manifest exists before trying to sync
+    try {
+      const exists = await invoke<boolean>('check_workspace_exists', { projectRoot: projectPath });
+      if (!exists) return;
+    } catch (e) {
+      return;
+    }
+
     // Convert current hydrated tree to manifest format
     const order = newTree.map(transformToManifestItem).filter(Boolean);
     
@@ -146,6 +158,106 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
     const newTree = addItemToItems(tree, parentPath);
     set({ tree: newTree });
     await syncTreeToBackend(newTree);
+  },
+  ensureWorkspace: async () => {
+    const { projectPath, fetchSidebar } = get();
+    
+    try {
+      const exists = await invoke<boolean>('check_workspace_exists', { projectRoot: projectPath });
+      if (exists) return true;
+
+      const name = prompt("Enter workspace name:");
+      if (!name) return false;
+
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Select Workspace Location'
+      });
+
+      if (!selected || Array.isArray(selected)) return false;
+
+      await invoke('create_workspace', { projectRoot: selected, name });
+      set({ projectPath: selected });
+      await fetchSidebar();
+      return true;
+    } catch (e) {
+      console.error("Failed to ensure workspace:", e);
+      return false;
+    }
+  },
+  openWorkspace: async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        directory: false,
+        multiple: false,
+        filters: [{
+          name: 'Firv Manifest',
+          extensions: ['yaml', 'yml']
+        }],
+        title: 'Open Workspace Manifest'
+      });
+
+      if (!selected || Array.isArray(selected)) return;
+
+      const pathParts = selected.split(/[/\\]/);
+      pathParts.pop();
+      const projectPath = pathParts.join('/');
+
+      set({ projectPath });
+      await get().fetchSidebar();
+      await get().loadOrphans();
+    } catch (e) {
+      console.error("Failed to open workspace:", e);
+    }
+  },
+  loadOrphans: async () => {
+    const { projectPath, tree, addItem } = get();
+    if (!projectPath) return;
+
+    try {
+      const result: HydratedTree = await invoke('get_hydrated_sidebar', { projectPath });
+      if (result.orphans && result.orphans.length > 0) {
+        for (const orphanId of result.orphans) {
+          // Check if already in tree to be safe
+          const exists = (items: HydratedSidebarItem[]): boolean => {
+            return items.some(item => 
+              (item.kind.type === 'request' && item.kind.id === orphanId) ||
+              (item.kind.type === 'folder' && exists(item.kind.items))
+            );
+          };
+
+          if (!exists(tree)) {
+            // Get the request details to have a better name if possible
+            const request: any = await invoke('get_request', { projectRoot: projectPath, id: orphanId });
+            await addItem({
+              name: request.name || orphanId,
+              kind: { type: 'request', id: orphanId, method: request.method || 'GET' }
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load orphans:', e);
+    }
+  },
+  getRequestName: (id) => {
+    const { tree } = get();
+    const findName = (items: HydratedSidebarItem[]): string | null => {
+      for (const item of items) {
+        if (item.kind.type === 'request' && item.kind.id === id) {
+          return item.name;
+        }
+        if (item.kind.type === 'folder') {
+          const found = findName(item.kind.items);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    return findName(tree) || 'Unknown Request';
   }
 }));
 

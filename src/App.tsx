@@ -18,6 +18,7 @@ function App() {
   const responses = useAppStore(state => state.responses);
   const tree = useSidebarStore(state => state.tree);
   const updateRequestName = useSidebarStore(state => state.updateRequestName);
+  const getRequestName = useSidebarStore(state => state.getRequestName);
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -30,18 +31,7 @@ function App() {
     }
   }, [editingTabId]);
 
-  const getRequestName = (id: string, items: any[] = tree): string => {
-    for (const item of items) {
-      if (item.kind.type === 'request' && item.kind.id === id) {
-        return item.name;
-      }
-      if (item.kind.type === 'folder' && item.kind.items) {
-        const found = getRequestName(id, item.kind.items);
-        if (found !== 'Unknown') return found;
-      }
-    }
-    return 'Unknown';
-  };
+
 
   const getRequestPath = (id: string, items: any[] = tree, currentPath: string = ""): string | null => {
     for (const item of items) {
@@ -86,7 +76,7 @@ function App() {
             <Box size={18} className="text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="text-sm font-bold tracking-tight">Firv <span className="text-[10px] font-semibold text-indigo-500 ml-1 uppercase">Cloud</span></span>
+            <span className="text-sm font-bold tracking-tight">firv</span>
           </div>
         </div>
         
