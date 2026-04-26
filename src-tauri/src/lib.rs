@@ -10,7 +10,6 @@ mod watcher;
 
 use models::FirvManifest;
 use std::sync::Mutex;
-use tauri::Manager;
 
 #[tauri::command]
 fn greet(name: &str) -> String {

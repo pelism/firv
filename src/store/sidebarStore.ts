@@ -20,6 +20,8 @@ export interface HydratedTree {
 interface SidebarState {
   tree: HydratedSidebarItem[];
   projectPath: string;
+  activeMenu: string;
+  setActiveMenu: (menu: string) => void;
   setProjectPath: (path: string) => void;
   fetchSidebar: () => Promise<void>;
   updateTreeOptimistic: (newTree: HydratedSidebarItem[]) => void;
@@ -52,6 +54,8 @@ const transformToManifestItem = (item: HydratedSidebarItem): any => {
 export const useSidebarStore = create<SidebarState>((set, get) => ({
   tree: [],
   projectPath: '', // Default or replace with dynamic project path
+  activeMenu: 'workspace',
+  setActiveMenu: (activeMenu) => set({ activeMenu }),
   setProjectPath: (path) => {
     set({ projectPath: path });
     get().fetchSidebar();

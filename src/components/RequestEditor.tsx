@@ -3,6 +3,7 @@ import { Send, Settings, Save } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { KVEditor, KeyValue } from './editors/KVEditor';
 import { BodyEditor } from './editors/BodyEditor';
+import { ScriptEditor } from './editors/ScriptEditor';
 import { useAppStore } from '../store/appStore';
 import { useSidebarStore } from '../store/sidebarStore';
 import { twMerge } from 'tailwind-merge';
@@ -19,6 +20,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const [params, setParams] = useState<KeyValue[]>([]);
   const [body, setBody] = useState('');
   const [bodyMode, setBodyMode] = useState<'json'|'yaml'|'raw'|'none'>('json');
+  const [preScript, setPreScript] = useState('');
+  const [postScript, setPostScript] = useState('');
   
   const { isRunning, setIsRunning, setResponse, addLog } = useAppStore();
   const { tree, syncTreeToBackend, projectPath, ensureWorkspace, getRequestName } = useSidebarStore();
@@ -59,6 +62,13 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         } else {
           setParams([]);
         }
+        if (req.scripts) {
+          setPreScript(req.scripts.pre || '');
+          setPostScript(req.scripts.post || '');
+        } else {
+          setPreScript('');
+          setPostScript('');
+        }
       } catch (err) {
         console.error("Failed to load request", err);
       }
@@ -78,7 +88,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     };
     window.addEventListener('keydown', handleGlobalKeydown);
     return () => window.removeEventListener('keydown', handleGlobalKeydown);
-  }, [method, url, headers, body, requestId]);
+  }, [method, url, headers, body, preScript, postScript, requestId]);
 
   const getFormattedBody = () => {
     if (bodyMode === 'none') return { mode: 'none' };
@@ -94,7 +104,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
     params: params.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })),
     body: getFormattedBody(),
-    scripts: { pre: null, post: null }
+    scripts: { pre: preScript || null, post: postScript || null }
   });
 
   const saveRequest = async () => {
@@ -121,9 +131,16 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     setIsRunning(true);
     try {
       addLog(`Running request ${method} ${url}...`);
+      
+      // Get workspace scripts and folder scripts from store/tree
+      // For now, let's keep it simple as we need to fetch them from the backend
+      const manifest: any = await invoke('get_manifest', { projectPath });
+      
       const result: any = await invoke('run_firv_request', {
         request: getFormattedRequest(),
-        initialVars: {} 
+        initialVars: {},
+        workspaceScripts: manifest.workspace.scripts,
+        folderScripts: [] // TODO: Resolve folder scripts from tree path
       });
       
       if (result.logs && Array.isArray(result.logs)) {
@@ -262,13 +279,22 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
             </div>
           )}
           {activeTab === 'scripts' && (
-            <div className="text-zinc-400 flex flex-col items-center justify-center h-full space-y-4">
-               <div className="p-4 rounded-full bg-zinc-100 dark:bg-zinc-900">
-                <Settings size={32} className="opacity-20 animate-spin-slow" />
+            <div className="h-full flex flex-col space-y-4">
+              <div className="flex-1 min-h-[200px]">
+                <ScriptEditor 
+                  title="Pre-request Script" 
+                  value={preScript} 
+                  onChange={setPreScript} 
+                  placeholder="// Modify request before sending... e.g. firv.request.setHeader('X-Custom', 'val')"
+                />
               </div>
-              <div className="text-center">
-                <p className="font-medium text-zinc-600 dark:text-zinc-300">Scripts Editor</p>
-                <p className="text-sm">Under development for next release.</p>
+              <div className="flex-1 min-h-[200px]">
+                <ScriptEditor 
+                  title="Post-request / Tests" 
+                  value={postScript} 
+                  onChange={setPostScript} 
+                  placeholder="// Process response or run tests... e.g. if (firv.response.status === 200) { ... }"
+                />
               </div>
             </div>
           )}

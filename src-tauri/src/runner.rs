@@ -34,7 +34,7 @@ pub async fn run_request(
         if !pre_script.trim().is_empty() {
             let mut vars_map = resolver.request_vars.clone();
             let mut dummy_logs = Vec::new();
-            execute_script(pre_script, &mut vars_map, None, &mut dummy_logs)?;
+            execute_script(pre_script, &mut vars_map, None, None, &mut dummy_logs)?;
             resolver.request_vars = vars_map;
         }
     }
@@ -130,6 +130,7 @@ pub async fn run_request(
             execute_script(
                 post_script,
                 &mut vars_map,
+                None,
                 Some(&firv_resp),
                 &mut dummy_logs,
             )?;

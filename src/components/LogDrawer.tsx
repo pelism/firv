@@ -1,17 +1,27 @@
 import { useState } from 'react';
 import { useAppStore } from '../store/appStore';
+import { useSidebarStore } from '../store/sidebarStore';
 import { ChevronUp, ChevronDown, Trash2 } from 'lucide-react';
 
 export function LogDrawer() {
   const [isOpen, setIsOpen] = useState(false);
   const logs = useAppStore(state => state.logs);
   const clearLogs = useAppStore(state => state.clearLogs);
+  const setActiveMenu = useSidebarStore(state => state.setActiveMenu);
+
+  const toggleOpen = () => {
+    if (isOpen) {
+      // Closing
+      setActiveMenu('workspace');
+    }
+    setIsOpen(!isOpen);
+  };
 
   return (
     <div className="relative flex items-center h-full">
       <div 
         className="flex items-center gap-1 px-2 py-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800 rounded transition-colors"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={toggleOpen}
       >
         <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Console ({logs.length})</span>
         {isOpen ? <ChevronDown size={14} className="text-gray-500" /> : <ChevronUp size={14} className="text-gray-500" />}
@@ -21,7 +31,7 @@ export function LogDrawer() {
         <>
           <div 
             className="fixed inset-0 bg-gray-900/40 backdrop-blur-[2px] z-[99990]"
-            onClick={() => setIsOpen(false)}
+            onClick={toggleOpen}
           />
           <div 
             className="fixed inset-x-0 bottom-8 px-4 sm:px-6 lg:px-10 z-[99999]"
@@ -39,7 +49,7 @@ export function LogDrawer() {
                     <Trash2 size={14} />
                   </button>
                   <button 
-                    onClick={() => setIsOpen(false)}
+                    onClick={toggleOpen}
                     className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-500"
                     title="Close Console"
                   >

@@ -99,6 +99,7 @@ pub fn create_workspace(project_root: String, name: String) -> Result<(), String
         workspace: Workspace {
             order: vec![],
             globals: std::collections::HashMap::new(),
+            scripts: crate::models::manifest::ScriptConfig::default(),
         },
     };
 

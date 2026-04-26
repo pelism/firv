@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::models::manifest::ScriptConfig;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FirvRequest {
     pub id: String,
@@ -16,7 +18,7 @@ pub struct FirvRequest {
     pub body: RequestBody,
 
     #[serde(default)]
-    pub scripts: RequestScripts,
+    pub scripts: ScriptConfig,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -48,11 +50,6 @@ pub enum RequestBody {
     Formdata(Vec<KeyValue>),
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct RequestScripts {
-    pub pre: Option<String>,  // Pre-request JS
-    pub post: Option<String>, // Post-response/Tests JS
-}
 
 fn default_true() -> bool {
     true

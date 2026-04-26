@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
 import { Sidebar } from "./components/Sidebar";
+import { MenuSidebar } from "./components/MenuSidebar";
 import { RequestEditor } from "./components/RequestEditor";
 import { ResponseViewer } from "./components/ResponseViewer";
 import { useAppStore } from "./store/appStore";
 import { useSidebarStore } from "./store/sidebarStore";
 import { LogDrawer } from "./components/LogDrawer";
-import { X, Layout, Settings, Layers, Box } from "lucide-react";
+import { X, Box } from "lucide-react";
 import { twMerge } from "tailwind-merge";
 import "./App.css";
 
@@ -79,24 +80,10 @@ function App() {
             <span className="text-sm font-bold tracking-tight">firv</span>
           </div>
         </div>
-        
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-lg ring-1 ring-zinc-200 dark:ring-zinc-800">
-            <button className="p-1.5 rounded-md hover:bg-white dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all">
-              <Layout size={16} />
-            </button>
-            <button className="p-1.5 rounded-md hover:bg-white dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all">
-              <Layers size={16} />
-            </button>
-            <div className="w-[1px] h-4 bg-zinc-200 dark:bg-zinc-800 mx-1" />
-            <button className="p-1.5 rounded-md hover:bg-white dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all">
-              <Settings size={16} />
-            </button>
-          </div>
-        </div>
       </header>
 
-      <div className="flex-1 overflow-hidden relative">
+      <div className="flex-1 overflow-hidden relative flex">
+        <MenuSidebar />
         <PanelGroup orientation="horizontal">
           <Panel defaultSize={200} minSize={150} maxSize={500} className="border-r border-zinc-200 dark:border-zinc-800">
             <Sidebar />
