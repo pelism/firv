@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Play, Settings } from 'lucide-react';
+import { Send, Settings, Save } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { KVEditor, KeyValue } from './editors/KVEditor';
 import { BodyEditor } from './editors/BodyEditor';
 import { useAppStore } from '../store/appStore';
 import { useSidebarStore } from '../store/sidebarStore';
+import { twMerge } from 'tailwind-merge';
 
 interface RequestEditorProps {
   requestId: string;
@@ -27,7 +28,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     async function loadRequest() {
       try {
         const req: any = await invoke('get_request', { 
-          projectRoot: '.', // For now hardcoded or get from state
+          projectRoot: '.', 
           id: requestId 
         });
         setMethod(req.method || 'GET');
@@ -86,7 +87,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
   const getFormattedRequest = () => ({
     id: requestId,
-    name: 'Unknown Request', // Or get it from the tree state if needed
+    name: 'Unknown Request', 
     method,
     url,
     headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
@@ -108,15 +109,15 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       addLog(`Error saving: ${err}`);
     }
   };
+
   const handleRun = async () => {
-    if (isRunning) return; // Prevent double click or add stop logic
+    if (isRunning) return; 
     setIsRunning(true);
     try {
       addLog(`Running request ${method} ${url}...`);
-      // Calling rust backend
       const result: any = await invoke('run_firv_request', {
         request: getFormattedRequest(),
-        initialVars: {} // Provide an empty dictionary for now, can pull from environment/variables store later
+        initialVars: {} 
       });
       
       if (result.logs && Array.isArray(result.logs)) {
@@ -126,7 +127,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         result.script_errors.forEach((err: string) => addLog(`[Script Error] ${err}`));
       }
       
-      setResponse(result.response);
+      setResponse(requestId, result.response);
       addLog(`Request completed successfully in ${result.execution_time_ms}ms.`);
     } catch (e: any) {
       console.error(e);
@@ -137,91 +138,135 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-white dark:bg-gray-900 w-full">
-      {/* Request Header */}
-      <div className="flex items-center gap-2 p-4 border-b border-gray-200 dark:border-gray-800">
-        <select 
-          value={method} 
-          onChange={e => setMethod(e.target.value)}
-          className="px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded font-semibold text-sm border-none outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option>GET</option>
-          <option>POST</option>
-          <option>PUT</option>
-          <option>DELETE</option>
-          <option>PATCH</option>
-        </select>
-        
-        <input 
-          type="text" 
-          value={url} 
-          onChange={e => setUrl(e.target.value)}
-          placeholder="https://api.example.com/endpoint"
-          className="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded text-sm border-none outline-none focus:ring-2 focus:ring-blue-500"
-          onKeyDown={e => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleRun();
-          }}
-        />
-        
-        <button 
-          onClick={handleRun}
-          disabled={isRunning}
-          className={`flex items-center gap-2 px-6 py-2 rounded text-white font-semibold transition-colors ${isRunning ? 'bg-gray-400' : 'bg-green-500 hover:bg-green-600'}`}
-        >
-          <Play size={16} className={isRunning ? 'animate-pulse' : ''} />
-          {isRunning ? 'Running...' : 'RUN'}
-        </button>
-        
-        <button className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-          <Settings size={20} />
-        </button>
+    <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-white dark:bg-zinc-950 w-full">
+      {/* Unified Command Bar */}
+      <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex items-stretch gap-2 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800 shadow-sm">
+          <select 
+            value={method} 
+            onChange={e => setMethod(e.target.value)}
+            className="px-4 bg-transparent font-bold text-xs uppercase tracking-wider text-indigo-500 dark:text-indigo-400 outline-none border-r border-zinc-200 dark:border-zinc-800"
+          >
+            <option>GET</option>
+            <option>POST</option>
+            <option>PUT</option>
+            <option>DELETE</option>
+            <option>PATCH</option>
+          </select>
+          
+          <input 
+            type="text" 
+            value={url} 
+            onChange={e => setUrl(e.target.value)}
+            placeholder="Enter URL or paste request..."
+            className="flex-1 px-3 py-2 bg-transparent text-sm outline-none text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
+            onKeyDown={e => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleRun();
+            }}
+          />
+          
+          <div className="flex items-center gap-1 pr-1">
+            <button 
+              onClick={saveRequest}
+              className="p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+              title="Save (Ctrl+S)"
+            >
+              <Save size={18} />
+            </button>
+            <button 
+              onClick={handleRun}
+              disabled={isRunning}
+              className={twMerge(
+                "flex items-center gap-2 px-4 py-1.5 rounded-lg text-white font-bold text-sm transition-all shadow-md active:scale-95",
+                isRunning ? 'bg-zinc-400' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30'
+              )}
+            >
+              <Send size={16} className={isRunning ? 'animate-pulse' : ''} />
+              {isRunning ? 'Sending' : 'Send'}
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Editor Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-800">
-        {['params', 'headers', 'body', 'scripts'].map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab as any)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === tab ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-          >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </button>
-        ))}
+      {/* Segmented Editor Tabs */}
+      <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
+        <div className="flex bg-zinc-200/50 dark:bg-zinc-800/50 p-1 rounded-lg w-fit">
+          {['params', 'headers', 'body', 'scripts'].map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab as any)}
+              className={twMerge(
+                "px-4 py-1.5 text-xs font-semibold rounded-md transition-all uppercase tracking-tight",
+                activeTab === tab 
+                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm" 
+                  : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+              )}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Editor Content */}
-      <div className="flex-1 overflow-auto p-4">
-        {activeTab === 'headers' && (
-          <KVEditor data={headers} onChange={setHeaders} placeholderKey="Header Name" placeholderValue="Value" />
-        )}
-        {activeTab === 'params' && (
-          <KVEditor data={params} onChange={setParams} placeholderKey="Query Param" placeholderValue="Value" />
-        )}
-        {activeTab === 'body' && (
-          <div className="h-full flex flex-col">
-            <div className="mb-2 flex gap-2">
-              <select value={bodyMode} onChange={e => setBodyMode(e.target.value as any)} className="text-sm px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded border-none outline-none">
-                <option value="none">None</option>
-                <option value="json">JSON</option>
-                <option value="yaml">YAML</option>
-                <option value="raw">Raw</option>
-              </select>
-            </div>
-            <div className="flex-1 border rounded overflow-hidden border-gray-200 dark:border-gray-800">
-              {bodyMode !== 'none' ? (
-                <BodyEditor value={body} mode={bodyMode} onChange={setBody} />
-              ) : (
-                <div className="h-full flex items-center justify-center text-gray-400 text-sm">
-                  This request does not have a body.
+      <div className="flex-1 overflow-auto p-4 custom-scrollbar">
+        <div className="max-w-5xl h-full flex flex-col">
+          {activeTab === 'headers' && (
+            <KVEditor data={headers} onChange={setHeaders} placeholderKey="Header Name" placeholderValue="Value" />
+          )}
+          {activeTab === 'params' && (
+            <KVEditor data={params} onChange={setParams} placeholderKey="Query Param" placeholderValue="Value" />
+          )}
+          {activeTab === 'body' && (
+            <div className="h-full flex flex-col">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex gap-2 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-lg ring-1 ring-zinc-200 dark:ring-zinc-800">
+                  {['none', 'json', 'yaml', 'raw'].map(mode => (
+                    <button
+                      key={mode}
+                      onClick={() => setBodyMode(mode as any)}
+                      className={twMerge(
+                        "px-3 py-1 text-[10px] font-bold uppercase rounded-md transition-all",
+                        bodyMode === mode 
+                          ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                          : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                      )}
+                    >
+                      {mode}
+                    </button>
+                  ))}
                 </div>
-              )}
+                <button className="p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors">
+                  <Settings size={16} />
+                </button>
+              </div>
+              <div className="flex-1 min-h-[300px] border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
+                {bodyMode !== 'none' ? (
+                  <BodyEditor value={body} mode={bodyMode} onChange={setBody} />
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-zinc-400 text-sm space-y-2 bg-zinc-50/50 dark:bg-zinc-900/50">
+                    <div className="p-3 rounded-full bg-zinc-100 dark:bg-zinc-800/50">
+                      <Settings size={24} className="opacity-50" />
+                    </div>
+                    <p className="font-medium">No Request Body</p>
+                    <p className="text-xs">Select a mode above to add a body.</p>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-        {activeTab === 'scripts' && (
-          <div className="text-gray-500 flex items-center justify-center h-full">Scripts editor coming soon...</div>
-        )}
+          )}
+          {activeTab === 'scripts' && (
+            <div className="text-zinc-400 flex flex-col items-center justify-center h-full space-y-4">
+               <div className="p-4 rounded-full bg-zinc-100 dark:bg-zinc-900">
+                <Settings size={32} className="opacity-20 animate-spin-slow" />
+              </div>
+              <div className="text-center">
+                <p className="font-medium text-zinc-600 dark:text-zinc-300">Scripts Editor</p>
+                <p className="text-sm">Under development for next release.</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Virtuoso } from 'react-virtuoso';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { Download, Search, Terminal, Database, Clock, FileJson, Globe } from 'lucide-react';
+import { twMerge } from 'tailwind-merge';
 
 export interface FirvResponse {
   status: number;
@@ -142,21 +144,20 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
     navigator.clipboard.writeText(path);
   };
 
-  const renderNode = (index: number, node: JsonNode) => {
+  const renderNode = (_index: number, node: JsonNode) => {
     const { keyName, value, path, depth, isArray, isEnd, hasChildren, size } = node;
     
-    // Highlight matching text for search
     const renderText = (text: string) => {
       if (!searchQuery) return text;
       const parts = String(text).split(new RegExp(`(${searchQuery})`, 'gi'));
       return parts.map((part, i) => 
-        part.toLowerCase() === searchQuery.toLowerCase() ? <mark key={i} className="bg-yellow-200 text-black">{part}</mark> : part
+        part.toLowerCase() === searchQuery.toLowerCase() ? <mark key={i} className="bg-yellow-200 text-black rounded px-0.5">{part}</mark> : part
       );
     };
 
     if (isEnd) {
       return (
-        <div style={{ paddingLeft: `${depth * 20}px` }} className="font-mono text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 py-0.5" onContextMenu={(e) => handleCopyPath(e, path)}>
+        <div style={{ paddingLeft: `${depth * 24}px` }} className="font-mono text-xs text-zinc-400 py-0.5" onContextMenu={(e) => handleCopyPath(e, path)}>
           {isArray ? ']' : '}'}
         </div>
       );
@@ -164,15 +165,15 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
 
     return (
       <div 
-        style={{ paddingLeft: `${depth * 20}px` }} 
-        className="font-mono text-sm hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center py-0.5 group"
+        style={{ paddingLeft: `${depth * 24}px` }} 
+        className="font-mono text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/50 flex items-center py-0.5 group relative"
         onContextMenu={(e) => handleCopyPath(e, path)}
       >
-        <span className="w-10 text-right text-gray-400 select-none mr-2 text-xs border-r pr-2 border-gray-300 dark:border-gray-700">{index + 1}</span>
+        {depth > 0 && <div className="absolute left-[-12px] top-0 bottom-0 w-[1px] bg-zinc-200 dark:bg-zinc-800" />}
         
         {hasChildren ? (
-          <button onClick={() => toggleExpand(path)} className="w-4 h-4 flex items-center justify-center text-gray-500 mr-1 hover:text-blue-500">
-            {expandedPaths.has(path) ? '▼' : '▶'}
+          <button onClick={() => toggleExpand(path)} className="w-4 h-4 flex items-center justify-center text-zinc-400 mr-1 hover:text-indigo-500 transition-colors">
+            {expandedPaths.has(path) ? '▾' : '▸'}
           </button>
         ) : (
           <span className="w-4 mr-1 inline-block"></span>
@@ -185,11 +186,16 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
         )}
         
         {hasChildren ? (
-          <span className="text-gray-500">
-            {isArray ? '[' : '{'} {!expandedPaths.has(path) && <span className="text-xs text-gray-400 ml-1">{size} items {isArray ? ']' : '}'}</span>}
+          <span className="text-zinc-500">
+            {isArray ? '[' : '{'} {!expandedPaths.has(path) && <span className="text-[10px] text-zinc-400 ml-1 font-sans italic">{size} items {isArray ? ']' : '}'}</span>}
           </span>
         ) : (
-          <span className={typeof value === 'number' ? 'text-blue-600 dark:text-blue-400' : typeof value === 'string' ? 'text-green-600 dark:text-green-400' : typeof value === 'boolean' ? 'text-orange-600 dark:text-orange-400' : 'text-gray-500'}>
+          <span className={twMerge(
+            typeof value === 'number' ? 'text-blue-500' : 
+            typeof value === 'string' ? 'text-emerald-500' : 
+            typeof value === 'boolean' ? 'text-orange-500' : 
+            'text-zinc-500'
+          )}>
             {typeof value === 'string' ? `"${renderText(value)}"` : renderText(String(value))}
           </span>
         )}
@@ -209,7 +215,17 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
   };
 
   if (!response) {
-    return <div className="p-4 text-gray-500 flex-1 h-full flex items-center justify-center">No response to display.</div>;
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center space-y-4 bg-zinc-50 dark:bg-zinc-950/50 text-zinc-400">
+        <div className="p-6 rounded-full bg-zinc-100 dark:bg-zinc-900 shadow-inner">
+          <Terminal size={48} className="opacity-20" />
+        </div>
+        <div className="text-center">
+          <p className="font-semibold text-zinc-600 dark:text-zinc-300">Ready for Request</p>
+          <p className="text-xs">Send a request to see the response here.</p>
+        </div>
+      </div>
+    );
   }
 
   const isJson = headers['content-type']?.includes('application/json');
@@ -218,21 +234,36 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
   const isHtml = headers['content-type']?.includes('text/html');
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800">
-      {/* Header / Metadata */}
-      <div className="p-2 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between text-sm bg-gray-50 dark:bg-gray-800">
-        <div className="flex gap-4">
-          <span className={`font-mono font-bold ${status >= 400 ? 'text-red-500' : 'text-green-500'}`}>
+    <div className="flex flex-col h-full bg-white dark:bg-zinc-950 overflow-hidden">
+      {/* Metric Bar */}
+      <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/50 dark:bg-zinc-900/50">
+        <div className="flex gap-2">
+          <div className={twMerge(
+            "flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold ring-1 shadow-sm",
+            status >= 400 
+              ? "bg-red-500/10 text-red-500 ring-red-500/20 shadow-red-500/10" 
+              : "bg-emerald-500/10 text-emerald-500 ring-emerald-500/20 shadow-emerald-500/10"
+          )}>
+            <div className={twMerge("w-1.5 h-1.5 rounded-full animate-pulse", status >= 400 ? "bg-red-500" : "bg-emerald-500")} />
             {status} {status_text}
-          </span>
-          <span className="text-gray-500">{time_ms} ms</span>
-          <span className="text-gray-500">{(size_bytes / 1024).toFixed(2)} KB</span>
+          </div>
+          
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 ring-1 ring-zinc-200 dark:ring-zinc-700">
+            <Clock size={12} className="opacity-60" />
+            {time_ms} ms
+          </div>
+          
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 ring-1 ring-zinc-200 dark:ring-zinc-700">
+            <Database size={12} className="opacity-60" />
+            {(size_bytes / 1024).toFixed(2)} KB
+          </div>
         </div>
+
         <div className="flex gap-2 items-center">
           <select 
             value={mode} 
             onChange={e => setMode(e.target.value as any)}
-            className="text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1"
+            className="text-[11px] font-bold uppercase tracking-wider bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-1 outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all cursor-pointer"
           >
             <option value="Pretty">Pretty</option>
             <option value="Raw">Raw</option>
@@ -240,106 +271,143 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
           </select>
           <button 
             onClick={handleSave}
-            className="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600"
+            className="p-1.5 text-zinc-500 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all"
+            title="Download Response"
           >
-            Save to File
+            <Download size={18} />
           </button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 text-sm">
+      <div className="flex px-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
         <button 
-          className={`px-4 py-2 font-medium ${activeTab === 'Body' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+          className={twMerge(
+            "px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all relative",
+            activeTab === 'Body' 
+              ? "text-indigo-500" 
+              : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+          )}
           onClick={() => setActiveTab('Body')}
         >
-          Body
+          <span className="flex items-center gap-2">
+            <FileJson size={14} />
+            Body
+          </span>
+          {activeTab === 'Body' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-t-full" />}
         </button>
         <button 
-          className={`px-4 py-2 font-medium ${activeTab === 'Headers' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+          className={twMerge(
+            "px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all relative",
+            activeTab === 'Headers' 
+              ? "text-indigo-500" 
+              : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+          )}
           onClick={() => setActiveTab('Headers')}
         >
-          Headers <span className="ml-1 text-xs text-gray-400 bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded-full">{Object.keys(headers).length}</span>
+          <span className="flex items-center gap-2">
+            <Globe size={14} />
+            Headers
+            <span className="text-[10px] bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-full text-zinc-500">{Object.keys(headers).length}</span>
+          </span>
+          {activeTab === 'Headers' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-t-full" />}
         </button>
       </div>
 
-      {activeTab === 'Body' ? (
-        <>
-          {/* Filter / Search Bar */}
-          {mode === 'Pretty' && isJson && (
-            <div className="p-2 border-b border-gray-200 dark:border-gray-800 flex gap-2 text-sm bg-gray-50 dark:bg-gray-800">
-              <input 
-                type="text" 
-                placeholder="Search keys/values..." 
-                className="flex-1 px-2 py-1 border rounded dark:bg-gray-700 dark:border-gray-600"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-              />
-              <input 
-                type="text" 
-                placeholder="JMESPath filter (e.g. $.items)" 
-                className="flex-1 px-2 py-1 border rounded dark:bg-gray-700 dark:border-gray-600 font-mono"
-                value={jmesQuery}
-                onChange={e => setJmesQuery(e.target.value)}
-              />
-            </div>
-          )}
-
-          {/* Body Content */}
-          <div className="flex-1 overflow-auto relative bg-white dark:bg-gray-900">
-            {isLarge && mode === 'Pretty' && (
-              <div className="p-2 bg-yellow-100 text-yellow-800 text-sm flex justify-between items-center z-10 sticky top-0">
-                <span>Large response detected (&gt;5MB). Performance optimizations applied.</span>
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        {activeTab === 'Body' ? (
+          <>
+            {mode === 'Pretty' && isJson && (
+              <div className="p-3 border-b border-zinc-200 dark:border-zinc-800 flex gap-3 bg-zinc-50/30 dark:bg-zinc-950/30">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                  <input 
+                    type="text" 
+                    placeholder="Search response..." 
+                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <input 
+                  type="text" 
+                  placeholder="JMESPath Filter" 
+                  className="flex-1 px-3 py-1.5 text-xs font-mono bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                  value={jmesQuery}
+                  onChange={e => setJmesQuery(e.target.value)}
+                />
               </div>
             )}
 
-            {mode === 'Preview' && isImage ? (
-              <div className="p-4 flex items-center justify-center h-full">
-                 <span className="text-gray-500">Image preview not fully supported for lossy strings yet.</span>
-              </div>
-            ) : mode === 'Preview' && isPdf ? (
-              <div className="p-4 flex items-center justify-center h-full">
-                <span className="text-gray-500">PDF preview (requires binary body parsing).</span>
-              </div>
-            ) : mode === 'Preview' && isHtml ? (
-              <iframe srcDoc={body} className="w-full h-full border-none bg-white" title="preview" />
-            ) : mode === 'Raw' || !isJson ? (
-              <pre className="p-4 text-sm font-mono whitespace-pre-wrap text-gray-800 dark:text-gray-200">
-                {body}
-              </pre>
-            ) : mode === 'Pretty' && isParsing ? (
-              <div className="p-8 text-center text-gray-500">Parsing response...</div>
-            ) : mode === 'Pretty' && parseError ? (
-              <div className="p-4 text-red-500 font-mono text-sm bg-red-50 dark:bg-red-900">{parseError}</div>
-            ) : mode === 'Pretty' && parsedData !== null ? (
-              <Virtuoso
-                totalCount={flattenedData.length}
-                itemContent={(index) => renderNode(index, flattenedData[index])}
-                style={{ height: '100%', width: '100%' }}
-                className="json-viewer-virtuoso custom-scrollbar"
-              />
-            ) : null}
-          </div>
-        </>
-      ) : (
-        <div className="flex-1 overflow-auto bg-white dark:bg-gray-900 p-4">
-          <table className="w-full text-left text-sm">
-            <tbody>
-              {Object.entries(headers).map(([key, value]) => (
-                <tr key={key} className="border-b border-gray-100 dark:border-gray-800">
-                  <td className="py-2 pr-4 font-mono font-medium text-gray-700 dark:text-gray-300 w-1/3 align-top">{key}</td>
-                  <td className="py-2 font-mono text-gray-600 dark:text-gray-400 break-all">{value}</td>
-                </tr>
-              ))}
-              {Object.keys(headers).length === 0 && (
-                <tr>
-                  <td colSpan={2} className="py-4 text-center text-gray-500">No headers found.</td>
-                </tr>
+            <div className="flex-1 overflow-auto bg-white dark:bg-zinc-950 custom-scrollbar">
+              {isLarge && mode === 'Pretty' && (
+                <div className="m-2 p-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-bold rounded-lg ring-1 ring-amber-500/20 flex justify-center">
+                  Large response: performance optimizations active
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
-      )}
+
+              {mode === 'Preview' && isImage ? (
+                <div className="p-8 flex items-center justify-center h-full">
+                   <div className="text-zinc-400 text-center">
+                    <Database size={48} className="mx-auto mb-4 opacity-10" />
+                    <p className="text-sm">Image preview coming soon</p>
+                   </div>
+                </div>
+              ) : mode === 'Preview' && isPdf ? (
+                <div className="p-8 flex items-center justify-center h-full">
+                  <p className="text-zinc-500">PDF Viewer not available in this version.</p>
+                </div>
+              ) : mode === 'Preview' && isHtml ? (
+                <iframe srcDoc={body} className="w-full h-full border-none bg-white" title="preview" />
+              ) : mode === 'Raw' || !isJson ? (
+                <pre className="p-6 text-xs font-mono whitespace-pre-wrap text-zinc-700 dark:text-zinc-300 bg-zinc-50/50 dark:bg-zinc-950">
+                  {body}
+                </pre>
+              ) : mode === 'Pretty' && isParsing ? (
+                <div className="p-12 text-center text-zinc-400">
+                  <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                  <p className="text-xs font-medium">Analyzing Data...</p>
+                </div>
+              ) : mode === 'Pretty' && parseError ? (
+                <div className="m-4 p-4 text-red-500 font-mono text-xs bg-red-500/10 rounded-xl ring-1 ring-red-500/20">{parseError}</div>
+              ) : mode === 'Pretty' && parsedData !== null ? (
+                <div className="p-4 h-full">
+                  <Virtuoso
+                    totalCount={flattenedData.length}
+                    itemContent={(index) => renderNode(index, flattenedData[index])}
+                    style={{ height: '100%', width: '100%' }}
+                    className="custom-scrollbar"
+                  />
+                </div>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 overflow-auto bg-white dark:bg-zinc-950 p-6 custom-scrollbar">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-zinc-200 dark:border-zinc-800">
+                  <th className="pb-3 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Key</th>
+                  <th className="pb-3 text-[10px] font-bold uppercase tracking-widest text-zinc-400">Value</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
+                {Object.entries(headers).map(([key, value]) => (
+                  <tr key={key} className="group">
+                    <td className="py-3 pr-6 font-mono text-xs font-semibold text-zinc-500 dark:text-zinc-400 w-1/3 align-top group-hover:text-indigo-500 transition-colors">{key}</td>
+                    <td className="py-3 font-mono text-xs text-zinc-600 dark:text-zinc-300 break-all">{value}</td>
+                  </tr>
+                ))}
+                {Object.keys(headers).length === 0 && (
+                  <tr>
+                    <td colSpan={2} className="py-12 text-center text-zinc-400 italic text-sm">No headers received</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

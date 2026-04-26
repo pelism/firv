@@ -25,6 +25,7 @@ interface SidebarState {
   updateTreeOptimistic: (newTree: HydratedSidebarItem[]) => void;
   syncTreeToBackend: (newTree: HydratedSidebarItem[]) => Promise<void>;
   updateRequestName: (id: string, newName: string) => Promise<void>;
+  addItem: (item: HydratedSidebarItem, parentPath?: string[]) => Promise<void>;
 }
 
 const transformToManifestItem = (item: HydratedSidebarItem): any => {
@@ -104,6 +105,45 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
     };
 
     const newTree = updateNameInItems(tree);
+    set({ tree: newTree });
+    await syncTreeToBackend(newTree);
+  },
+  addItem: async (newItem, parentPath) => {
+    const { tree, syncTreeToBackend } = get();
+
+    if (!parentPath || parentPath.length === 0) {
+      const newTree = [...tree, newItem];
+      set({ tree: newTree });
+      await syncTreeToBackend(newTree);
+      return;
+    }
+
+    const addItemToItems = (items: HydratedSidebarItem[], path: string[]): HydratedSidebarItem[] => {
+      const [currentName, ...rest] = path;
+      return items.map(item => {
+        if (item.name === currentName && item.kind.type === 'folder') {
+          if (rest.length === 0) {
+            return {
+              ...item,
+              kind: {
+                ...item.kind,
+                items: [...item.kind.items, newItem]
+              }
+            };
+          }
+          return {
+            ...item,
+            kind: {
+              ...item.kind,
+              items: addItemToItems(item.kind.items, rest)
+            }
+          };
+        }
+        return item;
+      });
+    };
+
+    const newTree = addItemToItems(tree, parentPath);
     set({ tree: newTree });
     await syncTreeToBackend(newTree);
   }
