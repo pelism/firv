@@ -33,6 +33,15 @@ pub fn save_atomic<T: Serialize>(path: PathBuf, data: &T) -> Result<(), String> 
 }
 
 #[tauri::command]
+pub fn get_request(project_root: String, id: String) -> Result<FirvRequest, String> {
+    let target_path = Path::new(&project_root).join("requests").join(format!("{}.yaml", id));
+    let content = std::fs::read_to_string(&target_path)
+        .map_err(|e| format!("Failed to read request {}: {}", id, e))?;
+    serde_yaml::from_str(&content)
+        .map_err(|e| format!("Failed to parse request {}: {}", id, e))
+}
+
+#[tauri::command]
 pub fn update_request(project_root: String, request: FirvRequest) -> Result<(), String> {
     if request.id.is_empty() {
         return Err("Validation failed: Request is missing an ID".to_string());

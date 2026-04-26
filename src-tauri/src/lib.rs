@@ -24,9 +24,10 @@ async fn get_hydrated_sidebar(project_path: String) -> Result<hydration::Hydrate
 }
 
 #[tauri::command]
-fn get_manifest(path: String) -> Result<FirvManifest, String> {
-    // Logic to read file and use serde_yaml
-    unimplemented!("get_manifest is not yet implemented")
+fn get_manifest(project_path: String) -> Result<FirvManifest, String> {
+    let path = std::path::PathBuf::from(project_path).join("firv.yaml");
+    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    serde_yaml::from_str(&content).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -55,6 +56,8 @@ fn start_project_watcher(app: tauri::AppHandle, path: String) -> Result<(), Stri
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(watcher::WatcherHandle(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
@@ -65,6 +68,7 @@ pub fn run() {
             lifecycle::run_firv_request,
             start_project_watcher,
             get_hydrated_sidebar,
+            storage::get_request,
             storage::update_request,
             storage::update_manifest_structure
         ])
