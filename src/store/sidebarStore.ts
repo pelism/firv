@@ -29,14 +29,17 @@ interface SidebarState {
   fetchSidebar: () => Promise<void>;
   updateTreeOptimistic: (newTree: HydratedSidebarItem[]) => void;
   syncTreeToBackend: (newTree: HydratedSidebarItem[]) => Promise<void>;
-  updateRequestName: (id: string, newName: string) => Promise<void>;
+  pendingNames: Record<string, string>;
+  updateRequestName: (id: string, newName: string) => void;
   addItem: (item: HydratedSidebarItem, parentPath?: string[]) => Promise<void>;
+  addItemOptimistic: (item: HydratedSidebarItem, parentPath?: string[]) => void;
   deleteItem: (path: string[]) => Promise<void>;
   ensureWorkspace: () => Promise<boolean>;
   openWorkspace: () => Promise<void>;
   createWorkspace: () => Promise<void>;
   loadOrphans: () => Promise<void>;
   getRequestName: (id: string) => string;
+  clearPendingName: (id: string) => void;
 }
 
 const transformToManifestItem = (item: HydratedSidebarItem): any => {
@@ -58,6 +61,7 @@ const transformToManifestItem = (item: HydratedSidebarItem): any => {
 
 export const useSidebarStore = create<SidebarState>((set, get) => ({
   tree: [],
+  pendingNames: {},
   projectPath: '', // Default or replace with dynamic project path
   activeMenu: 'workspace',
   isWorkspaceSettingsOpen: false,
@@ -106,20 +110,44 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
       get().fetchSidebar(); // Rollback on fail
     }
   },
-  updateRequestName: async (id, newName) => {
-    const { tree, syncTreeToBackend } = get();
-    
-    const updateNameInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
+  updateRequestName: (id, newName) => {
+    set((state) => ({
+      pendingNames: { ...state.pendingNames, [id]: newName }
+    }));
+  },
+  clearPendingName: (id) => {
+    set((state) => {
+      const newPending = { ...state.pendingNames };
+      delete newPending[id];
+      return { pendingNames: newPending };
+    });
+  },
+  addItemOptimistic: (newItem, parentPath) => {
+    const { tree } = get();
+
+    if (!parentPath || parentPath.length === 0) {
+      set({ tree: [...tree, newItem] });
+      return;
+    }
+
+    const addItemToItems = (items: HydratedSidebarItem[], path: string[]): HydratedSidebarItem[] => {
+      const [currentName, ...rest] = path;
       return items.map(item => {
-        if (item.kind.type === 'request' && item.kind.id === id) {
-          return { ...item, name: newName };
-        }
-        if (item.kind.type === 'folder' && item.kind.items) {
+        if (item.name === currentName && item.kind.type === 'folder') {
+          if (rest.length === 0) {
+            return {
+              ...item,
+              kind: {
+                ...item.kind,
+                items: [...item.kind.items, newItem]
+              }
+            };
+          }
           return {
             ...item,
             kind: {
               ...item.kind,
-              items: updateNameInItems(item.kind.items)
+              items: addItemToItems(item.kind.items, rest)
             }
           };
         }
@@ -127,9 +155,7 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
       });
     };
 
-    const newTree = updateNameInItems(tree);
-    set({ tree: newTree });
-    await syncTreeToBackend(newTree);
+    set({ tree: addItemToItems(tree, parentPath) });
   },
   addItem: async (newItem, parentPath) => {
     const { tree, syncTreeToBackend } = get();
@@ -345,7 +371,9 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
     }
   },
   getRequestName: (id) => {
-    const { tree } = get();
+    const { tree, pendingNames } = get();
+    if (pendingNames[id]) return pendingNames[id];
+
     const findName = (items: HydratedSidebarItem[]): string | null => {
       for (const item of items) {
         if (item.kind.type === 'request' && item.kind.id === id) {
@@ -358,7 +386,7 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
       }
       return null;
     };
-    return findName(tree) || 'Unknown Request';
+    return findName(tree) || (id.startsWith('new-') ? 'New Request' : 'Unknown Request');
   }
 }));
 

@@ -24,9 +24,11 @@ async fn get_hydrated_sidebar(project_path: String) -> Result<hydration::Hydrate
 
 #[tauri::command]
 fn get_manifest(project_path: String) -> Result<FirvManifest, String> {
-    let path = std::path::PathBuf::from(project_path).join("firv.yaml");
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_yaml::from_str(&content).map_err(|e| e.to_string())
+    let path = std::path::PathBuf::from(&project_path).join("firv.yaml");
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read manifest at {}: {}", path.display(), e))?;
+    serde_yaml::from_str(&content)
+        .map_err(|e| format!("Failed to parse manifest at {}: {}", path.display(), e))
 }
 
 #[tauri::command]

@@ -5,7 +5,7 @@ import { MenuSidebar } from "./components/MenuSidebar";
 import { RequestEditor } from "./components/RequestEditor";
 import { ResponseViewer } from "./components/ResponseViewer";
 import { useAppStore } from "./store/appStore";
-import { useSidebarStore } from "./store/sidebarStore";
+import { useSidebarStore, HydratedSidebarItem } from "./store/sidebarStore";
 import { LogDrawer } from "./components/LogDrawer";
 import { WorkspaceSettings } from "./components/WorkspaceSettings";
 import { X, Box } from "lucide-react";
@@ -77,13 +77,14 @@ function App() {
 
   const handleCreateNewRequest = async () => {
     try {
-      const id = crypto.randomUUID();
-      const newItem = {
+      const id = `new-${crypto.randomUUID()}`;
+      const newItem: HydratedSidebarItem = {
         name: 'New Request',
-        kind: { type: 'request' as const, id, method: 'GET' }
+        kind: { type: 'request', id, method: 'GET' }
       };
       
-      await addItem(newItem);
+      const { addItemOptimistic } = useSidebarStore.getState();
+      addItemOptimistic(newItem);
       openTab(id);
     } catch (err) {
       console.error("Failed to add request", err);

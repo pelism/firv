@@ -5,7 +5,7 @@ import { KVEditor, KeyValue } from './editors/KVEditor';
 import { BodyEditor } from './editors/BodyEditor';
 import { ScriptEditor } from './editors/ScriptEditor';
 import { useAppStore } from '../store/appStore';
-import { useSidebarStore } from '../store/sidebarStore';
+import { useSidebarStore, HydratedSidebarItem } from '../store/sidebarStore';
 import { twMerge } from 'tailwind-merge';
 
 interface RequestEditorProps {
@@ -25,7 +25,14 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const savedStateRef = useRef<any>(null);
   
   const { isRunning, setIsRunning, setResponse, addLog, setDirty } = useAppStore();
-  const { tree, syncTreeToBackend, projectPath, ensureWorkspace, getRequestName } = useSidebarStore();
+  const {
+    syncTreeToBackend, 
+    projectPath, 
+    ensureWorkspace, 
+    getRequestName, 
+    pendingNames,
+    clearPendingName
+  } = useSidebarStore();
 
   // Hydration
   useEffect(() => {
@@ -72,6 +79,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         }
         
         const initialState = {
+          name: req.name || getRequestName(requestId),
           method: req.method || 'GET',
           url: req.url || '',
           headers: (req.headers || []).map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled })),
@@ -88,6 +96,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         // If it failed to load, it might be a new request that hasn't been saved yet
         // Set a default initial state so we can track dirtyness
         const defaultState = {
+          name: getRequestName(requestId),
           method: 'GET',
           url: '',
           headers: [],
@@ -120,6 +129,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
   useEffect(() => {
     const currentState = {
+      name: getRequestName(requestId),
       method,
       url,
       headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
@@ -137,7 +147,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
     const isDirty = JSON.stringify(currentState) !== JSON.stringify(savedStateRef.current);
     setDirty(requestId, isDirty);
-  }, [method, url, headers, params, bodyMode, body, preScript, postScript, requestId, setDirty]);
+  }, [method, url, headers, params, bodyMode, body, preScript, postScript, requestId, setDirty, pendingNames]);
 
   const getFormattedBody = () => {
     if (bodyMode === 'none') return { mode: 'none' };
@@ -160,15 +170,62 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     const ok = await ensureWorkspace();
     if (!ok) return;
 
-    const { projectPath: currentPath } = useSidebarStore.getState();
+    // After ensureWorkspace, the projectPath might have changed, so we MUST get the latest state
+    const { projectPath: currentPath, tree: currentTree } = useSidebarStore.getState();
 
     try {
+      // If there's a pending name change, we need to update the tree first
+      const pendingName = pendingNames[requestId];
+      let updatedTree = currentTree;
+      
+      // If the request is not in the tree (newly created), we must add it
+      const isInTree = (items: HydratedSidebarItem[]): boolean => {
+        return items.some(item => 
+          (item.kind.type === 'request' && item.kind.id === requestId) ||
+          (item.kind.type === 'folder' && isInTree(item.kind.items))
+        );
+      };
+
+      if (!isInTree(currentTree)) {
+        const newItem: HydratedSidebarItem = {
+          name: pendingName || getRequestName(requestId) || 'New Request',
+          kind: { type: 'request', id: requestId, method: method }
+        };
+        updatedTree = [...currentTree, newItem];
+        useSidebarStore.getState().updateTreeOptimistic(updatedTree);
+        await syncTreeToBackend(updatedTree);
+        if (pendingName) clearPendingName(requestId);
+      } else if (pendingName) {
+        const updateNameInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
+          return items.map(item => {
+            if (item.kind.type === 'request' && item.kind.id === requestId) {
+              return { ...item, name: pendingName };
+            }
+            if (item.kind.type === 'folder' && item.kind.items) {
+              return {
+                ...item,
+                kind: {
+                  ...item.kind,
+                  items: updateNameInItems(item.kind.items)
+                }
+              };
+            }
+            return item;
+          });
+        };
+        updatedTree = updateNameInItems(currentTree);
+        useSidebarStore.getState().updateTreeOptimistic(updatedTree);
+        await syncTreeToBackend(updatedTree);
+        clearPendingName(requestId);
+      }
+
       await invoke('update_request', {
         projectRoot: currentPath || '.',
         request: getFormattedRequest()
       });
       
       const currentState = {
+        name: pendingName || getRequestName(requestId),
         method,
         url,
         headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
@@ -181,7 +238,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       savedStateRef.current = currentState;
       setDirty(requestId, false);
 
-      await syncTreeToBackend(tree);
       addLog(`Saved request ${requestId}`);
     } catch (err) {
       console.error("Failed to save", err);
@@ -195,14 +251,20 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     try {
       addLog(`Running request ${method} ${url}...`);
       
-      // Get workspace scripts and folder scripts from store/tree
-      // For now, let's keep it simple as we need to fetch them from the backend
-      const manifest: any = await invoke('get_manifest', { projectPath });
+      let workspaceScripts = null;
+      if (projectPath) {
+        try {
+          const manifest: any = await invoke('get_manifest', { projectPath });
+          workspaceScripts = manifest.workspace.scripts;
+        } catch (err) {
+          addLog(`Warning: Could not load workspace manifest: ${err}`);
+        }
+      }
       
       const result: any = await invoke('run_firv_request', {
         request: getFormattedRequest(),
         initialVars: {},
-        workspaceScripts: manifest.workspace.scripts,
+        workspaceScripts: workspaceScripts,
         folderScripts: [] // TODO: Resolve folder scripts from tree path
       });
       

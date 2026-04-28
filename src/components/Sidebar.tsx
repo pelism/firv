@@ -47,12 +47,12 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
   const handleAddRequest = async (e: React.MouseEvent) => {
     e.stopPropagation();
 
-    const id = crypto.randomUUID();
+    const id = `new-${crypto.randomUUID()}`;
     const newItem: HydratedSidebarItem = {
       name: 'New Request',
       kind: { type: 'request', id, method: 'GET' }
     };
-    await addItem(newItem, path);
+    useSidebarStore.getState().addItemOptimistic(newItem, path);
     openTab(id);
   };
 
@@ -191,13 +191,12 @@ export const Sidebar: React.FC = () => {
 
   const handleAddRequest = async () => {
     try {
-      const id = crypto.randomUUID();
+      const id = `new-${crypto.randomUUID()}`;
       const newItem: HydratedSidebarItem = {
         name: 'New Request',
         kind: { type: 'request', id, method: 'GET' }
       };
-      
-      await addItem(newItem);
+      useSidebarStore.getState().addItemOptimistic(newItem);
       openTab(id);
     } catch (err) {
       console.error("Failed to add request", err);
