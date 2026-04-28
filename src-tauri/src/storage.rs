@@ -60,6 +60,20 @@ pub fn update_request(project_root: String, request: FirvRequest) -> Result<(), 
 }
 
 #[tauri::command]
+pub fn delete_request(project_root: String, id: String) -> Result<(), String> {
+    let target_path = Path::new(&project_root)
+        .join("requests")
+        .join(format!("{}.yaml", id));
+
+    if target_path.exists() {
+        std::fs::remove_file(target_path)
+            .map_err(|e| format!("Failed to delete request file {}: {}", id, e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn update_manifest_structure(project_root: String, workspace: Workspace) -> Result<(), String> {
     let manifest_path = Path::new(&project_root).join("firv.yaml");
 

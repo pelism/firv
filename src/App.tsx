@@ -7,19 +7,26 @@ import { ResponseViewer } from "./components/ResponseViewer";
 import { useAppStore } from "./store/appStore";
 import { useSidebarStore } from "./store/sidebarStore";
 import { LogDrawer } from "./components/LogDrawer";
+import { WorkspaceSettings } from "./components/WorkspaceSettings";
 import { X, Box } from "lucide-react";
 import { twMerge } from "tailwind-merge";
+import { InputModal } from "./components/InputModal";
 import "./App.css";
 
 function App() {
   const activeRequestId = useAppStore(state => state.activeRequestId);
   const setActiveRequestId = useAppStore(state => state.setActiveRequestId);
+  const openTab = useAppStore(state => state.openTab);
   const openTabs = useAppStore(state => state.openTabs);
   const closeTab = useAppStore(state => state.closeTab);
+  const dirtyRequests = useAppStore(state => state.dirtyRequests);
   const responses = useAppStore(state => state.responses);
   const tree = useSidebarStore(state => state.tree);
   const updateRequestName = useSidebarStore(state => state.updateRequestName);
   const getRequestName = useSidebarStore(state => state.getRequestName);
+  const addItem = useSidebarStore(state => state.addItem);
+
+  const isWorkspaceSettingsOpen = useSidebarStore(state => state.isWorkspaceSettingsOpen);
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -68,6 +75,21 @@ function App() {
     }
   };
 
+  const handleCreateNewRequest = async () => {
+    try {
+      const id = crypto.randomUUID();
+      const newItem = {
+        name: 'New Request',
+        kind: { type: 'request' as const, id, method: 'GET' }
+      };
+      
+      await addItem(newItem);
+      openTab(id);
+    } catch (err) {
+      console.error("Failed to add request", err);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans selection:bg-indigo-500/30">
       {/* Unified Global Header */}
@@ -83,6 +105,8 @@ function App() {
       </header>
 
       <div className="flex-1 overflow-hidden relative flex">
+        <InputModal />
+        {isWorkspaceSettingsOpen && <WorkspaceSettings />}
         <MenuSidebar />
         <PanelGroup orientation="horizontal">
           <Panel defaultSize={200} minSize={150} maxSize={500} className="border-r border-zinc-200 dark:border-zinc-800">
@@ -103,6 +127,7 @@ function App() {
                     const path = getRequestPath(tabId);
                     const isEditing = editingTabId === tabId;
                     const isActive = activeRequestId === tabId;
+                    const isDirty = dirtyRequests.has(tabId);
 
                     return (
                       <div
@@ -129,7 +154,12 @@ function App() {
                             onClick={(e) => e.stopPropagation()}
                           />
                         ) : (
-                          <span className="max-w-[120px] truncate">{name}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="max-w-[120px] truncate">{name}</span>
+                            {isDirty && (
+                              <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                            )}
+                          </div>
                         )}
                         <button
                           className={twMerge(
@@ -173,7 +203,7 @@ function App() {
                           </p>
                         </div>
                         <button 
-                          onClick={() => {/* Trigger new request logic from sidebar store maybe? */}}
+                          onClick={handleCreateNewRequest}
                           className="px-6 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
                         >
                           Create New Request

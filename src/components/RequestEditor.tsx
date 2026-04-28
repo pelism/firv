@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Send, Settings, Save } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { KVEditor, KeyValue } from './editors/KVEditor';
@@ -22,8 +22,9 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const [bodyMode, setBodyMode] = useState<'json'|'yaml'|'raw'|'none'>('json');
   const [preScript, setPreScript] = useState('');
   const [postScript, setPostScript] = useState('');
+  const savedStateRef = useRef<any>(null);
   
-  const { isRunning, setIsRunning, setResponse, addLog } = useAppStore();
+  const { isRunning, setIsRunning, setResponse, addLog, setDirty } = useAppStore();
   const { tree, syncTreeToBackend, projectPath, ensureWorkspace, getRequestName } = useSidebarStore();
 
   // Hydration
@@ -69,8 +70,35 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           setPreScript('');
           setPostScript('');
         }
+        
+        const initialState = {
+          method: req.method || 'GET',
+          url: req.url || '',
+          headers: (req.headers || []).map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled })),
+          params: (req.params || []).map((p: any) => ({ key: p.key, value: p.value, enabled: p.enabled })),
+          bodyMode: req.body?.mode || 'json',
+          body: req.body?.data || '',
+          preScript: req.scripts?.pre || '',
+          postScript: req.scripts?.post || ''
+        };
+        savedStateRef.current = initialState;
+        setDirty(requestId, false);
       } catch (err) {
         console.error("Failed to load request", err);
+        // If it failed to load, it might be a new request that hasn't been saved yet
+        // Set a default initial state so we can track dirtyness
+        const defaultState = {
+          method: 'GET',
+          url: '',
+          headers: [],
+          params: [],
+          bodyMode: 'json',
+          body: '',
+          preScript: '',
+          postScript: ''
+        };
+        savedStateRef.current = defaultState;
+        setDirty(requestId, true); // Mark as dirty since it doesn't exist on disk
       }
     }
     loadRequest();
@@ -89,6 +117,27 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     window.addEventListener('keydown', handleGlobalKeydown);
     return () => window.removeEventListener('keydown', handleGlobalKeydown);
   }, [method, url, headers, body, preScript, postScript, requestId]);
+
+  useEffect(() => {
+    const currentState = {
+      method,
+      url,
+      headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
+      params: params.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })),
+      bodyMode,
+      body,
+      preScript,
+      postScript
+    };
+
+    if (!savedStateRef.current) {
+      setDirty(requestId, true);
+      return;
+    }
+
+    const isDirty = JSON.stringify(currentState) !== JSON.stringify(savedStateRef.current);
+    setDirty(requestId, isDirty);
+  }, [method, url, headers, params, bodyMode, body, preScript, postScript, requestId, setDirty]);
 
   const getFormattedBody = () => {
     if (bodyMode === 'none') return { mode: 'none' };
@@ -118,6 +167,20 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         projectRoot: currentPath || '.',
         request: getFormattedRequest()
       });
+      
+      const currentState = {
+        method,
+        url,
+        headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
+        params: params.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })),
+        bodyMode,
+        body,
+        preScript,
+        postScript
+      };
+      savedStateRef.current = currentState;
+      setDirty(requestId, false);
+
       await syncTreeToBackend(tree);
       addLog(`Saved request ${requestId}`);
     } catch (err) {

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { useModalStore } from './modalStore';
 
 export type SidebarKind = 
   | { type: 'folder'; items: HydratedSidebarItem[] }
@@ -23,13 +24,17 @@ interface SidebarState {
   activeMenu: string;
   setActiveMenu: (menu: string) => void;
   setProjectPath: (path: string) => void;
+  isWorkspaceSettingsOpen: boolean;
+  setWorkspaceSettingsOpen: (open: boolean) => void;
   fetchSidebar: () => Promise<void>;
   updateTreeOptimistic: (newTree: HydratedSidebarItem[]) => void;
   syncTreeToBackend: (newTree: HydratedSidebarItem[]) => Promise<void>;
   updateRequestName: (id: string, newName: string) => Promise<void>;
   addItem: (item: HydratedSidebarItem, parentPath?: string[]) => Promise<void>;
+  deleteItem: (path: string[]) => Promise<void>;
   ensureWorkspace: () => Promise<boolean>;
   openWorkspace: () => Promise<void>;
+  createWorkspace: () => Promise<void>;
   loadOrphans: () => Promise<void>;
   getRequestName: (id: string) => string;
 }
@@ -55,6 +60,8 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
   tree: [],
   projectPath: '', // Default or replace with dynamic project path
   activeMenu: 'workspace',
+  isWorkspaceSettingsOpen: false,
+  setWorkspaceSettingsOpen: (open) => set({ isWorkspaceSettingsOpen: open }),
   setActiveMenu: (activeMenu) => set({ activeMenu }),
   setProjectPath: (path) => {
     set({ projectPath: path });
@@ -163,6 +170,67 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
     set({ tree: newTree });
     await syncTreeToBackend(newTree);
   },
+  deleteItem: async (path) => {
+    const { tree, projectPath, syncTreeToBackend } = get();
+
+    const findItemByPath = (items: HydratedSidebarItem[], currentPath: string[]): HydratedSidebarItem | null => {
+      const [targetName, ...remainingPath] = currentPath;
+      const item = items.find(i => i.name === targetName);
+      if (!item) return null;
+      if (remainingPath.length === 0) return item;
+      if (item.kind.type === 'folder') {
+        return findItemByPath(item.kind.items, remainingPath);
+      }
+      return null;
+    };
+
+    const getRequestIds = (item: HydratedSidebarItem): string[] => {
+      if (item.kind.type === 'request') {
+        return [item.kind.id];
+      }
+      if (item.kind.type === 'folder') {
+        return item.kind.items.flatMap(getRequestIds);
+      }
+      return [];
+    };
+
+    const itemToDelete = findItemByPath(tree, path);
+    if (itemToDelete) {
+      const idsToDelete = getRequestIds(itemToDelete);
+      for (const id of idsToDelete) {
+        try {
+          await invoke('delete_request', { projectRoot: projectPath, id });
+        } catch (e) {
+          console.error(`Failed to delete request file ${id}:`, e);
+        }
+      }
+    }
+
+    const deleteFromItems = (items: HydratedSidebarItem[], currentPath: string[]): HydratedSidebarItem[] => {
+      const [targetName, ...remainingPath] = currentPath;
+      
+      if (remainingPath.length === 0) {
+        return items.filter(item => item.name !== targetName);
+      }
+
+      return items.map(item => {
+        if (item.name === targetName && item.kind.type === 'folder') {
+          return {
+            ...item,
+            kind: {
+              ...item.kind,
+              items: deleteFromItems(item.kind.items, remainingPath)
+            }
+          };
+        }
+        return item;
+      });
+    };
+
+    const newTree = deleteFromItems(tree, path);
+    set({ tree: newTree });
+    await syncTreeToBackend(newTree);
+  },
   ensureWorkspace: async () => {
     const { projectPath, fetchSidebar } = get();
     
@@ -170,7 +238,11 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
       const exists = await invoke<boolean>('check_workspace_exists', { projectRoot: projectPath });
       if (exists) return true;
 
-      const name = prompt("Enter workspace name:");
+      const name = await useModalStore.getState().openModal({
+        title: "Create Workspace",
+        description: "Your project does not have a workspace yet. Enter a name to create one.",
+        placeholder: "Workspace Name"
+      });
       if (!name) return false;
 
       const { open } = await import('@tauri-apps/plugin-dialog');
@@ -189,6 +261,31 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
     } catch (e) {
       console.error("Failed to ensure workspace:", e);
       return false;
+    }
+  },
+  createWorkspace: async () => {
+    try {
+      const name = await useModalStore.getState().openModal({
+        title: "Create Workspace",
+        placeholder: "Workspace Name"
+      });
+      if (!name) return;
+
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Select Workspace Location'
+      });
+
+      if (!selected || Array.isArray(selected)) return;
+
+      await invoke('create_workspace', { projectRoot: selected, name });
+      set({ projectPath: selected });
+      await get().fetchSidebar();
+      await get().loadOrphans();
+    } catch (e) {
+      console.error("Failed to create workspace:", e);
     }
   },
   openWorkspace: async () => {

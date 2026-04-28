@@ -69,6 +69,7 @@ pub fn run() {
             get_hydrated_sidebar,
             storage::get_request,
             storage::update_request,
+            storage::delete_request,
             storage::update_manifest_structure,
             storage::create_workspace,
             storage::check_workspace_exists

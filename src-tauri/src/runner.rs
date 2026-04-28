@@ -134,7 +134,7 @@ pub async fn run_request(
                 Some(&firv_resp),
                 &mut dummy_logs,
             )?;
-            // Note: modifications to variables in post-script could be stored here
+            resolver.request_vars = vars_map;
         }
     }
 

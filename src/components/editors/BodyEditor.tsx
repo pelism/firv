@@ -41,6 +41,16 @@ const firvVariableExtension = StateField.define<DecorationSet>({
 
 export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, onFormat }) => {
   const [localValue, setLocalValue] = useState(value);
+  const [theme, setTheme] = useState<'light' | 'dark'>(
+    window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  );
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = () => setTheme(mediaQuery.matches ? 'dark' : 'light');
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
 
   useEffect(() => {
     setLocalValue(value);
@@ -115,7 +125,7 @@ export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, o
           extensions={extensions}
           onChange={handleChange}
           className="h-full text-sm"
-          theme="light"
+          theme={theme}
           basicSetup={{
             lineNumbers: true,
             highlightActiveLineGutter: true,

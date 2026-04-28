@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useSidebarStore, HydratedSidebarItem } from '../store/sidebarStore';
 import { useAppStore } from '../store/appStore';
-import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search } from 'lucide-react';
+import { useModalStore } from '../store/modalStore';
+import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search, Trash2, Settings2 } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 
 const getMethodStyles = (method: string) => {
@@ -19,7 +20,25 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
   const [isOpen, setIsOpen] = useState(true);
   const activeRequestId = useAppStore(state => state.activeRequestId);
   const openTab = useAppStore(state => state.openTab);
-  const { addItem } = useSidebarStore();
+  const closeTab = useAppStore(state => state.closeTab);
+  const { addItem, deleteItem } = useSidebarStore();
+
+  const getRequestIds = (item: HydratedSidebarItem): string[] => {
+    if (item.kind.type === 'request') {
+      return [item.kind.id];
+    }
+    if (item.kind.type === 'folder') {
+      return item.kind.items.flatMap(getRequestIds);
+    }
+    return [];
+  };
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const idsToClose = getRequestIds(item);
+    await deleteItem(path);
+    idsToClose.forEach(id => closeTab(id));
+  };
 
   const paddingLeft = depth * 12 + 12;
 
@@ -27,6 +46,7 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
   
   const handleAddRequest = async (e: React.MouseEvent) => {
     e.stopPropagation();
+
     const id = crypto.randomUUID();
     const newItem: HydratedSidebarItem = {
       name: 'New Request',
@@ -38,7 +58,11 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
 
   const handleAddFolder = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const name = prompt("Enter folder name:");
+
+    const name = await useModalStore.getState().openModal({
+      title: "New Folder",
+      placeholder: "Folder Name"
+    });
     if (!name) return;
     
     const newItem: HydratedSidebarItem = {
@@ -85,6 +109,13 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
             >
               <FolderPlus size={14} />
             </button>
+            <button 
+              onClick={handleDelete}
+              className="p-1 hover:bg-red-100 dark:hover:bg-red-500/20 rounded text-zinc-500 hover:text-red-600 dark:hover:text-red-400"
+              title="Delete Folder"
+            >
+              <Trash2 size={14} />
+            </button>
           </div>
         </div>
         {(isOpen || searchQuery) && (
@@ -128,6 +159,15 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
           {item.kind.method}
         </span>
         <span className="truncate flex-1">{item.name}</span>
+        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+          <button 
+            onClick={handleDelete}
+            className="p-1 hover:bg-red-100 dark:hover:bg-red-500/20 rounded text-zinc-500 hover:text-red-600 dark:hover:text-red-400"
+            title="Delete Request"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
     );
   }
@@ -141,7 +181,7 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
 });
 
 export const Sidebar: React.FC = () => {
-  const { tree, fetchSidebar, addItem } = useSidebarStore();
+  const { tree, fetchSidebar, addItem, setWorkspaceSettingsOpen } = useSidebarStore();
   const [searchQuery, setSearchQuery] = useState('');
   const openTab = useAppStore(state => state.openTab);
 
@@ -166,7 +206,10 @@ export const Sidebar: React.FC = () => {
 
   const handleAddFolder = async () => {
     try {
-      const name = prompt("Enter folder name:");
+      const name = await useModalStore.getState().openModal({
+        title: "New Folder",
+        placeholder: "Folder Name"
+      });
       if (!name) return;
       
       const newItem: HydratedSidebarItem = {
@@ -192,6 +235,9 @@ export const Sidebar: React.FC = () => {
           </button>
           <button onClick={handleAddFolder} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" title="New Folder">
             <FolderPlus size={16} />
+          </button>
+          <button onClick={() => setWorkspaceSettingsOpen(true)} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" title="Workspace Settings">
+            <Settings2 size={16} />
           </button>
         </div>
       </div>

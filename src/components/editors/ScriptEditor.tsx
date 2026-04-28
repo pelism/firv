@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { Extension } from '@codemirror/state';
@@ -12,6 +12,17 @@ interface ScriptEditorProps {
 
 export const ScriptEditor: React.FC<ScriptEditorProps> = ({ value, onChange, title, placeholder }) => {
   const extensions = useMemo(() => [javascript()] as Extension[], []);
+  
+  const [theme, setTheme] = useState<'light' | 'dark'>(
+    window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  );
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = () => setTheme(mediaQuery.matches ? 'dark' : 'light');
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
 
   return (
     <div className="flex flex-col h-full w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
@@ -28,7 +39,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ value, onChange, tit
           onChange={onChange}
           placeholder={placeholder || "// Enter your JavaScript here..."}
           className="h-full text-sm"
-          theme="light"
+          theme={theme}
           basicSetup={{
             lineNumbers: true,
             highlightActiveLineGutter: true,
