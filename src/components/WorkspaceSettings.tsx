@@ -12,8 +12,13 @@ export function WorkspaceSettings() {
   const [postScript, setPostScript] = useState('');
   const [variables, setVariables] = useState<KeyValue[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const { projectPath, setWorkspaceName: setStoreWorkspaceName, setWorkspaceSettingsOpen, ensureWorkspace } = useSidebarStore();
+  const { projectPath, setWorkspaceName: setStoreWorkspaceName, setWorkspaceSettingsOpen, ensureWorkspace, setActiveMenu } = useSidebarStore();
   const { addLog } = useAppStore();
+
+  const handleClose = () => {
+    setWorkspaceSettingsOpen(false);
+    setActiveMenu('workspace');
+  };
 
   useEffect(() => {
     if (projectPath) {
@@ -96,7 +101,7 @@ export function WorkspaceSettings() {
       setStoreWorkspaceName(name.trim() || currentPath.split(/[/\\]/).filter(Boolean).pop() || 'Workspace');
       console.log("Successfully saved workspace settings");
       addLog("Saved workspace settings");
-      setWorkspaceSettingsOpen(false);
+      handleClose();
     } catch (err) {
       console.error("Failed to save workspace settings", err);
       addLog(`Error saving workspace settings: ${err}`);
@@ -130,7 +135,7 @@ export function WorkspaceSettings() {
           </button>
           <div className="w-px h-6 bg-zinc-200 dark:border-zinc-800 mx-1" />
           <button
-            onClick={() => setWorkspaceSettingsOpen(false)}
+            onClick={handleClose}
             className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-xl text-zinc-500 transition-colors active:scale-90"
           >
             <X size={20} />

@@ -4,8 +4,13 @@ import { useThemeStore, Theme } from '../store/themeStore';
 import { twMerge } from 'tailwind-merge';
 
 export function AppSettings() {
-  const { setAppSettingsOpen } = useSidebarStore();
+  const { setAppSettingsOpen, setActiveMenu } = useSidebarStore();
   const { theme, setTheme } = useThemeStore();
+
+  const handleClose = () => {
+    setAppSettingsOpen(false);
+    setActiveMenu('workspace');
+  };
 
   return (
     <div className="fixed inset-0 z-[100] bg-background flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -22,7 +27,7 @@ export function AppSettings() {
         </div>
         
         <button
-          onClick={() => setAppSettingsOpen(false)}
+          onClick={handleClose}
           className="p-2 hover:bg-muted rounded-xl text-muted-foreground transition-colors active:scale-90"
         >
           <X size={20} />

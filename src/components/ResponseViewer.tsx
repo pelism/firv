@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Virtuoso } from 'react-virtuoso';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
-import { Download, Search, Terminal, Database, Clock, FileJson, Globe } from 'lucide-react';
+import { Download, Search, Activity, Database, Clock, FileJson, Globe } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 
 export interface FirvResponse {
@@ -217,8 +217,9 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
   if (!response) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center space-y-4 bg-muted/30 text-muted-foreground">
-        <div className="p-6 rounded-full bg-muted shadow-inner">
-          <Terminal size={48} className="opacity-20" />
+        <div className="p-6 rounded-full bg-muted shadow-inner relative group/icon">
+          <div className="absolute inset-0 bg-primary/20 blur-2xl rounded-full opacity-0 group-hover/icon:opacity-100 transition-opacity duration-500" />
+          <Activity size={48} className="relative z-10 opacity-20 group-hover:opacity-40 text-primary transition-all duration-500" />
         </div>
         <div className="text-center">
           <p className="font-semibold text-foreground/60">Ready for Request</p>
