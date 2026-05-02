@@ -34,6 +34,8 @@ interface SidebarState {
   setWorkspaceName: (name: string) => void;
   isWorkspaceSettingsOpen: boolean;
   setWorkspaceSettingsOpen: (open: boolean) => void;
+  isAppSettingsOpen: boolean;
+  setAppSettingsOpen: (open: boolean) => void;
   fetchSidebar: () => Promise<void>;
   updateTreeOptimistic: (newTree: HydratedSidebarItem[]) => void;
   syncTreeToBackend: (newTree: HydratedSidebarItem[]) => Promise<void>;
@@ -78,6 +80,8 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
   activeMenu: 'workspace',
   isWorkspaceSettingsOpen: false,
   setWorkspaceSettingsOpen: (open) => set({ isWorkspaceSettingsOpen: open }),
+  isAppSettingsOpen: false,
+  setAppSettingsOpen: (open) => set({ isAppSettingsOpen: open }),
   setActiveMenu: (activeMenu) => set({ activeMenu }),
   setProjectPath: (path) => {
     set({ projectPath: path });

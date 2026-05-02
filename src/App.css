@@ -1,12 +1,128 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* HTTP Methods */
+  --color-method-get: var(--method-get);
+  --color-method-post: var(--method-post);
+  --color-method-put: var(--method-put);
+  --color-method-patch: var(--method-patch);
+  --color-method-delete: var(--method-delete);
+
+  /* JSON Highlighting */
+  --color-json-key: var(--json-key);
+  --color-json-string: var(--json-string);
+  --color-json-number: var(--json-number);
+  --color-json-boolean: var(--json-boolean);
+  --color-json-null: var(--json-null);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+:root {
+  --background: #FDFDFD; /* Off-White */
+  --foreground: #0F172A; /* Deep Slate */
+  --card: #FFFFFF; /* Pure White */
+  --card-foreground: #0F172A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  --primary: #0284C7; /* Azure Blue */
+  --primary-foreground: #FFFFFF;
+  --secondary: #06B6D4; /* Bright Cyan */
+  --secondary-foreground: #FFFFFF;
+  --muted: #F1F5F9; /* Very light slate for subtle backgrounds */
+  --muted-foreground: #A1ACB3; /* Soft Blue-Grey */
+  --accent: #F1F5F9;
+  --accent-foreground: #0F172A;
+  --border: #E2E8F0; /* Clean slate border */
+  --input: #E2E8F0;
+  --ring: #0284C7;
+  --radius: 0.75rem;
+
+  /* HTTP Methods - Aligned with Crystal Clear vibe */
+  --method-get: #0284C7; /* Azure Blue */
+  --method-post: #0D9488; /* Teal */
+  --method-put: #CA8A04;
+  --method-patch: #D97706;
+  --method-delete: #E11D48;
+
+  /* JSON Highlighting - Professional & High Contrast */
+  --json-key: #4F46E5;
+  --json-string: #0D9488;
+  --json-number: #0284C7;
+  --json-boolean: #EA580C;
+  --json-null: #A1ACB3;
+}
+
+.dark {
+  --background: #0F172A; /* Deep Slate */
+  --foreground: #F8FAFC; /* Ghost White */
+  --card: #1E293B; /* Cool Slate */
+  --card-foreground: #F8FAFC;
+  --popover: #1E293B;
+  --popover-foreground: #F8FAFC;
+  --primary: #14B8A6; /* Electric Teal */
+  --primary-foreground: #F8FAFC;
+  --secondary: #3B82F6; /* Bright Azure */
+  --secondary-foreground: #F8FAFC;
+  --muted: #1E293B;
+  --muted-foreground: #64748B; /* Slate Grey */
+  --accent: #1E293B;
+  --accent-foreground: #F8FAFC;
+  --destructive: #7f1d1d;
+  --destructive-foreground: #fafafa;
+  --border: #334155; /* Slate-700 for subtle separation */
+  --input: #334155;
+  --ring: #14B8A6;
+
+  /* HTTP Methods - Adjusted for new palette */
+  --method-get: #3B82F6; /* Bright Azure */
+  --method-post: #14B8A6; /* Electric Teal */
+  --method-put: #fbbf24;
+  --method-patch: #facc15;
+  --method-delete: #f87171;
+
+  /* JSON Highlighting - Adjusted for Ghost White readability */
+  --json-key: #a78bfa;
+  --json-string: #14B8A6;
+  --json-number: #3B82F6;
+  --json-boolean: #fbbf24;
+  --json-null: #64748B;
+}
 
 @layer base {
+  * {
+    @apply border-border;
+  }
   html, body, #root {
     height: 100%;
     width: 100%;
     overflow: hidden;
     margin: 0;
     padding: 0;
+    background-color: var(--background);
+    color: var(--foreground);
   }
 }
 

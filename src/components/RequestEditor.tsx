@@ -303,14 +303,14 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-white dark:bg-zinc-950 w-full">
+    <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-background w-full">
       {/* Unified Command Bar */}
-      <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
-        <div className="flex items-stretch gap-2 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800 shadow-sm">
+      <div className="p-4 border-b border-border">
+        <div className="flex items-stretch gap-2 bg-muted p-1 rounded-xl ring-1 ring-border shadow-sm">
           <select 
             value={method} 
             onChange={e => setMethod(e.target.value)}
-            className="px-4 bg-transparent font-bold text-xs uppercase tracking-wider text-indigo-500 dark:text-indigo-400 outline-none border-r border-zinc-200 dark:border-zinc-800"
+            className="px-4 bg-transparent font-bold text-xs uppercase tracking-wider text-primary outline-none border-r border-border"
           >
             <option>GET</option>
             <option>POST</option>
@@ -324,7 +324,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
             value={url} 
             onChange={e => setUrl(e.target.value)}
             placeholder="Enter URL or paste request..."
-            className="flex-1 px-3 py-2 bg-transparent text-sm outline-none text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
+            className="flex-1 px-3 py-2 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground"
             onKeyDown={e => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleRun();
             }}
@@ -336,8 +336,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
               className={twMerge(
                 "p-2 transition-colors",
                 isDirty 
-                  ? "text-zinc-900 dark:text-white" 
-                  : "text-zinc-500"
+                  ? "text-foreground" 
+                  : "text-muted-foreground"
               )}
               title="Save (Ctrl+S)"
             >
@@ -347,8 +347,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
               onClick={handleRun}
               disabled={isRunning}
               className={twMerge(
-                "flex items-center gap-2 px-4 py-1.5 rounded-lg text-white font-bold text-sm transition-all shadow-md active:scale-95",
-                isRunning ? 'bg-zinc-400' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30'
+                "flex items-center gap-2 px-4 py-1.5 rounded-lg text-primary-foreground font-bold text-sm transition-all shadow-md active:scale-95",
+                isRunning ? 'bg-muted-foreground' : 'bg-primary hover:bg-primary/90 shadow-primary/30'
               )}
             >
               <Send size={16} className={isRunning ? 'animate-pulse' : ''} />
@@ -359,8 +359,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       </div>
 
       {/* Segmented Editor Tabs */}
-      <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
-        <div className="flex bg-zinc-200/50 dark:bg-zinc-800/50 p-1 rounded-lg w-fit">
+      <div className="px-4 py-2 border-b border-border bg-muted/30">
+        <div className="flex bg-muted p-1 rounded-lg w-fit">
           {['params', 'headers', 'body', 'scripts'].map(tab => (
             <button
               key={tab}
@@ -368,8 +368,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
               className={twMerge(
                 "px-4 py-1.5 text-xs font-semibold rounded-md transition-all uppercase tracking-tight",
                 activeTab === tab 
-                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm" 
-                  : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                  ? "bg-background text-foreground shadow-sm" 
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
               {tab}
@@ -390,7 +390,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           {activeTab === 'body' && (
             <div className="h-full flex flex-col">
               <div className="mb-4 flex items-center justify-between">
-                <div className="flex gap-2 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-lg ring-1 ring-zinc-200 dark:ring-zinc-800">
+                <div className="flex gap-2 bg-muted p-1 rounded-lg ring-1 ring-border">
                   {['none', 'json', 'yaml', 'raw'].map(mode => (
                     <button
                       key={mode}
@@ -398,24 +398,24 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
                       className={twMerge(
                         "px-3 py-1 text-[10px] font-bold uppercase rounded-md transition-all",
                         bodyMode === mode 
-                          ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                          : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
                       )}
                     >
                       {mode}
                     </button>
                   ))}
                 </div>
-                <button className="p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors">
+                <button className="p-1.5 text-muted-foreground hover:bg-muted rounded-md transition-colors">
                   <Settings size={16} />
                 </button>
               </div>
-              <div className="flex-1 min-h-[300px] border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
+              <div className="flex-1 min-h-[300px] border border-border rounded-xl overflow-hidden shadow-sm">
                 {bodyMode !== 'none' ? (
                   <BodyEditor value={body} mode={bodyMode} onChange={setBody} />
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-zinc-400 text-sm space-y-2 bg-zinc-50/50 dark:bg-zinc-900/50">
-                    <div className="p-3 rounded-full bg-zinc-100 dark:bg-zinc-800/50">
+                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm space-y-2 bg-muted/50">
+                    <div className="p-3 rounded-full bg-muted">
                       <Settings size={24} className="opacity-50" />
                     </div>
                     <p className="font-medium">No Request Body</p>

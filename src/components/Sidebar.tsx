@@ -26,12 +26,12 @@ import { CSS } from '@dnd-kit/utilities';
 
 const getMethodStyles = (method: string) => {
   switch (method.toUpperCase()) {
-    case 'GET': return 'text-blue-600 bg-blue-100 dark:text-blue-400 dark:bg-blue-500/20';
-    case 'POST': return 'text-emerald-600 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-500/20';
-    case 'PUT': return 'text-amber-600 bg-amber-100 dark:text-amber-400 dark:bg-amber-500/20';
-    case 'PATCH': return 'text-yellow-600 bg-yellow-100 dark:text-yellow-400 dark:bg-yellow-500/20';
-    case 'DELETE': return 'text-red-600 bg-red-100 dark:text-red-400 dark:bg-red-500/20';
-    default: return 'text-zinc-600 bg-zinc-100 dark:text-zinc-400 dark:bg-zinc-800';
+    case 'GET': return 'text-method-get bg-method-get/10';
+    case 'POST': return 'text-method-post bg-method-post/10';
+    case 'PUT': return 'text-method-put bg-method-put/10';
+    case 'PATCH': return 'text-method-patch bg-method-patch/10';
+    case 'DELETE': return 'text-method-delete bg-method-delete/10';
+    default: return 'text-muted-foreground bg-muted';
   }
 };
 
@@ -126,12 +126,12 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
       <div style={style}>
         <div 
           ref={setNodeRef}
-          className="flex items-center py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 cursor-pointer text-sm text-zinc-600 dark:text-zinc-400 group transition-colors pr-2"
+          className="flex items-center py-2 hover:bg-muted/50 cursor-pointer text-sm text-muted-foreground group transition-colors pr-2"
           style={{ paddingLeft }}
           onClick={() => setIsOpen(!isOpen)}
         >
           <div className="flex items-center flex-1 min-w-0">
-            <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-zinc-400">
+            <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-muted-foreground/60">
               <GripVertical size={12} />
             </div>
             {isOpen || searchQuery ? <ChevronDown size={14} className="mr-2 opacity-60" /> : <ChevronRight size={14} className="mr-2 opacity-60" />}
@@ -141,21 +141,21 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
             <button 
               onClick={handleAddRequest}
-              className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+              className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
               title="Add Request"
             >
               <Plus size={14} />
             </button>
             <button 
               onClick={handleAddFolder}
-              className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+              className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
               title="Add Subfolder"
             >
               <FolderPlus size={14} />
             </button>
             <button 
               onClick={handleDelete}
-              className="p-1 hover:bg-red-100 dark:hover:bg-red-500/20 rounded text-zinc-500 hover:text-red-600 dark:hover:text-red-400"
+              className="p-1 hover:bg-destructive/10 rounded text-muted-foreground hover:text-destructive"
               title="Delete Folder"
             >
               <Trash2 size={14} />
@@ -164,9 +164,9 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
         </div>
         {(isOpen || searchQuery) && (
           <div className="relative">
-            <div className="absolute left-[18px] top-0 bottom-0 w-[1px] bg-zinc-200 dark:bg-zinc-800 ml-[depth * 12]" style={{ left: paddingLeft + 6 }} />
+            <div className="absolute left-[18px] top-0 bottom-0 w-[1px] bg-border ml-[depth * 12]" style={{ left: paddingLeft + 6 }} />
             {item.kind.items.length === 0 ? (
-              <div style={{ paddingLeft: paddingLeft + 28 }} className="text-[11px] text-zinc-400 py-2 italic">
+              <div style={{ paddingLeft: paddingLeft + 28 }} className="text-[11px] text-muted-foreground/60 py-2 italic">
               </div>
             ) : (
               <SortableContext items={item.kind.items.map(i => i.id)} strategy={verticalListSortingStrategy}>
@@ -191,8 +191,8 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
         className={twMerge(
           "flex items-center py-2 px-3 mx-2 my-0.5 rounded-lg cursor-pointer text-sm group transition-all",
           isActive 
-            ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-indigo-500/20" 
-            : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
+            ? "bg-primary/10 text-primary shadow-sm ring-1 ring-primary/20" 
+            : "text-muted-foreground hover:bg-muted/50"
         )}
         style={{ ...style, paddingLeft: depth > 0 ? paddingLeft + 20 : 12 }}
         onClick={() => {
@@ -201,7 +201,7 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
           }
         }}
       >
-        <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-zinc-400">
+        <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-muted-foreground/60">
           <GripVertical size={12} />
         </div>
         <span className={twMerge("text-[10px] font-bold px-1.5 py-0.5 rounded-md mr-3 min-w-[32px] text-center", getMethodStyles(item.kind.method))}>
@@ -211,7 +211,7 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
         <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity ml-2">
           <button 
             onClick={handleDelete}
-            className="p-1 hover:bg-red-100 dark:hover:bg-red-500/20 rounded text-zinc-500 hover:text-red-600 dark:hover:text-red-400"
+            className="p-1 hover:bg-destructive/10 rounded text-muted-foreground hover:text-destructive"
             title="Delete Request"
           >
             <Trash2 size={14} />
@@ -222,7 +222,7 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
   }
 
   return (
-    <div className="flex items-center py-2 text-sm text-red-500 opacity-80" style={{ paddingLeft: paddingLeft + 20 }}>
+    <div className="flex items-center py-2 text-sm text-destructive opacity-80" style={{ paddingLeft: paddingLeft + 20 }}>
       <AlertCircle size={14} className="mr-2" />
       <span>{item.kind.type === 'error' ? item.kind.name : ''}</span>
     </div>
@@ -319,19 +319,19 @@ export const Sidebar: React.FC = () => {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="h-full bg-zinc-50 dark:bg-zinc-950 flex flex-col overflow-hidden border-r border-zinc-200 dark:border-zinc-800">
+      <div className="h-full bg-muted/20 flex flex-col overflow-hidden border-r border-border">
         <div className="p-4 flex items-center justify-between">
-          <div className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">
+          <div className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">
             Workspace
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={handleAddRequest} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" title="New Request">
+            <button onClick={handleAddRequest} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title="New Request">
               <Plus size={16} />
             </button>
-            <button onClick={handleAddFolder} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" title="New Folder">
+            <button onClick={handleAddFolder} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title="New Folder">
               <FolderPlus size={16} />
             </button>
-            <button onClick={() => setWorkspaceSettingsOpen(true)} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" title="Workspace Settings">
+            <button onClick={() => setWorkspaceSettingsOpen(true)} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title="Workspace Settings">
               <Settings2 size={16} />
             </button>
           </div>
@@ -339,23 +339,23 @@ export const Sidebar: React.FC = () => {
         
         <div className="px-3 mb-4">
           <div className="relative group mb-3">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-indigo-500 transition-colors" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 group-focus-within:text-primary transition-colors" />
             <input 
               type="text" 
               placeholder="Search..." 
-              className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 transition-all shadow-sm"
+              className="w-full pl-9 pr-3 py-2 text-sm bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 text-foreground placeholder:text-muted-foreground/60 transition-all shadow-sm"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono text-zinc-400 border border-zinc-200 dark:border-zinc-800 px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-950 pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity">
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono text-muted-foreground/60 border border-border px-1.5 py-0.5 rounded bg-muted/50 pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity">
               ⌘K
             </div>
           </div>
 
           {workspaceName && (
-            <div className="flex items-center justify-between px-3 py-2 bg-indigo-500/5 dark:bg-indigo-500/10 border border-indigo-500/20 rounded-xl group/workspace-pill transition-all">
+            <div className="flex items-center justify-between px-3 py-2 bg-primary/5 border border-primary/20 rounded-xl group/workspace-pill transition-all">
               <div className="flex items-center gap-2 overflow-hidden">
-                <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 truncate uppercase tracking-wider">
+                <span className="text-[11px] font-bold text-primary truncate uppercase tracking-wider">
                   {workspaceName}
                 </span>
               </div>
@@ -364,7 +364,7 @@ export const Sidebar: React.FC = () => {
                   e.stopPropagation();
                   closeWorkspace();
                 }}
-                className="opacity-0 group-hover/workspace-pill:opacity-100 p-1 hover:bg-indigo-500/10 dark:hover:bg-indigo-500/20 rounded-md text-indigo-400 hover:text-red-500 transition-all"
+                className="opacity-0 group-hover/workspace-pill:opacity-100 p-1 hover:bg-primary/10 rounded-md text-primary hover:text-destructive transition-all"
                 title="Close Workspace"
               >
                 <X size={12} />
@@ -394,18 +394,18 @@ const SidebarContent: React.FC<{ searchQuery: string; activeItem: HydratedSideba
       </SortableContext>
       <DragOverlay adjustScale={true}>
         {activeItem ? (
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl px-3 py-2 text-sm flex items-center gap-2 opacity-90 pointer-events-none">
+          <div className="bg-background border border-border rounded-lg shadow-xl px-3 py-2 text-sm flex items-center gap-2 opacity-90 pointer-events-none">
             {activeItem.kind.type === 'folder' ? (
               <>
                 <FolderIcon size={14} className="text-amber-500/80" />
-                <span className="font-medium text-zinc-600 dark:text-zinc-400">{activeItem.kind.name}</span>
+                <span className="font-medium text-muted-foreground">{activeItem.kind.name}</span>
               </>
             ) : (
               <>
                 <span className={twMerge("text-[10px] font-bold px-1.5 py-0.5 rounded-md min-w-[32px] text-center", getMethodStyles(activeItem.kind.type === 'request' ? activeItem.kind.method : ''))}>
                   {activeItem.kind.type === 'request' ? activeItem.kind.method : ''}
                 </span>
-                <span className="text-zinc-600 dark:text-zinc-400">{activeItem.kind.type !== 'error' ? activeItem.kind.name : ''}</span>
+                <span className="text-muted-foreground">{activeItem.kind.type !== 'error' ? activeItem.kind.name : ''}</span>
               </>
             )}
           </div>
@@ -413,10 +413,10 @@ const SidebarContent: React.FC<{ searchQuery: string; activeItem: HydratedSideba
       </DragOverlay>
       {tree.length === 0 && (
         <div className="p-8 text-center">
-          <div className="inline-flex p-3 rounded-full bg-zinc-100 dark:bg-zinc-900 text-zinc-400 mb-3">
+          <div className="inline-flex p-3 rounded-full bg-muted text-muted-foreground/60 mb-3">
             <Search size={20} />
           </div>
-          <p className="text-sm text-zinc-500 font-medium">No results found</p>
+          <p className="text-sm text-muted-foreground font-medium">No results found</p>
         </div>
       )}
     </div>
