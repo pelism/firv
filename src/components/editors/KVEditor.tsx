@@ -65,6 +65,7 @@ const HighlightedInput = ({ value, onChange, onKeyDown, placeholder, inputRef }:
 
 export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderValue = "Value" }: KVEditorProps) {
   const [rows, setRows] = useState<KeyValue[]>([]);
+  const [nextEmptyId, setNextEmptyId] = useState(generateId());
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const valueInputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -75,7 +76,7 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
     const updatedRows = [...data];
     if (updatedRows.length === 0 || 
         (updatedRows[updatedRows.length - 1].key !== "" || updatedRows[updatedRows.length - 1].value !== "")) {
-      updatedRows.push({ id: generateId(), key: "", value: "", enabled: true });
+      updatedRows.push({ id: nextEmptyId, key: "", value: "", enabled: true });
     }
     
     // Check if deep equal to avoid infinite loops if parents just pass a new array ref
@@ -86,7 +87,7 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
     if (!isSame) {
       setRows(updatedRows);
     }
-  }, [data]);
+  }, [data, rows, nextEmptyId]);
 
   const notifyChange = useCallback((newRows: KeyValue[]) => {
     // Filter out rows that have both empty key and value
@@ -96,7 +97,15 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
 
   const updateRow = (index: number, updates: Partial<KeyValue>) => {
     const newRows = [...rows];
-    newRows[index] = { ...newRows[index], ...updates };
+    const row = newRows[index];
+    
+    // If we're updating the empty row, keep its ID stable but prepare a new one for the NEXT empty row
+    if (row.id === nextEmptyId) {
+      setNextEmptyId(generateId());
+    }
+    
+    newRows[index] = { ...row, ...updates };
+    
     setRows(newRows);
     notifyChange(newRows);
   };

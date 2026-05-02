@@ -176,19 +176,25 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     const { projectPath: currentPath, tree: currentTree } = useSidebarStore.getState();
 
     try {
-      // If there's a pending name change, we need to update the tree first
       const pendingName = pendingNames[requestId];
-      let updatedTree = currentTree;
       
-      // If the request is not in the tree (newly created), we must add it
-      const isInTree = (items: HydratedSidebarItem[]): boolean => {
-        return items.some(item => 
-          (item.kind.type === 'request' && item.kind.id === requestId) ||
-          (item.kind.type === 'folder' && isInTree(item.kind.items))
-        );
+      const findItemInTree = (items: HydratedSidebarItem[]): HydratedSidebarItem | null => {
+        for (const item of items) {
+          if (item.kind.type === 'request' && item.kind.id === requestId) return item;
+          if (item.kind.type === 'folder') {
+            const found = findItemInTree(item.kind.items);
+            if (found) return found;
+          }
+        }
+        return null;
       };
 
-      if (!isInTree(currentTree)) {
+      const existingItem = findItemInTree(currentTree);
+      const methodChanged = existingItem && existingItem.kind.type === 'request' && existingItem.kind.method !== method;
+
+      let updatedTree = currentTree;
+      
+      if (!existingItem) {
         const newItem: HydratedSidebarItem = {
           id: crypto.randomUUID(),
           kind: { type: 'request', id: requestId, name: pendingName || getRequestName(requestId) || 'New Request', method: method as any }
@@ -197,25 +203,32 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         useSidebarStore.getState().updateTreeOptimistic(updatedTree);
         await syncTreeToBackend(updatedTree);
         if (pendingName) clearPendingName(requestId);
-      } else if (pendingName) {
-        const updateNameInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
+      } else if (pendingName || methodChanged) {
+        const updateInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
           return items.map(item => {
             if (item.kind.type === 'request' && item.kind.id === requestId) {
-              return { ...item, kind: { ...item.kind, name: pendingName } };
+              return { 
+                ...item, 
+                kind: { 
+                  ...item.kind, 
+                  name: pendingName || item.kind.name,
+                  method: method as any
+                } 
+              };
             }
             if (item.kind.type === 'folder' && item.kind.items) {
               return {
                 ...item,
                 kind: {
                   ...item.kind,
-                  items: updateNameInItems(item.kind.items)
+                  items: updateInItems(item.kind.items)
                 }
               };
             }
             return item;
           });
         };
-        updatedTree = updateNameInItems(currentTree);
+        updatedTree = updateInItems(currentTree);
         useSidebarStore.getState().updateTreeOptimistic(updatedTree);
         await syncTreeToBackend(updatedTree);
         clearPendingName(requestId);

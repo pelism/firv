@@ -32,4 +32,14 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  .no-drag {
+    app-region: no-drag !important;
+    -webkit-app-region: no-drag !important;
+  }
+
+  .drag {
+    app-region: drag !important;
+    -webkit-app-region: drag !important;
+  }
 }

@@ -74,7 +74,7 @@ pub fn delete_request(project_root: String, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn update_manifest_structure(project_root: String, workspace: Workspace) -> Result<(), String> {
+pub fn update_manifest_structure(project_root: String, workspace: Workspace, name: Option<String>) -> Result<(), String> {
     let manifest_path = Path::new(&project_root).join("firv.yaml");
 
     let content = std::fs::read_to_string(&manifest_path)
@@ -84,6 +84,9 @@ pub fn update_manifest_structure(project_root: String, workspace: Workspace) -> 
         .map_err(|e| format!("Failed to parse existing manifest: {}", e))?;
 
     manifest.workspace = workspace;
+    if let Some(n) = name {
+        manifest.name = n;
+    }
 
     save_atomic(manifest_path, &manifest)
 }

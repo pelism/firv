@@ -110,51 +110,15 @@ async fn hydrate_item(
                 },
             }
         }
-        SidebarItem::Request { id, name } => {
+        SidebarItem::Request { id, name, method } => {
             found_ids.insert(id.clone());
-            let request_file = requests_dir.join(format!("{}.yaml", id));
-
-            if !request_file.exists() {
-                return HydratedSidebarItem {
-                    id: internal_id,
-                    kind: SidebarKind::Error {
-                        id,
-                        name,
-                        message: "File missing".to_string(),
-                    },
-                };
-            }
-
-            match fs::read_to_string(&request_file).await {
-                Ok(content) => {
-                    match serde_yaml::from_str::<FirvRequest>(&content) {
-                        Ok(req) => {
-                            HydratedSidebarItem {
-                                id: internal_id,
-                                kind: SidebarKind::Request {
-                                    id,
-                                    name,
-                                    method: req.method,
-                                },
-                            }
-                        }
-                        Err(e) => HydratedSidebarItem {
-                            id: internal_id,
-                            kind: SidebarKind::Error {
-                                id,
-                                name,
-                                message: format!("Parse error: {}", e),
-                            },
-                        },
-                    }
-                }
-                Err(e) => HydratedSidebarItem {
-                    id: internal_id,
-                    kind: SidebarKind::Error {
-                        id,
-                        name,
-                        message: format!("Read error: {}", e),
-                    },
+            
+            HydratedSidebarItem {
+                id: internal_id,
+                kind: SidebarKind::Request {
+                    id,
+                    name,
+                    method,
                 },
             }
         }

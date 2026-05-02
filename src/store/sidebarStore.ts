@@ -64,6 +64,7 @@ const transformToManifestItem = (item: HydratedSidebarItem): any => {
       type: 'request',
       id: item.kind.id,
       name: item.kind.name,
+      method: item.kind.method,
     };
   }
   return null;
@@ -94,11 +95,15 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
         const manifest: any = await invoke('get_manifest', { projectPath });
         if (manifest && manifest.name) {
           set({ workspaceName: manifest.name });
+        } else {
+          // Fallback to directory name if name is missing in manifest
+          const dirName = projectPath.split(/[/\\]/).filter(Boolean).pop() || '';
+          set({ workspaceName: dirName });
         }
       } catch (me) {
         console.error('Failed to fetch manifest for name:', me);
         // Fallback to directory name if manifest fetch fails
-        const dirName = projectPath.split(/[/\\]/).pop() || '';
+        const dirName = projectPath.split(/[/\\]/).filter(Boolean).pop() || '';
         set({ workspaceName: dirName });
       }
       
@@ -217,10 +222,18 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
     const order = newTree.map(transformToManifestItem).filter(Boolean);
     
     try {
+      // Get existing manifest to preserve globals/scripts
+      const manifest: any = await invoke('get_manifest', { projectPath });
+      console.log("[sidebarStore] Syncing tree. Current manifest globals:", manifest.workspace.globals);
+      
       await invoke('update_manifest_structure', {
         projectRoot: projectPath,
-        workspace: { order, globals: {} }
+        workspace: { 
+          ...manifest.workspace,
+          order 
+        }
       });
+      console.log("[sidebarStore] Successfully synced tree to backend");
       // Optionally refetch here if needed
     } catch (e) {
       console.error('Failed to sync tree:', e);
@@ -486,7 +499,12 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
             const request: any = await invoke('get_request', { projectRoot: projectPath, id: orphanId });
             await addItem({
               id: crypto.randomUUID(),
-              kind: { type: 'request', id: orphanId, name: request.name || orphanId, method: request.method || 'GET' }
+              kind: { 
+                type: 'request', 
+                id: orphanId, 
+                name: request.name || orphanId, 
+                method: request.method || 'GET' 
+              }
             } as any);
           }
         }

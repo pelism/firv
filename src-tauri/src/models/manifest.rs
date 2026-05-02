@@ -40,5 +40,6 @@ pub enum SidebarItem {
     Request {
         id: String, // Links to requests/id.yaml
         name: String,
+        method: crate::models::request::HttpMethod,
     },
 }

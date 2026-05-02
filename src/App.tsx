@@ -9,9 +9,11 @@ import { useSidebarStore } from "./store/sidebarStore";
 import { HydratedSidebarItem } from "./types/hydratedSidebarItem";
 import { LogDrawer } from "./components/LogDrawer";
 import { WorkspaceSettings } from "./components/WorkspaceSettings";
-import { X, Box } from "lucide-react";
+import { X } from "lucide-react";
+import logo from "./assets/icons/firv-logo.png";
 import { twMerge } from "tailwind-merge";
 import { InputModal } from "./components/InputModal";
+import { WindowControls } from "./components/WindowControls";
 import "./App.css";
 
 function App() {
@@ -95,15 +97,17 @@ function App() {
   return (
     <div className="flex flex-col h-full overflow-hidden bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans selection:bg-indigo-500/30">
       {/* Unified Global Header */}
-      <header className="h-12 flex items-center justify-between px-4 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md z-50 sticky top-0">
+      <header 
+        data-tauri-drag-region
+        className="h-12 flex items-center justify-between pl-4 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md z-50 sticky top-0 select-none drag"
+      >
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-indigo-600 shadow-lg shadow-indigo-600/30">
-              <Box size={18} className="text-white" />
-            </div>
+            <img src={logo} alt="Firv Logo" className="w-6 h-6 object-contain" />
             <span className="text-sm font-bold tracking-tight">firv</span>
           </div>
         </div>
+        <WindowControls />
       </header>
 
       <div className="flex-1 overflow-hidden relative flex">
@@ -195,7 +199,7 @@ function App() {
                         <div className="relative">
                           <div className="absolute inset-0 bg-indigo-500/20 blur-3xl rounded-full" />
                           <div className="relative p-8 rounded-3xl bg-white dark:bg-zinc-900 ring-1 ring-zinc-200 dark:ring-zinc-800 shadow-2xl">
-                            <Box size={64} className="text-indigo-500" />
+                            <img src={logo} alt="Firv Logo" className="w-16 h-16 object-contain" />
                           </div>
                         </div>
                         <div className="max-w-xs space-y-2">

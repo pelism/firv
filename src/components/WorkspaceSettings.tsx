@@ -7,11 +7,12 @@ import { useAppStore } from '../store/appStore';
 import { KVEditor, KeyValue } from './editors/KVEditor';
 
 export function WorkspaceSettings() {
+  const [name, setName] = useState('');
   const [preScript, setPreScript] = useState('');
   const [postScript, setPostScript] = useState('');
   const [variables, setVariables] = useState<KeyValue[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const { projectPath, setWorkspaceSettingsOpen, ensureWorkspace } = useSidebarStore();
+  const { projectPath, setWorkspaceName: setStoreWorkspaceName, setWorkspaceSettingsOpen, ensureWorkspace } = useSidebarStore();
   const { addLog } = useAppStore();
 
   useEffect(() => {
@@ -21,8 +22,12 @@ export function WorkspaceSettings() {
   }, [projectPath]);
 
   const loadWorkspaceScripts = async () => {
+    const { projectPath: currentPath } = useSidebarStore.getState();
+    if (!currentPath) return;
+
     try {
-      const manifest: any = await invoke('get_manifest', { projectPath });
+      const manifest: any = await invoke('get_manifest', { projectPath: currentPath });
+      setName(manifest.name || '');
       if (manifest.workspace.scripts) {
         setPreScript(manifest.workspace.scripts.pre || '');
         setPostScript(manifest.workspace.scripts.post || '');
@@ -48,27 +53,47 @@ export function WorkspaceSettings() {
     const { projectPath: currentPath } = useSidebarStore.getState();
     setIsSaving(true);
     try {
+      console.log("Current variables in state:", variables);
       const manifest: any = await invoke('get_manifest', { projectPath: currentPath });
+      console.log("Fetched manifest before update:", manifest);
+      
+      manifest.name = name || projectPath.split(/[/\\]/).filter(Boolean).pop() || 'Workspace';
       manifest.workspace.scripts = {
         pre: preScript || null,
         post: postScript || null
       };
 
       const globals: Record<string, string> = {};
-      console.log("Saving variables:", variables);
       variables.forEach(v => {
-        if (v.key.trim() && v.enabled) {
-          globals[v.key.trim()] = v.value;
+        const trimmedKey = v.key.trim();
+        if (trimmedKey && v.enabled) {
+          globals[trimmedKey] = v.value || '';
         }
       });
-      console.log("Transformed globals:", globals);
-      manifest.workspace.globals = globals;
+      console.log("Transformed globals to save:", globals);
       
+      const updatedWorkspace = {
+        ...manifest.workspace,
+        globals,
+        scripts: {
+          pre: preScript || null,
+          post: postScript || null
+        }
+      };
+
+      console.log("Sending to update_manifest_structure:", {
+        projectRoot: currentPath,
+        workspace: updatedWorkspace,
+        name: name.trim() || null
+      });
+
       await invoke('update_manifest_structure', {
         projectRoot: currentPath,
-        workspace: manifest.workspace
+        workspace: updatedWorkspace,
+        name: name.trim() || null
       });
       
+      setStoreWorkspaceName(name.trim() || currentPath.split(/[/\\]/).filter(Boolean).pop() || 'Workspace');
       console.log("Successfully saved workspace settings");
       addLog("Saved workspace settings");
       setWorkspaceSettingsOpen(false);
@@ -80,8 +105,6 @@ export function WorkspaceSettings() {
     }
   };
 
-  const workspaceName = projectPath.split(/[/\\]/).pop() || 'Workspace';
-
   return (
     <div className="fixed inset-0 z-[100] bg-white dark:bg-zinc-950 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
       {/* Header */}
@@ -92,7 +115,7 @@ export function WorkspaceSettings() {
           </div>
           <div>
             <h1 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">Workspace Settings</h1>
-            <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">{workspaceName}</p>
+            <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">{name || 'Unnamed Workspace'}</p>
           </div>
         </div>
         
@@ -119,6 +142,26 @@ export function WorkspaceSettings() {
       <div className="flex-1 overflow-y-auto custom-scrollbar bg-zinc-50/50 dark:bg-zinc-950/50">
         <div className="max-w-5xl mx-auto p-8 space-y-12">
           
+          {/* General Section */}
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">General</h2>
+              <p className="text-sm text-zinc-500">Configure the basic identity of your workspace.</p>
+            </div>
+            <div className="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Workspace Name</label>
+                <input 
+                  type="text" 
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Enter workspace name..."
+                  className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 text-zinc-900 dark:text-zinc-100 transition-all"
+                />
+              </div>
+            </div>
+          </section>
+
           {/* Variables Section */}
           <section className="space-y-4">
             <div>
