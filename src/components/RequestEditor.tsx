@@ -5,7 +5,8 @@ import { KVEditor, KeyValue } from './editors/KVEditor';
 import { BodyEditor } from './editors/BodyEditor';
 import { ScriptEditor } from './editors/ScriptEditor';
 import { useAppStore } from '../store/appStore';
-import { useSidebarStore, HydratedSidebarItem } from '../store/sidebarStore';
+import { useSidebarStore } from '../store/sidebarStore';
+import { HydratedSidebarItem } from '../types/hydratedSidebarItem.ts';
 import { twMerge } from 'tailwind-merge';
 
 interface RequestEditorProps {
@@ -24,7 +25,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const [postScript, setPostScript] = useState('');
   const savedStateRef = useRef<any>(null);
   
-  const { isRunning, setIsRunning, setResponse, addLog, setDirty } = useAppStore();
+  const { isRunning, setIsRunning, setResponse, addLog, setDirty, dirtyRequests } = useAppStore();
+  const isDirty = dirtyRequests.has(requestId);
   const {
     syncTreeToBackend, 
     projectPath, 
@@ -188,8 +190,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
       if (!isInTree(currentTree)) {
         const newItem: HydratedSidebarItem = {
-          name: pendingName || getRequestName(requestId) || 'New Request',
-          kind: { type: 'request', id: requestId, method: method }
+          id: crypto.randomUUID(),
+          kind: { type: 'request', id: requestId, name: pendingName || getRequestName(requestId) || 'New Request', method: method as any }
         };
         updatedTree = [...currentTree, newItem];
         useSidebarStore.getState().updateTreeOptimistic(updatedTree);
@@ -199,7 +201,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         const updateNameInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
           return items.map(item => {
             if (item.kind.type === 'request' && item.kind.id === requestId) {
-              return { ...item, name: pendingName };
+              return { ...item, kind: { ...item.kind, name: pendingName } };
             }
             if (item.kind.type === 'folder' && item.kind.items) {
               return {
@@ -252,10 +254,12 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       addLog(`Running request ${method} ${url}...`);
       
       let workspaceScripts = null;
+      let workspaceVars = {};
       if (projectPath) {
         try {
           const manifest: any = await invoke('get_manifest', { projectPath });
           workspaceScripts = manifest.workspace.scripts;
+          workspaceVars = manifest.workspace.globals || {};
         } catch (err) {
           addLog(`Warning: Could not load workspace manifest: ${err}`);
         }
@@ -263,7 +267,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       
       const result: any = await invoke('run_firv_request', {
         request: getFormattedRequest(),
-        initialVars: {},
+        workspaceVars: workspaceVars,
         workspaceScripts: workspaceScripts,
         folderScripts: [] // TODO: Resolve folder scripts from tree path
       });
@@ -316,7 +320,12 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           <div className="flex items-center gap-1 pr-1">
             <button 
               onClick={saveRequest}
-              className="p-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+              className={twMerge(
+                "p-2 transition-colors",
+                isDirty 
+                  ? "text-zinc-900 dark:text-white" 
+                  : "text-zinc-500"
+              )}
               title="Save (Ctrl+S)"
             >
               <Save size={18} />

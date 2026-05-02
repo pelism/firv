@@ -15,6 +15,7 @@ export interface AppState {
   clearLogs: () => void;
   dirtyRequests: Set<string>;
   setDirty: (id: string, isDirty: boolean) => void;
+  reset: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -57,5 +58,13 @@ export const useAppStore = create<AppState>((set) => ({
       newDirty.delete(id);
     }
     return { dirtyRequests: newDirty };
+  }),
+  reset: () => set({
+    activeRequestId: null,
+    openTabs: [],
+    isRunning: false,
+    responses: {},
+    logs: [],
+    dirtyRequests: new Set(),
   }),
 }));

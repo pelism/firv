@@ -5,7 +5,8 @@ import { MenuSidebar } from "./components/MenuSidebar";
 import { RequestEditor } from "./components/RequestEditor";
 import { ResponseViewer } from "./components/ResponseViewer";
 import { useAppStore } from "./store/appStore";
-import { useSidebarStore, HydratedSidebarItem } from "./store/sidebarStore";
+import { useSidebarStore } from "./store/sidebarStore";
+import { HydratedSidebarItem } from "./types/hydratedSidebarItem";
 import { LogDrawer } from "./components/LogDrawer";
 import { WorkspaceSettings } from "./components/WorkspaceSettings";
 import { X, Box } from "lucide-react";
@@ -21,10 +22,9 @@ function App() {
   const closeTab = useAppStore(state => state.closeTab);
   const dirtyRequests = useAppStore(state => state.dirtyRequests);
   const responses = useAppStore(state => state.responses);
-  const tree = useSidebarStore(state => state.tree);
+  const { tree } = useSidebarStore();
   const updateRequestName = useSidebarStore(state => state.updateRequestName);
   const getRequestName = useSidebarStore(state => state.getRequestName);
-  const addItem = useSidebarStore(state => state.addItem);
 
   const isWorkspaceSettingsOpen = useSidebarStore(state => state.isWorkspaceSettingsOpen);
 
@@ -43,7 +43,8 @@ function App() {
 
   const getRequestPath = (id: string, items: any[] = tree, currentPath: string = ""): string | null => {
     for (const item of items) {
-      const path = currentPath ? `${currentPath} / ${item.name}` : item.name;
+      if (item.kind.type === 'error') continue;
+      const path = currentPath ? `${currentPath} / ${item.kind.name}` : item.kind.name;
       if (item.kind.type === 'request' && item.kind.id === id) {
         return path;
       }
@@ -77,10 +78,10 @@ function App() {
 
   const handleCreateNewRequest = async () => {
     try {
-      const id = `new-${crypto.randomUUID()}`;
+      const id = crypto.randomUUID();
       const newItem: HydratedSidebarItem = {
-        name: 'New Request',
-        kind: { type: 'request', id, method: 'GET' }
+        id: crypto.randomUUID(),
+        kind: { type: 'request', id, name: 'New Request', method: 'GET' }
       };
       
       const { addItemOptimistic } = useSidebarStore.getState();
@@ -96,10 +97,10 @@ function App() {
       {/* Unified Global Header */}
       <header className="h-12 flex items-center justify-between px-4 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md z-50 sticky top-0">
         <div className="flex items-center gap-3">
-          <div className="p-1.5 rounded-lg bg-indigo-600 shadow-lg shadow-indigo-600/30">
-            <Box size={18} className="text-white" />
-          </div>
-          <div className="flex flex-col">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-indigo-600 shadow-lg shadow-indigo-600/30">
+              <Box size={18} className="text-white" />
+            </div>
             <span className="text-sm font-bold tracking-tight">firv</span>
           </div>
         </div>

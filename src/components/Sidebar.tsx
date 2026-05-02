@@ -1,9 +1,28 @@
 import React, { useEffect, useState } from 'react';
-import { useSidebarStore, HydratedSidebarItem } from '../store/sidebarStore';
+import { useSidebarStore } from '../store/sidebarStore';
+import { HydratedSidebarItem } from '../types/hydratedSidebarItem.ts';
 import { useAppStore } from '../store/appStore';
 import { useModalStore } from '../store/modalStore';
-import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search, Trash2, Settings2 } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search, Trash2, Settings2, GripVertical, X } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
+import { 
+  DndContext, 
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragOverlay,
+  useDroppable,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const getMethodStyles = (method: string) => {
   switch (method.toUpperCase()) {
@@ -22,6 +41,27 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
   const openTab = useAppStore(state => state.openTab);
   const closeTab = useAppStore(state => state.closeTab);
   const { addItem, deleteItem } = useSidebarStore();
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ 
+    id: item.id,
+    data: {
+      type: item.kind.type,
+      item
+    }
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
 
   const getRequestIds = (item: HydratedSidebarItem): string[] => {
     if (item.kind.type === 'request') {
@@ -42,18 +82,18 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
 
   const paddingLeft = depth * 12 + 12;
 
-  const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+  const matchesSearch = (item.kind.type !== 'error' ? item.kind.name : '').toLowerCase().includes(searchQuery.toLowerCase());
   
   const handleAddRequest = async (e: React.MouseEvent) => {
     e.stopPropagation();
 
-    const id = `new-${crypto.randomUUID()}`;
+    const requestId = crypto.randomUUID();
     const newItem: HydratedSidebarItem = {
-      name: 'New Request',
-      kind: { type: 'request', id, method: 'GET' }
+      id: crypto.randomUUID(),
+      kind: { type: 'request', id: requestId, name: 'New Request', method: 'GET' as any }
     };
     useSidebarStore.getState().addItemOptimistic(newItem, path);
-    openTab(id);
+    openTab(requestId);
   };
 
   const handleAddFolder = async (e: React.MouseEvent) => {
@@ -66,16 +106,16 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
     if (!name) return;
     
     const newItem: HydratedSidebarItem = {
-      name,
-      kind: { type: 'folder', items: [] }
+      id: crypto.randomUUID(),
+      kind: { type: 'folder', name, items: [] }
     };
     await addItem(newItem, path);
   };
 
   if (item.kind.type === 'folder') {
     const hasMatchingChildren = item.kind.items.some(child => 
-      child.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      (child.kind.type === 'folder' && child.kind.items.some(c => c.name.toLowerCase().includes(searchQuery.toLowerCase())))
+      (child.kind.type !== 'error' ? child.kind.name : '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+      (child.kind.type === 'folder' && child.kind.items.some(c => (c.kind.type !== 'error' ? c.kind.name : '').toLowerCase().includes(searchQuery.toLowerCase())))
     );
 
     if (searchQuery && !matchesSearch && !hasMatchingChildren) {
@@ -83,16 +123,20 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
     }
 
     return (
-      <div>
+      <div style={style}>
         <div 
+          ref={setNodeRef}
           className="flex items-center py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 cursor-pointer text-sm text-zinc-600 dark:text-zinc-400 group transition-colors pr-2"
           style={{ paddingLeft }}
           onClick={() => setIsOpen(!isOpen)}
         >
           <div className="flex items-center flex-1 min-w-0">
+            <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-zinc-400">
+              <GripVertical size={12} />
+            </div>
             {isOpen || searchQuery ? <ChevronDown size={14} className="mr-2 opacity-60" /> : <ChevronRight size={14} className="mr-2 opacity-60" />}
             <FolderIcon size={14} className="mr-2 text-amber-500/80" />
-            <span className="truncate font-medium">{item.name}</span>
+            <span className="truncate font-medium">{item.kind.name}</span>
           </div>
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
             <button 
@@ -123,12 +167,13 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
             <div className="absolute left-[18px] top-0 bottom-0 w-[1px] bg-zinc-200 dark:bg-zinc-800 ml-[depth * 12]" style={{ left: paddingLeft + 6 }} />
             {item.kind.items.length === 0 ? (
               <div style={{ paddingLeft: paddingLeft + 28 }} className="text-[11px] text-zinc-400 py-2 italic">
-                Empty
               </div>
             ) : (
-              item.kind.items.map((child, idx) => (
-                <SidebarNode key={idx} item={child} depth={depth + 1} searchQuery={searchQuery} path={[...path, child.name]} />
-              ))
+              <SortableContext items={item.kind.items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+                {item.kind.items.map((child, idx) => (
+                  <SidebarNode key={child.id || idx} item={child} depth={depth + 1} searchQuery={searchQuery} path={[...path, child.kind.type !== 'error' ? child.kind.name : '']} />
+                ))}
+              </SortableContext>
             )}
           </div>
         )}
@@ -142,23 +187,27 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
     const isActive = activeRequestId === item.kind.id;
     return (
       <div 
+        ref={setNodeRef}
         className={twMerge(
           "flex items-center py-2 px-3 mx-2 my-0.5 rounded-lg cursor-pointer text-sm group transition-all",
           isActive 
             ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-indigo-500/20" 
             : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
         )}
-        style={{ paddingLeft: depth > 0 ? paddingLeft + 20 : 12 }}
+        style={{ ...style, paddingLeft: depth > 0 ? paddingLeft + 20 : 12 }}
         onClick={() => {
           if (item.kind.type === 'request') {
             openTab(item.kind.id);
           }
         }}
       >
+        <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-zinc-400">
+          <GripVertical size={12} />
+        </div>
         <span className={twMerge("text-[10px] font-bold px-1.5 py-0.5 rounded-md mr-3 min-w-[32px] text-center", getMethodStyles(item.kind.method))}>
           {item.kind.method}
         </span>
-        <span className="truncate flex-1">{item.name}</span>
+        <span className="truncate flex-1">{item.kind.name}</span>
         <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity ml-2">
           <button 
             onClick={handleDelete}
@@ -175,29 +224,70 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
   return (
     <div className="flex items-center py-2 text-sm text-red-500 opacity-80" style={{ paddingLeft: paddingLeft + 20 }}>
       <AlertCircle size={14} className="mr-2" />
-      <span>{item.name}</span>
+      <span>{item.kind.type === 'error' ? item.kind.name : ''}</span>
     </div>
   );
 });
 
 export const Sidebar: React.FC = () => {
-  const { tree, fetchSidebar, addItem, setWorkspaceSettingsOpen } = useSidebarStore();
+  const { fetchSidebar, addItem, setWorkspaceSettingsOpen, moveItem, workspaceName, closeWorkspace } = useSidebarStore();
   const [searchQuery, setSearchQuery] = useState('');
   const openTab = useAppStore(state => state.openTab);
+
+  const [activeItem, setActiveItem] = useState<HydratedSidebarItem | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   useEffect(() => {
     fetchSidebar();
   }, [fetchSidebar]);
 
+  const handleDragStart = (event: any) => {
+    const { active } = event;
+    const item = active.data.current?.item as HydratedSidebarItem;
+    setActiveItem(item);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveItem(null);
+    
+    if (!over || over.id === 'sidebar-root') {
+      moveItem(active.id as string, '', 'after');
+      return;
+    }
+
+    const overItem = over.data.current?.item as HydratedSidebarItem;
+
+    if (active.id !== over.id) {
+      if (overItem?.kind.type === 'folder') {
+        // If dropping over a folder, move it inside
+        moveItem(active.id as string, over.id as string, 'inside');
+      } else {
+        // Otherwise reorder after
+        moveItem(active.id as string, over.id as string, 'after');
+      }
+    }
+  };
+
   const handleAddRequest = async () => {
     try {
-      const id = `new-${crypto.randomUUID()}`;
+      const requestId = crypto.randomUUID();
       const newItem: HydratedSidebarItem = {
-        name: 'New Request',
-        kind: { type: 'request', id, method: 'GET' }
+        id: crypto.randomUUID(),
+        kind: { type: 'request', id: requestId, name: 'New Request', method: 'GET' }
       };
       useSidebarStore.getState().addItemOptimistic(newItem);
-      openTab(id);
+      openTab(requestId);
     } catch (err) {
       console.error("Failed to add request", err);
     }
@@ -212,8 +302,8 @@ export const Sidebar: React.FC = () => {
       if (!name) return;
       
       const newItem: HydratedSidebarItem = {
-        name,
-        kind: { type: 'folder', items: [] }
+        id: crypto.randomUUID(),
+        kind: { type: 'folder', name, items: [] }
       };
       
       await addItem(newItem);
@@ -223,53 +313,112 @@ export const Sidebar: React.FC = () => {
   };
 
   return (
-    <div className="h-full bg-zinc-50 dark:bg-zinc-950 flex flex-col overflow-hidden border-r border-zinc-200 dark:border-zinc-800">
-      <div className="p-4 flex items-center justify-between">
-        <div className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">
-          Workspace
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={handleAddRequest} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" title="New Request">
-            <Plus size={16} />
-          </button>
-          <button onClick={handleAddFolder} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" title="New Folder">
-            <FolderPlus size={16} />
-          </button>
-          <button onClick={() => setWorkspaceSettingsOpen(true)} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" title="Workspace Settings">
-            <Settings2 size={16} />
-          </button>
-        </div>
-      </div>
-      
-      <div className="px-3 mb-4">
-        <div className="relative group">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-indigo-500 transition-colors" />
-          <input 
-            type="text" 
-            placeholder="Search..." 
-            className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 transition-all shadow-sm"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-          />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono text-zinc-400 border border-zinc-200 dark:border-zinc-800 px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-950 pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity">
-            ⌘K
+    <DndContext 
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="h-full bg-zinc-50 dark:bg-zinc-950 flex flex-col overflow-hidden border-r border-zinc-200 dark:border-zinc-800">
+        <div className="p-4 flex items-center justify-between">
+          <div className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">
+            Workspace
+          </div>
+          <div className="flex items-center gap-1">
+            <button onClick={handleAddRequest} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" title="New Request">
+              <Plus size={16} />
+            </button>
+            <button onClick={handleAddFolder} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" title="New Folder">
+              <FolderPlus size={16} />
+            </button>
+            <button onClick={() => setWorkspaceSettingsOpen(true)} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" title="Workspace Settings">
+              <Settings2 size={16} />
+            </button>
           </div>
         </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto pb-4 custom-scrollbar">
-        {tree.map((item, idx) => (
-          <SidebarNode key={idx} item={item} depth={0} searchQuery={searchQuery} path={[item.name]} />
-        ))}
-        {tree.length === 0 && (
-          <div className="p-8 text-center">
-            <div className="inline-flex p-3 rounded-full bg-zinc-100 dark:bg-zinc-900 text-zinc-400 mb-3">
-              <Search size={20} />
+        
+        <div className="px-3 mb-4">
+          <div className="relative group mb-3">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-indigo-500 transition-colors" />
+            <input 
+              type="text" 
+              placeholder="Search..." 
+              className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 transition-all shadow-sm"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono text-zinc-400 border border-zinc-200 dark:border-zinc-800 px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-950 pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity">
+              ⌘K
             </div>
-            <p className="text-sm text-zinc-500 font-medium">No results found</p>
           </div>
-        )}
+
+          {workspaceName && (
+            <div className="flex items-center justify-between px-3 py-2 bg-indigo-500/5 dark:bg-indigo-500/10 border border-indigo-500/20 rounded-xl group/workspace-pill transition-all">
+              <div className="flex items-center gap-2 overflow-hidden">
+                <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 truncate uppercase tracking-wider">
+                  {workspaceName}
+                </span>
+              </div>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeWorkspace();
+                }}
+                className="opacity-0 group-hover/workspace-pill:opacity-100 p-1 hover:bg-indigo-500/10 dark:hover:bg-indigo-500/20 rounded-md text-indigo-400 hover:text-red-500 transition-all"
+                title="Close Workspace"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        <SidebarContent searchQuery={searchQuery} activeItem={activeItem} />
       </div>
+    </DndContext>
+  );
+};
+
+const SidebarContent: React.FC<{ searchQuery: string; activeItem: HydratedSidebarItem | null }> = ({ searchQuery, activeItem }) => {
+  const { tree } = useSidebarStore();
+  const { setNodeRef } = useDroppable({
+    id: 'sidebar-root',
+  });
+
+  return (
+    <div ref={setNodeRef} className="flex-1 overflow-y-auto pb-4 custom-scrollbar min-h-[100px]">
+      <SortableContext items={tree.map(i => i.id)} strategy={verticalListSortingStrategy}>
+        {tree.map((item, idx) => (
+          <SidebarNode key={item.id || idx} item={item} depth={0} searchQuery={searchQuery} path={[item.kind.type !== 'error' ? item.kind.name : '']} />
+        ))}
+      </SortableContext>
+      <DragOverlay adjustScale={true}>
+        {activeItem ? (
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl px-3 py-2 text-sm flex items-center gap-2 opacity-90 pointer-events-none">
+            {activeItem.kind.type === 'folder' ? (
+              <>
+                <FolderIcon size={14} className="text-amber-500/80" />
+                <span className="font-medium text-zinc-600 dark:text-zinc-400">{activeItem.kind.name}</span>
+              </>
+            ) : (
+              <>
+                <span className={twMerge("text-[10px] font-bold px-1.5 py-0.5 rounded-md min-w-[32px] text-center", getMethodStyles(activeItem.kind.type === 'request' ? activeItem.kind.method : ''))}>
+                  {activeItem.kind.type === 'request' ? activeItem.kind.method : ''}
+                </span>
+                <span className="text-zinc-600 dark:text-zinc-400">{activeItem.kind.type !== 'error' ? activeItem.kind.name : ''}</span>
+              </>
+            )}
+          </div>
+        ) : null}
+      </DragOverlay>
+      {tree.length === 0 && (
+        <div className="p-8 text-center">
+          <div className="inline-flex p-3 rounded-full bg-zinc-100 dark:bg-zinc-900 text-zinc-400 mb-3">
+            <Search size={20} />
+          </div>
+          <p className="text-sm text-zinc-500 font-medium">No results found</p>
+        </div>
+      )}
     </div>
   );
 };

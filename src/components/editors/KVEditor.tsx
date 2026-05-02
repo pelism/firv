@@ -143,6 +143,21 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
     setBulkMode(!bulkMode);
   };
 
+  const handleBulkChange = (text: string) => {
+    setBulkText(text);
+    const lines = text.split('\n');
+    const newPairs: KeyValue[] = lines.map(line => {
+      const separatorIndex = line.indexOf(':');
+      if (separatorIndex === -1) {
+        return { id: generateId(), key: line.trim(), value: "", enabled: true };
+      }
+      const key = line.substring(0, separatorIndex).trim();
+      const value = line.substring(separatorIndex + 1).trim();
+      return { id: generateId(), key, value, enabled: true };
+    }).filter(r => r.key !== "" || r.value !== "");
+    onChange(newPairs);
+  };
+
   return (
     <div className="flex flex-col space-y-2">
       <div className="flex justify-start mb-2">
@@ -158,7 +173,7 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
       {bulkMode ? (
         <textarea
           value={bulkText}
-          onChange={(e) => setBulkText(e.target.value)}
+          onChange={(e) => handleBulkChange(e.target.value)}
           className="w-full h-48 p-3 font-mono text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           placeholder="Key: Value&#10;Authorization: Bearer {{token}}"
         />

@@ -1,27 +1,43 @@
 use crate::models::{
     manifest::{FirvManifest, SidebarItem},
-    request::FirvRequest,
+    request::{FirvRequest, HttpMethod},
 };
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use tokio::fs;
+use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "hydratedSidebarItem.ts")]
 pub struct HydratedSidebarItem {
-    pub name: String,
+    pub id: String,
     pub kind: SidebarKind,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "lowercase")]
+#[ts(export, export_to = "sidebarKind.ts")]
 pub enum SidebarKind {
-    Folder { items: Vec<HydratedSidebarItem> },
-    Request { id: String, method: String },
-    Error { id: String, message: String },
+    Folder {
+        name: String,
+        items: Vec<HydratedSidebarItem>,
+    },
+    Request {
+        id: String,
+        name: String,
+        method: HttpMethod,
+    },
+    Error {
+        id: String,
+        name: String,
+        message: String,
+    },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "hydratedTree.ts")]
 pub struct HydratedTree {
     pub items: Vec<HydratedSidebarItem>,
     pub orphans: Vec<String>, // List of file names/paths that are orphans
@@ -75,6 +91,7 @@ async fn hydrate_item(
     requests_dir: &PathBuf,
     found_ids: &mut HashSet<String>,
 ) -> HydratedSidebarItem {
+    let internal_id = Uuid::new_v4().to_string();
     match item {
         SidebarItem::Folder {
             name,
@@ -86,8 +103,9 @@ async fn hydrate_item(
                 hydrated_children.push(hydrate_item(child, requests_dir, found_ids).await);
             }
             HydratedSidebarItem {
-                name,
+                id: internal_id,
                 kind: SidebarKind::Folder {
+                    name,
                     items: hydrated_children,
                 },
             }
@@ -98,9 +116,10 @@ async fn hydrate_item(
 
             if !request_file.exists() {
                 return HydratedSidebarItem {
-                    name,
+                    id: internal_id,
                     kind: SidebarKind::Error {
                         id,
+                        name,
                         message: "File missing".to_string(),
                     },
                 };
@@ -110,31 +129,30 @@ async fn hydrate_item(
                 Ok(content) => {
                     match serde_yaml::from_str::<FirvRequest>(&content) {
                         Ok(req) => {
-                            let method_str = format!("{:?}", req.method); // Will be "GET", "POST", etc.
                             HydratedSidebarItem {
-                                name, // Using the name from manifest or from file? Spec says: "Extract the Method and Display Name. The engine must replace request IDs with their actual metadata".
-                                // Actually, spec says: `pub name: String` and `id: String, method: String`.
-                                // We can use the name from manifest or override it. Manifest has `name`. Let's stick with manifest name if available, or request name.
-                                // The spec: "Take the id from the manifest. Deserialize the request file to extract the Method and Display Name."
+                                id: internal_id,
                                 kind: SidebarKind::Request {
                                     id,
-                                    method: method_str,
+                                    name,
+                                    method: req.method,
                                 },
                             }
                         }
                         Err(e) => HydratedSidebarItem {
-                            name,
+                            id: internal_id,
                             kind: SidebarKind::Error {
                                 id,
+                                name,
                                 message: format!("Parse error: {}", e),
                             },
                         },
                     }
                 }
                 Err(e) => HydratedSidebarItem {
-                    name,
+                    id: internal_id,
                     kind: SidebarKind::Error {
                         id,
+                        name,
                         message: format!("Read error: {}", e),
                     },
                 },

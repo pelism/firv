@@ -30,7 +30,7 @@ pub struct LifecycleResult {
 #[tauri::command]
 pub async fn run_firv_request(
     request: FirvRequest,
-    initial_vars: HashMap<String, String>,
+    workspace_vars: HashMap<String, String>,
     workspace_scripts: Option<ScriptConfig>,
     folder_scripts: Option<Vec<ScriptConfig>>,
 ) -> Result<LifecycleResult, String> {
@@ -40,7 +40,7 @@ pub async fn run_firv_request(
 
     // Setup variable resolver
     let mut resolver = VariableResolver::new();
-    resolver.request_vars = initial_vars;
+    resolver.globals = workspace_vars;
 
     // --- Pre-request Scripting ---
     

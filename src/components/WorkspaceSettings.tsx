@@ -4,11 +4,12 @@ import { invoke } from '@tauri-apps/api/core';
 import { ScriptEditor } from './editors/ScriptEditor';
 import { useSidebarStore } from '../store/sidebarStore';
 import { useAppStore } from '../store/appStore';
-import { VariablePlaceholder } from './VariablePlaceholder';
+import { KVEditor, KeyValue } from './editors/KVEditor';
 
 export function WorkspaceSettings() {
   const [preScript, setPreScript] = useState('');
   const [postScript, setPostScript] = useState('');
+  const [variables, setVariables] = useState<KeyValue[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const { projectPath, setWorkspaceSettingsOpen, ensureWorkspace } = useSidebarStore();
   const { addLog } = useAppStore();
@@ -26,8 +27,17 @@ export function WorkspaceSettings() {
         setPreScript(manifest.workspace.scripts.pre || '');
         setPostScript(manifest.workspace.scripts.post || '');
       }
+      if (manifest.workspace.globals) {
+        const kvs = Object.entries(manifest.workspace.globals as Record<string, string>).map(([key, value]) => ({
+          id: Math.random().toString(36).substring(2, 9),
+          key,
+          value,
+          enabled: true
+        }));
+        setVariables(kvs);
+      }
     } catch (err) {
-      console.error("Failed to load workspace scripts", err);
+      console.error("Failed to load workspace settings", err);
     }
   };
 
@@ -43,12 +53,23 @@ export function WorkspaceSettings() {
         pre: preScript || null,
         post: postScript || null
       };
+
+      const globals: Record<string, string> = {};
+      console.log("Saving variables:", variables);
+      variables.forEach(v => {
+        if (v.key.trim() && v.enabled) {
+          globals[v.key.trim()] = v.value;
+        }
+      });
+      console.log("Transformed globals:", globals);
+      manifest.workspace.globals = globals;
       
       await invoke('update_manifest_structure', {
         projectRoot: currentPath,
         workspace: manifest.workspace
       });
       
+      console.log("Successfully saved workspace settings");
       addLog("Saved workspace settings");
       setWorkspaceSettingsOpen(false);
     } catch (err) {
@@ -104,7 +125,14 @@ export function WorkspaceSettings() {
               <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Variables</h2>
               <p className="text-sm text-zinc-500">Global environment variables accessible to all requests in this workspace.</p>
             </div>
-            <VariablePlaceholder />
+            <div className="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm">
+              <KVEditor 
+                data={variables} 
+                onChange={setVariables} 
+                placeholderKey="Variable Name" 
+                placeholderValue="Value" 
+              />
+            </div>
           </section>
 
           {/* Pre-request Script Section */}

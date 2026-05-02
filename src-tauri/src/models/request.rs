@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::models::manifest::ScriptConfig;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "firvRequest.ts")]
 pub struct FirvRequest {
     pub id: String,
     pub name: String,
@@ -21,8 +23,9 @@ pub struct FirvRequest {
     pub scripts: ScriptConfig,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
 #[serde(rename_all = "UPPERCASE")]
+#[ts(export, export_to = "httpMethod.ts")]
 pub enum HttpMethod {
     GET,
     POST,
@@ -33,7 +36,8 @@ pub enum HttpMethod {
     OPTIONS,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "keyValue.ts")]
 pub struct KeyValue {
     pub key: String,
     pub value: String,
@@ -41,7 +45,8 @@ pub struct KeyValue {
     pub enabled: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "requestBody.ts")]
 #[serde(tag = "mode", content = "data", rename_all = "lowercase")]
 pub enum RequestBody {
     None,

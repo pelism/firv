@@ -486,10 +486,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c673075a2e0e5f4a1dde27ce9dee1ea4558c7ffe648f576438a20ca1d2acc4b0"
 dependencies = [
  "iana-time-zone",
- "js-sys",
  "num-traits",
  "serde",
- "wasm-bindgen",
  "windows-link 0.2.1",
 ]
 
@@ -3340,12 +3338,6 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "relative-path"
-version = "1.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba39f3699c378cd8970968dcbff9c43159ea4cfbd88d43c00b22f2ef10a435d2"
-
-[[package]]
-name = "relative-path"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bca40a312222d8ba74837cb474edef44b37f561da5f773981007a10bbaa992b0"
@@ -3486,7 +3478,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8bf7840285c321c3ab20e752a9afb95548c75cd7f4632a0627cea3507e310c1"
 dependencies = [
  "hashbrown 0.16.1",
- "relative-path 2.0.1",
+ "relative-path",
  "rquickjs-sys",
 ]
 
@@ -4307,14 +4299,11 @@ name = "tauri-app"
 version = "0.1.0"
 dependencies = [
  "async-recursion",
- "chrono",
  "notify",
  "regex",
- "relative-path 1.9.3",
  "reqwest 0.12.28",
  "rquickjs",
  "serde",
- "serde_json",
  "serde_yaml",
  "tauri",
  "tauri-build",
