@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use crate::models::request::KeyValue;
 use ts_rs::TS;
 
 #[derive(Debug, Serialize, Deserialize, TS)]
@@ -22,7 +22,7 @@ pub struct ScriptConfig {
 pub struct Workspace {
     pub order: Vec<SidebarItem>,
     #[serde(default)]
-    pub globals: HashMap<String, String>,
+    pub globals: Vec<KeyValue>,
     #[serde(default)]
     pub scripts: ScriptConfig,
 }

@@ -13,6 +13,7 @@ interface KVEditorProps {
   onChange: (updatedData: KeyValue[]) => void;
   placeholderKey?: string;
   placeholderValue?: string;
+  uniqueEnabledKeys?: boolean;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -63,7 +64,7 @@ const HighlightedInput = ({ value, onChange, onKeyDown, placeholder, inputRef }:
   );
 };
 
-export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderValue = "Value" }: KVEditorProps) {
+export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderValue = "Value", uniqueEnabledKeys = false }: KVEditorProps) {
   const [rows, setRows] = useState<KeyValue[]>([]);
   const [nextEmptyId, setNextEmptyId] = useState(generateId());
   const [bulkMode, setBulkMode] = useState(false);
@@ -96,7 +97,7 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
   }, [onChange]);
 
   const updateRow = (index: number, updates: Partial<KeyValue>) => {
-    const newRows = [...rows];
+    let newRows = [...rows];
     const row = newRows[index];
     
     // If we're updating the empty row, keep its ID stable but prepare a new one for the NEXT empty row
@@ -104,7 +105,19 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
       setNextEmptyId(generateId());
     }
     
-    newRows[index] = { ...row, ...updates };
+    const updatedRow = { ...row, ...updates };
+
+    // Guard: Prevent multiple enabled rows with the same key if uniqueEnabledKeys is set
+    if (uniqueEnabledKeys && updatedRow.enabled && updatedRow.key.trim() !== "") {
+      newRows = newRows.map((r, i) => {
+        if (i !== index && r.enabled && r.key.trim().toLowerCase() === updatedRow.key.trim().toLowerCase()) {
+          return { ...r, enabled: false };
+        }
+        return r;
+      });
+    }
+
+    newRows[index] = updatedRow;
     
     setRows(newRows);
     notifyChange(newRows);

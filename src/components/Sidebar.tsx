@@ -3,7 +3,7 @@ import { useSidebarStore } from '../store/sidebarStore';
 import { HydratedSidebarItem } from '../types/hydratedSidebarItem.ts';
 import { useAppStore } from '../store/appStore';
 import { useModalStore } from '../store/modalStore';
-import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search, Trash2, Settings2, GripVertical, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search, Trash2, Settings2, GripVertical, X, MoreVertical, Download, Upload } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { 
   DndContext, 
@@ -230,8 +230,9 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
 });
 
 export const Sidebar: React.FC = () => {
-  const { fetchSidebar, addItem, setWorkspaceSettingsOpen, moveItem, workspaceName, closeWorkspace } = useSidebarStore();
+  const { fetchSidebar, addItem, setWorkspaceSettingsOpen, moveItem, workspaceName, closeWorkspace, importPostmanCollection, projectPath } = useSidebarStore();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const openTab = useAppStore(state => state.openTab);
 
   const [activeItem, setActiveItem] = useState<HydratedSidebarItem | null>(null);
@@ -324,7 +325,7 @@ export const Sidebar: React.FC = () => {
           <div className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">
             Workspace
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 relative">
             <button onClick={handleAddRequest} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title="New Request">
               <Plus size={16} />
             </button>
@@ -334,6 +335,61 @@ export const Sidebar: React.FC = () => {
             <button onClick={() => setWorkspaceSettingsOpen(true)} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title="Workspace Settings">
               <Settings2 size={16} />
             </button>
+            <div className="relative">
+              <button 
+                onClick={() => setIsMenuOpen(!isMenuOpen)} 
+                className={twMerge(
+                  "p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors",
+                  isMenuOpen && "bg-muted text-foreground"
+                )}
+                title="Workspace Actions"
+              >
+                <MoreVertical size={16} />
+              </button>
+              
+              {isMenuOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setIsMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 mt-1 w-36 bg-popover border border-border rounded-xl shadow-2xl py-1.5 z-50 animate-in fade-in zoom-in duration-100 origin-top-right">
+                    <button
+                      onClick={() => {
+                        importPostmanCollection();
+                        setIsMenuOpen(false);
+                      }}
+                      disabled={!projectPath}
+                      className={twMerge(
+                        "w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider",
+                        !projectPath 
+                          ? "text-muted-foreground/40 cursor-not-allowed" 
+                          : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                      )}
+                    >
+                      <Download size={14} className={twMerge("opacity-70", !projectPath && "opacity-30")} />
+                      Import
+                    </button>
+                    <button
+                      onClick={() => {
+                        // Export functionality placeholder
+                        setIsMenuOpen(false);
+                      }}
+                      disabled={!projectPath}
+                      className={twMerge(
+                        "w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider",
+                        !projectPath 
+                          ? "text-muted-foreground/40 cursor-not-allowed" 
+                          : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                      )}
+                    >
+                      <Upload size={14} className={twMerge("opacity-70", !projectPath && "opacity-30")} />
+                      Export
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
         

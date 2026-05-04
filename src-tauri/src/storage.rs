@@ -115,7 +115,7 @@ pub fn create_workspace(project_root: String, name: String) -> Result<(), String
         name,
         workspace: Workspace {
             order: vec![],
-            globals: std::collections::HashMap::new(),
+            globals: vec![],
             scripts: crate::models::manifest::ScriptConfig::default(),
         },
     };

@@ -1,6 +1,6 @@
 use crate::models::{
     manifest::{FirvManifest, SidebarItem},
-    request::{FirvRequest, HttpMethod},
+    request::{HttpMethod},
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

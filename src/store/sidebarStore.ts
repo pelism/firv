@@ -5,6 +5,7 @@ import { useModalStore } from './modalStore';
 import { useAppStore } from './appStore';
 import { HydratedSidebarItem } from "../types/hydratedSidebarItem.ts";
 import { HydratedTree } from "../types/hydratedTree.ts";
+import {KeyValue} from "../types/keyValue.ts";
 
 /*export type SidebarKind =
   | { type: 'folder'; items: HydratedSidebarItem[] }
@@ -48,6 +49,7 @@ interface SidebarState {
   ensureWorkspace: () => Promise<boolean>;
   openWorkspace: () => Promise<void>;
   createWorkspace: () => Promise<void>;
+  importPostmanCollection: () => Promise<void>;
   loadOrphans: () => Promise<void>;
   getRequestName: (id: string) => string;
   clearPendingName: (id: string) => void;
@@ -480,6 +482,185 @@ export const useSidebarStore = create<SidebarState>((set, get) => ({
       await get().loadOrphans();
     } catch (e) {
       console.error("Failed to open workspace:", e);
+    }
+  },
+  importPostmanCollection: async () => {
+    const { projectPath, workspaceName: currentWorkspaceName } = get();
+    if (!projectPath) {
+      useAppStore.getState().addLog("No workspace open. Please open a workspace first.");
+      return;
+    }
+
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const { readTextFile } = await import('@tauri-apps/plugin-fs');
+
+      const selected = await open({
+        multiple: false,
+        filters: [{
+          name: 'Postman Collection',
+          extensions: ['json']
+        }],
+        title: 'Select Postman Collection'
+      });
+
+      if (!selected || Array.isArray(selected)) return;
+
+      const content = await readTextFile(selected);
+      const collection = JSON.parse(content);
+
+      const importName = collection.info?.name || 'Imported Collection';
+      
+      const projectRoot = projectPath;
+      
+      const requestsToSave: any[] = [];
+
+      const extractScripts = (events: any[]): { pre: string | null; post: string | null } => {
+        const scripts: { pre: string | null; post: string | null } = { pre: null, post: null };
+        if (!events || !Array.isArray(events)) return scripts;
+
+        for (const event of events) {
+          const exec = event.script?.exec;
+          if (!exec) continue;
+
+          const scriptText = Array.isArray(exec) ? exec.join('\n') : exec;
+          if (!scriptText || scriptText.trim() === '') continue;
+
+          if (event.listen === 'prerequest') {
+            scripts.pre = scriptText;
+          } else if (event.listen === 'test' || event.listen === 'postrequest') {
+            scripts.post = scriptText;
+          }
+        }
+        return scripts;
+      };
+      
+      const processItem = (item: any): any => {
+        if (item.item) {
+          // Folder
+          return {
+            type: 'folder',
+            name: item.name,
+            items: item.item.map(processItem).filter(Boolean),
+            scripts: extractScripts(item.event)
+          };
+        } else if (item.request) {
+          // Request
+          const id = crypto.randomUUID();
+          const req = item.request;
+          
+          let body: any = { mode: 'none' };
+          if (req.body) {
+            if (req.body.mode === 'raw') {
+              body = { mode: 'raw', data: req.body.raw || '' };
+            } else if (req.body.mode === 'formdata') {
+              body = {
+                mode: 'formdata',
+                data: (req.body.formdata || []).map((f: any) => ({
+                  key: f.key || '',
+                  value: f.value || '',
+                  enabled: !f.disabled
+                }))
+              };
+            }
+          }
+
+          const method = (req.method || 'GET').toUpperCase();
+          
+          const firvReq = {
+            id,
+            name: item.name,
+            method,
+            url: typeof req.url === 'string' ? req.url : (req.url?.raw || ''),
+            headers: (req.header || []).map((h: any) => ({
+              key: h.key || '',
+              value: h.value || '',
+              enabled: !h.disabled
+            })),
+            params: (req.url?.query || []).map((q: any) => ({
+              key: q.key || '',
+              value: q.value || '',
+              enabled: !q.disabled
+            })),
+            body,
+            scripts: extractScripts(item.event || req.event)
+          };
+
+          requestsToSave.push(firvReq);
+
+          return {
+            type: 'request',
+            id,
+            name: item.name,
+            method
+          };
+        }
+      };
+
+      const importedItems = (collection.item || []).map(processItem).filter(Boolean);
+
+      const importedGlobals: KeyValue[] = [];
+      if (collection.variable && Array.isArray(collection.variable)) {
+        for (const v of collection.variable) {
+          if (v.key) {
+            importedGlobals.push({
+              key: v.key,
+              value: v.value || '',
+              enabled: !v.disabled
+            });
+          }
+        }
+      }
+
+      // 1. Save all requests
+      console.log(`Saving ${requestsToSave.length} requests...`);
+      for (const req of requestsToSave) {
+        await invoke('update_request', { projectRoot, request: req });
+      }
+      useAppStore.getState().addLog(`Imported ${requestsToSave.length} requests`);
+
+      // 2. Fetch current manifest to append to it
+      console.log('Fetching current manifest...');
+      const currentManifest: any = await invoke('get_manifest', { projectPath });
+      if (!currentManifest || !currentManifest.workspace) {
+        throw new Error("Invalid manifest structure");
+      }
+
+      const newOrder = [
+        ...(currentManifest.workspace.order || []),
+        {
+          type: 'folder',
+          name: importName,
+          items: importedItems,
+          scripts: extractScripts(collection.event)
+        }
+      ];
+
+      const mergedGlobals = [
+        ...(currentManifest.workspace.globals || []),
+        ...importedGlobals
+      ];
+
+      // 3. Update manifest with new order and globals
+      console.log('Updating manifest structure...');
+      await invoke('update_manifest_structure', {
+        projectRoot,
+        workspace: {
+          ...currentManifest.workspace,
+          order: newOrder,
+          globals: mergedGlobals
+        },
+        name: currentWorkspaceName || undefined
+      });
+
+      console.log('Import successful, refreshing sidebar...');
+      await get().fetchSidebar();
+      await get().loadOrphans();
+      useAppStore.getState().addLog(`Successfully imported Postman collection: ${importName}`);
+
+    } catch (e) {
+      console.error("Failed to import Postman collection:", e);
+      useAppStore.getState().addLog(`Failed to import Postman collection: ${e}`);
     }
   },
   loadOrphans: async () => {

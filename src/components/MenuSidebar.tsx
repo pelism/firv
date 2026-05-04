@@ -1,12 +1,28 @@
 import React from 'react';
-import { Layers, Settings, Terminal, FolderOpen, Plus } from 'lucide-react';
+import { Layers, Settings, Terminal, FolderOpen, Plus, Download } from 'lucide-react';
 import { useSidebarStore } from '../store/sidebarStore';
 import { twMerge } from 'tailwind-merge';
+import { LucideIcon } from 'lucide-react';
+
+interface SubMenuItem {
+  label: string;
+  icon: LucideIcon;
+  onClick: () => void | Promise<void>;
+  disabled?: boolean;
+}
+
+interface MenuItem {
+  id: string;
+  icon: LucideIcon;
+  label: string;
+  onClick?: () => void;
+  subItems?: SubMenuItem[];
+}
 
 export const MenuSidebar: React.FC = () => {
   const { openWorkspace, createWorkspace, activeMenu, setActiveMenu, setAppSettingsOpen } = useSidebarStore();
 
-  const menuItems = [
+  const menuItems: MenuItem[] = [
     { 
       id: 'workspace', 
       icon: Layers, 
@@ -14,7 +30,7 @@ export const MenuSidebar: React.FC = () => {
       onClick: () => setActiveMenu('workspace'),
       subItems: [
         { label: 'New Workspace', icon: Plus, onClick: createWorkspace },
-        { label: 'Open Workspace', icon: FolderOpen, onClick: openWorkspace },
+        { label: 'Open Workspace', icon: FolderOpen, onClick: openWorkspace }
       ]
     },
     { id: 'terminal', icon: Terminal, label: 'Terminal', onClick: () => {} },
@@ -48,11 +64,17 @@ export const MenuSidebar: React.FC = () => {
                     key={i}
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (sub.disabled) return;
                       sub.onClick();
                     }}
-                    className="flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-all whitespace-nowrap cursor-pointer uppercase tracking-wider"
+                    className={twMerge(
+                      "flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold rounded-lg transition-all whitespace-nowrap uppercase tracking-wider",
+                      sub.disabled 
+                        ? "text-muted-foreground/40 cursor-not-allowed" 
+                        : "text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer"
+                    )}
                   >
-                    <sub.icon size={14} className="opacity-70" />
+                    <sub.icon size={14} className={twMerge("opacity-70", sub.disabled && "opacity-30")} />
                     {sub.label}
                   </div>
                 ))}

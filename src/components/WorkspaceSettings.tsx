@@ -22,11 +22,11 @@ export function WorkspaceSettings() {
 
   useEffect(() => {
     if (projectPath) {
-      loadWorkspaceScripts();
+      loadWorkspaceSettings();
     }
   }, [projectPath]);
 
-  const loadWorkspaceScripts = async () => {
+  const loadWorkspaceSettings = async () => {
     const { projectPath: currentPath } = useSidebarStore.getState();
     if (!currentPath) return;
 
@@ -38,13 +38,7 @@ export function WorkspaceSettings() {
         setPostScript(manifest.workspace.scripts.post || '');
       }
       if (manifest.workspace.globals) {
-        const kvs = Object.entries(manifest.workspace.globals as Record<string, string>).map(([key, value]) => ({
-          id: Math.random().toString(36).substring(2, 9),
-          key,
-          value,
-          enabled: true
-        }));
-        setVariables(kvs);
+        setVariables(manifest.workspace.globals);
       }
     } catch (err) {
       console.error("Failed to load workspace settings", err);
@@ -58,24 +52,12 @@ export function WorkspaceSettings() {
     const { projectPath: currentPath } = useSidebarStore.getState();
     setIsSaving(true);
     try {
-      console.log("Current variables in state:", variables);
       const manifest: any = await invoke('get_manifest', { projectPath: currentPath });
-      console.log("Fetched manifest before update:", manifest);
       
       manifest.name = name || projectPath.split(/[/\\]/).filter(Boolean).pop() || 'Workspace';
-      manifest.workspace.scripts = {
-        pre: preScript || null,
-        post: postScript || null
-      };
-
-      const globals: Record<string, string> = {};
-      variables.forEach(v => {
-        const trimmedKey = v.key.trim();
-        if (trimmedKey && v.enabled) {
-          globals[trimmedKey] = v.value || '';
-        }
-      });
-      console.log("Transformed globals to save:", globals);
+      
+      // Filter out only completely empty rows for saving, keep disabled ones
+      const globals = variables.filter(v => v.key.trim() !== "" || v.value.trim() !== "");
       
       const updatedWorkspace = {
         ...manifest.workspace,
@@ -85,12 +67,6 @@ export function WorkspaceSettings() {
           post: postScript || null
         }
       };
-
-      console.log("Sending to update_manifest_structure:", {
-        projectRoot: currentPath,
-        workspace: updatedWorkspace,
-        name: name.trim() || null
-      });
 
       await invoke('update_manifest_structure', {
         projectRoot: currentPath,
@@ -179,6 +155,7 @@ export function WorkspaceSettings() {
                 onChange={setVariables} 
                 placeholderKey="Variable Name" 
                 placeholderValue="Value" 
+                uniqueEnabledKeys={true}
               />
             </div>
           </section>
