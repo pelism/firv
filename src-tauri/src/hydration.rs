@@ -96,7 +96,6 @@ async fn hydrate_item(
         SidebarItem::Folder {
             name,
             items,
-            scripts: _,
         } => {
             let mut hydrated_children = Vec::new();
             for child in items {

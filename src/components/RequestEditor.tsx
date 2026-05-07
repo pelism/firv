@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Settings, Save } from 'lucide-react';
+import { Send, Settings, Save, FolderPlus, Check } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { KVEditor, KeyValue } from './editors/KVEditor';
 import { BodyEditor } from './editors/BodyEditor';
@@ -25,7 +25,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const [postScript, setPostScript] = useState('');
   const savedStateRef = useRef<any>(null);
   
-  const { isRunning, setIsRunning, setResponse, addLog, setDirty, dirtyRequests } = useAppStore();
+  const { isRunning, setIsRunning, setResponse, addLog, setDirty, dirtyRequests, scratchpadRequestData, setScratchpadRequestData } = useAppStore();
   const isDirty = dirtyRequests.has(requestId);
   const {
     syncTreeToBackend, 
@@ -33,13 +33,51 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     ensureWorkspace, 
     getRequestName, 
     pendingNames,
-    clearPendingName
+    clearPendingName,
+    scratchpadTree
   } = useSidebarStore();
 
   // Hydration
   useEffect(() => {
     async function loadRequest() {
-      if (!projectPath) return; // Don't try to load from disk if no project path is set
+      // 1. Try loading from scratchpad data first
+      if (scratchpadRequestData[requestId]) {
+        const req = scratchpadRequestData[requestId];
+        setMethod(req.method || 'GET');
+        setUrl(req.url || '');
+        if (req.body) {
+          setBodyMode(req.body.mode || 'none');
+          setBody(req.body.data || '');
+        }
+        if (req.headers) setHeaders(req.headers.map((h: any) => ({ id: Math.random().toString(36).substring(2, 9), ...h })));
+        if (req.params) setParams(req.params.map((p: any) => ({ id: Math.random().toString(36).substring(2, 9), ...p })));
+        if (req.scripts) {
+          setPreScript(req.scripts.pre || '');
+          setPostScript(req.scripts.post || '');
+        }
+        savedStateRef.current = req;
+        setDirty(requestId, false);
+        return;
+      }
+
+      if (!projectPath) {
+        // If no project path and no scratchpad data, it's a completely new scratchpad request
+        const defaultState = {
+          name: getRequestName(requestId),
+          method: 'GET',
+          url: '',
+          headers: [],
+          params: [],
+          bodyMode: 'none',
+          body: '',
+          preScript: '',
+          postScript: ''
+        };
+        savedStateRef.current = defaultState;
+        setDirty(requestId, true);
+        return;
+      }
+      
       try {
         const req: any = await invoke('get_request', { 
           projectRoot: projectPath, 
@@ -142,6 +180,18 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       postScript
     };
 
+    if (!projectPath) {
+      // Auto-save to scratchpad store
+      setScratchpadRequestData(requestId, {
+        ...currentState,
+        id: requestId,
+        body: getFormattedBody(),
+        scripts: { pre: preScript || null, post: postScript || null }
+      });
+      setDirty(requestId, false);
+      return;
+    }
+
     if (!savedStateRef.current) {
       setDirty(requestId, true);
       return;
@@ -149,7 +199,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
     const isDirty = JSON.stringify(currentState) !== JSON.stringify(savedStateRef.current);
     setDirty(requestId, isDirty);
-  }, [method, url, headers, params, bodyMode, body, preScript, postScript, requestId, setDirty, pendingNames]);
+  }, [method, url, headers, params, bodyMode, body, preScript, postScript, requestId, setDirty, pendingNames, projectPath]);
 
   const getFormattedBody = () => {
     if (bodyMode === 'none') return { mode: 'none' };
@@ -169,6 +219,16 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   });
 
   const saveRequest = async () => {
+    if (!projectPath) {
+      // For scratchpad, "Saving" means moving to a workspace
+      const ok = await ensureWorkspace();
+      if (!ok) return;
+      
+      // After ensuring workspace, it will re-run this function or the user can click again
+      // The auto-save effect will have already synced the current state to the store
+      // We fall through to the workspace save logic below
+    }
+
     const ok = await ensureWorkspace();
     if (!ok) return;
 
@@ -282,7 +342,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         request: getFormattedRequest(),
         workspaceVars: workspaceVars,
         workspaceScripts: workspaceScripts,
-        folderScripts: [] // TODO: Resolve folder scripts from tree path
       });
       
       if (result.logs && Array.isArray(result.logs)) {
@@ -334,14 +393,21 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
             <button 
               onClick={saveRequest}
               className={twMerge(
-                "p-2 transition-colors",
-                isDirty 
-                  ? "text-foreground" 
-                  : "text-muted-foreground"
+                "p-2 transition-all flex items-center gap-2 rounded-lg",
+                projectPath 
+                  ? (isDirty ? "text-primary hover:bg-primary/10" : "text-muted-foreground cursor-default")
+                  : "text-primary hover:bg-primary/10"
               )}
-              title="Save (Ctrl+S)"
+              title={projectPath ? "Save to Workspace (Ctrl+S)" : "Move to Workspace"}
             >
-              <Save size={18} />
+              {projectPath ? (
+                isDirty ? <Save size={18} /> : <Check size={18} className="text-green-500" />
+              ) : (
+                <>
+                  <FolderPlus size={18} />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Move to Workspace</span>
+                </>
+              )}
             </button>
             <button 
               onClick={handleRun}

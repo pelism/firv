@@ -323,18 +323,20 @@ export const Sidebar: React.FC = () => {
       <div className="h-full bg-muted/20 flex flex-col overflow-hidden border-r border-border">
         <div className="p-4 flex items-center justify-between">
           <div className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">
-            Workspace
+            {projectPath ? 'Workspace' : 'Scratchpad'}
           </div>
           <div className="flex items-center gap-1 relative">
-            <button onClick={handleAddRequest} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title="New Request">
+            <button onClick={handleAddRequest} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title={projectPath ? "New Workspace Request" : "New Scratchpad Request"}>
               <Plus size={16} />
             </button>
-            <button onClick={handleAddFolder} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title="New Folder">
+            <button onClick={handleAddFolder} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title={projectPath ? "New Workspace Folder" : "New Scratchpad Folder"}>
               <FolderPlus size={16} />
             </button>
-            <button onClick={() => setWorkspaceSettingsOpen(true)} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title="Workspace Settings">
-              <Settings2 size={16} />
-            </button>
+            {projectPath && (
+              <button onClick={() => setWorkspaceSettingsOpen(true)} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title="Workspace Settings">
+                <Settings2 size={16} />
+              </button>
+            )}
             <div className="relative">
               <button 
                 onClick={() => setIsMenuOpen(!isMenuOpen)} 
@@ -436,18 +438,34 @@ export const Sidebar: React.FC = () => {
 };
 
 const SidebarContent: React.FC<{ searchQuery: string; activeItem: HydratedSidebarItem | null }> = ({ searchQuery, activeItem }) => {
-  const { tree } = useSidebarStore();
+  const { tree, scratchpadTree, projectPath } = useSidebarStore();
   const { setNodeRef } = useDroppable({
     id: 'sidebar-root',
   });
 
   return (
     <div ref={setNodeRef} className="flex-1 overflow-y-auto pb-4 custom-scrollbar min-h-[100px]">
-      <SortableContext items={tree.map(i => i.id)} strategy={verticalListSortingStrategy}>
-        {tree.map((item, idx) => (
-          <SidebarNode key={item.id || idx} item={item} depth={0} searchQuery={searchQuery} path={[item.kind.type !== 'error' ? item.kind.name : '']} />
-        ))}
-      </SortableContext>
+      {projectPath && tree.length > 0 && (
+        <SortableContext items={tree.map(i => i.id)} strategy={verticalListSortingStrategy}>
+          {tree.map((item, idx) => (
+            <SidebarNode key={item.id || idx} item={item} depth={0} searchQuery={searchQuery} path={[item.kind.type !== 'error' ? item.kind.name : '']} />
+          ))}
+        </SortableContext>
+      )}
+
+      {scratchpadTree.length > 0 && (
+        <div className="mt-6">
+          <div className="px-4 py-2 text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest border-t border-border/50">
+            Scratchpad Requests
+          </div>
+          <SortableContext items={scratchpadTree.map(i => i.id)} strategy={verticalListSortingStrategy}>
+            {scratchpadTree.map((item, idx) => (
+              <SidebarNode key={item.id || idx} item={item} depth={0} searchQuery={searchQuery} path={[item.kind.type !== 'error' ? item.kind.name : '']} />
+            ))}
+          </SortableContext>
+        </div>
+      )}
+
       <DragOverlay adjustScale={true}>
         {activeItem ? (
           <div className="bg-background border border-border rounded-lg shadow-xl px-3 py-2 text-sm flex items-center gap-2 opacity-90 pointer-events-none">
@@ -467,12 +485,13 @@ const SidebarContent: React.FC<{ searchQuery: string; activeItem: HydratedSideba
           </div>
         ) : null}
       </DragOverlay>
-      {tree.length === 0 && (
+      {tree.length === 0 && scratchpadTree.length === 0 && (
         <div className="p-8 text-center">
           <div className="inline-flex p-3 rounded-full bg-muted text-muted-foreground/60 mb-3">
             <Search size={20} />
           </div>
-          <p className="text-sm text-muted-foreground font-medium">No results found</p>
+          <p className="text-sm text-muted-foreground font-medium">No requests yet</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">Create a request or open a workspace.</p>
         </div>
       )}
     </div>

@@ -34,8 +34,6 @@ pub enum SidebarItem {
     Folder {
         name: String,
         items: Vec<SidebarItem>, // Allows nested folders
-        #[serde(default)]
-        scripts: ScriptConfig,
     },
     Request {
         id: String, // Links to requests/id.yaml

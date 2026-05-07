@@ -23,12 +23,13 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 ts-rs = "12.0.1"
 serde_yaml = "0.9.34"
+serde_json = "1.0"
 reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
 tokio = { version = "1", features = ["full"] }
 notify = "6.1.1"
 uuid = { version = "1.7.0", features = ["v4", "serde"] }
 async-recursion = "1.1.1"
 regex = "1.12.3"
-rquickjs = { version = "0.11.0", features = ["macro", "bindgen"] }
+rquickjs = { version = "0.11.0", features = ["full"] }
 tauri-plugin-dialog = "2.7.0"
 tauri-plugin-fs = "2.5.0"

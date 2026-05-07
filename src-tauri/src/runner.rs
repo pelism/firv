@@ -15,7 +15,7 @@ pub static CLIENT: LazyLock<Client> = LazyLock::new(|| {
         .expect("Failed to initialize reqwest client")
 });
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FirvResponse {
     pub status: u16,
     pub status_text: String,
@@ -32,10 +32,8 @@ pub async fn run_request(
     // 1. Pre-request Script
     if let Some(pre_script) = &request.scripts.pre {
         if !pre_script.trim().is_empty() {
-            let mut vars_map = resolver.request_vars.clone();
             let mut dummy_logs = Vec::new();
-            execute_script(pre_script, &mut vars_map, None, None, &mut dummy_logs)?;
-            resolver.request_vars = vars_map;
+            execute_script(pre_script, &mut resolver.globals, &mut resolver.request_vars, None, None, &mut dummy_logs)?;
         }
     }
 
@@ -125,16 +123,15 @@ pub async fn run_request(
     // 2. Post-response Script
     if let Some(post_script) = &request.scripts.post {
         if !post_script.trim().is_empty() {
-            let mut vars_map = resolver.request_vars.clone();
             let mut dummy_logs = Vec::new();
             execute_script(
                 post_script,
-                &mut vars_map,
+                &mut resolver.globals,
+                &mut resolver.request_vars,
                 None,
                 Some(&firv_resp),
                 &mut dummy_logs,
             )?;
-            resolver.request_vars = vars_map;
         }
     }
 

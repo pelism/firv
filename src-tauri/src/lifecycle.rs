@@ -32,7 +32,6 @@ pub async fn run_firv_request(
     request: FirvRequest,
     workspace_vars: HashMap<String, String>,
     workspace_scripts: Option<ScriptConfig>,
-    folder_scripts: Option<Vec<ScriptConfig>>,
 ) -> Result<LifecycleResult, String> {
     let start_time = Instant::now();
     let mut logs = Vec::new();
@@ -47,26 +46,15 @@ pub async fn run_firv_request(
     // 1. Workspace Level
     if let Some(ws_scripts) = &workspace_scripts {
         if let Some(pre) = &ws_scripts.pre {
-            if let Err(e) = execute_script(pre, &mut resolver.request_vars, None, None, &mut logs) {
+            if let Err(e) = execute_script(pre, &mut resolver.globals, &mut resolver.request_vars, None, None, &mut logs) {
                 script_errors.push(format!("Workspace Pre-request error: {}", e));
             }
         }
     }
 
-    // 2. Folder Level
-    if let Some(folders) = &folder_scripts {
-        for (i, folder) in folders.iter().enumerate() {
-            if let Some(pre) = &folder.pre {
-                if let Err(e) = execute_script(pre, &mut resolver.request_vars, None, None, &mut logs) {
-                    script_errors.push(format!("Folder[{}] Pre-request error: {}", i, e));
-                }
-            }
-        }
-    }
-
-    // 3. Request Level (Before hydration - can modify variables)
+    // 2. Request Level (Before hydration - can modify variables)
     if let Some(pre) = &request.scripts.pre {
-        if let Err(e) = execute_script(pre, &mut resolver.request_vars, None, None, &mut logs) {
+        if let Err(e) = execute_script(pre, &mut resolver.globals, &mut resolver.request_vars, None, None, &mut logs) {
             script_errors.push(format!("Request Pre-request error: {}", e));
         }
     }
@@ -114,7 +102,7 @@ pub async fn run_firv_request(
     // --- Request-level modifications via JS ---
     // This allows the request script to modify the final hydrated URL/headers/body
     if let Some(pre) = &request.scripts.pre {
-        if let Err(e) = execute_script(pre, &mut resolver.request_vars, Some(&mut hydrated_info), None, &mut logs) {
+        if let Err(e) = execute_script(pre, &mut resolver.globals, &mut resolver.request_vars, Some(&mut hydrated_info), None, &mut logs) {
              // Second pass error handling (optional, already handled for variables)
              script_errors.push(format!("Request Pre-request (Request Object) error: {}", e));
         }
@@ -186,26 +174,15 @@ pub async fn run_firv_request(
     if let Some(resp) = &firv_resp {
         // 1. Request Level
         if let Some(post) = &request.scripts.post {
-            if let Err(e) = execute_script(post, &mut resolver.request_vars, Some(&mut hydrated_info), Some(resp), &mut logs) {
+            if let Err(e) = execute_script(post, &mut resolver.globals, &mut resolver.request_vars, Some(&mut hydrated_info), Some(resp), &mut logs) {
                 script_errors.push(format!("Request Post-response error: {}", e));
             }
         }
 
-        // 2. Folder Level (Reverse order)
-        if let Some(folders) = &folder_scripts {
-            for (i, folder) in folders.iter().enumerate().rev() {
-                if let Some(post) = &folder.post {
-                    if let Err(e) = execute_script(post, &mut resolver.request_vars, Some(&mut hydrated_info), Some(resp), &mut logs) {
-                        script_errors.push(format!("Folder[{}] Post-response error: {}", i, e));
-                    }
-                }
-            }
-        }
-
-        // 3. Workspace Level
+        // 2. Workspace Level
         if let Some(ws_scripts) = &workspace_scripts {
             if let Some(post) = &ws_scripts.post {
-                if let Err(e) = execute_script(post, &mut resolver.request_vars, Some(&mut hydrated_info), Some(resp), &mut logs) {
+                if let Err(e) = execute_script(post, &mut resolver.globals, &mut resolver.request_vars, Some(&mut hydrated_info), Some(resp), &mut logs) {
                     script_errors.push(format!("Workspace Post-response error: {}", e));
                 }
             }
