@@ -28,16 +28,12 @@
     "active": true,
     "targets": [
       "msi",
-      "nsis",
       "deb",
       "appimage"
     ],
     "windows": {
-      "msi": {
-        "languages": ["English"]
-      },
-      "nsis": {
-        "portable": true
+      "wix": {
+        "language": "en-US"
       }
     },
     "icon": [

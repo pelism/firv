@@ -40,6 +40,7 @@ jobs:
         run: npm install
 
       - uses: tauri-apps/tauri-action@v0
+        id: tauri_build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -48,3 +49,12 @@ jobs:
           releaseBody: "firv release for Windows (Portable EXE & MSI) and Linux (DEB & AppImage)."
           releaseDraft: true
           prerelease: false
+
+      - name: upload standalone exe (windows only)
+        if: matrix.platform == 'windows-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: src-tauri/target/release/firv.exe
+          tag_name: v${{ steps.tauri_build.outputs.appVersion }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
