@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, Settings, Terminal, FolderOpen, Plus, Download } from 'lucide-react';
+import { Layers, Settings, Terminal, FolderOpen, Plus } from 'lucide-react';
 import { useSidebarStore } from '../store/sidebarStore';
 import { twMerge } from 'tailwind-merge';
 import { LucideIcon } from 'lucide-react';

@@ -33,8 +33,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     ensureWorkspace, 
     getRequestName, 
     pendingNames,
-    clearPendingName,
-    scratchpadTree
+    clearPendingName
   } = useSidebarStore();
 
   // Hydration
