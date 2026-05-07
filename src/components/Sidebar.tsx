@@ -35,11 +35,16 @@ const getMethodStyles = (method: string) => {
   }
 };
 
-const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQuery: string; path: string[] }> = React.memo(({ item, depth, searchQuery, path }) => {
+const SidebarNode: React.FC<{ 
+  item: HydratedSidebarItem; 
+  depth: number; 
+  searchQuery: string; 
+  path: string[];
+  isScratchpad?: boolean;
+}> = React.memo(({ item, depth, searchQuery, path, isScratchpad }) => {
   const [isOpen, setIsOpen] = useState(true);
   const activeRequestId = useAppStore(state => state.activeRequestId);
   const openTab = useAppStore(state => state.openTab);
-  const closeTab = useAppStore(state => state.closeTab);
   const { addItem, deleteItem } = useSidebarStore();
 
   const {
@@ -76,8 +81,8 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     const idsToClose = getRequestIds(item);
-    await deleteItem(path);
-    idsToClose.forEach(id => closeTab(id));
+    await deleteItem(path, isScratchpad);
+    idsToClose.forEach(id => useAppStore.getState().closeTab(id));
   };
 
   const paddingLeft = depth * 12 + 12;
@@ -139,20 +144,24 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
             <span className="truncate font-medium">{item.kind.name}</span>
           </div>
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button 
-              onClick={handleAddRequest}
-              className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
-              title="Add Request"
-            >
-              <Plus size={14} />
-            </button>
-            <button 
-              onClick={handleAddFolder}
-              className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
-              title="Add Subfolder"
-            >
-              <FolderPlus size={14} />
-            </button>
+            {!isScratchpad && (
+              <>
+                <button 
+                  onClick={handleAddRequest}
+                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+                  title="Add Request"
+                >
+                  <Plus size={14} />
+                </button>
+                <button 
+                  onClick={handleAddFolder}
+                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+                  title="Add Subfolder"
+                >
+                  <FolderPlus size={14} />
+                </button>
+              </>
+            )}
             <button 
               onClick={handleDelete}
               className="p-1 hover:bg-destructive/10 rounded text-muted-foreground hover:text-destructive"
@@ -171,7 +180,14 @@ const SidebarNode: React.FC<{ item: HydratedSidebarItem; depth: number; searchQu
             ) : (
               <SortableContext items={item.kind.items.map(i => i.id)} strategy={verticalListSortingStrategy}>
                 {item.kind.items.map((child, idx) => (
-                  <SidebarNode key={child.id || idx} item={child} depth={depth + 1} searchQuery={searchQuery} path={[...path, child.kind.type !== 'error' ? child.kind.name : '']} />
+                  <SidebarNode 
+                    key={child.id || idx} 
+                    item={child} 
+                    depth={depth + 1} 
+                    searchQuery={searchQuery} 
+                    path={[...path, child.kind.type !== 'error' ? child.kind.name : '']} 
+                    isScratchpad={isScratchpad}
+                  />
                 ))}
               </SortableContext>
             )}
@@ -329,9 +345,11 @@ export const Sidebar: React.FC = () => {
             <button onClick={handleAddRequest} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title={projectPath ? "New Workspace Request" : "New Scratchpad Request"}>
               <Plus size={16} />
             </button>
-            <button onClick={handleAddFolder} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title={projectPath ? "New Workspace Folder" : "New Scratchpad Folder"}>
-              <FolderPlus size={16} />
-            </button>
+            {projectPath && (
+              <button onClick={handleAddFolder} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title="New Workspace Folder">
+                <FolderPlus size={16} />
+              </button>
+            )}
             {projectPath && (
               <button onClick={() => setWorkspaceSettingsOpen(true)} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title="Workspace Settings">
                 <Settings2 size={16} />
@@ -438,10 +456,21 @@ export const Sidebar: React.FC = () => {
 };
 
 const SidebarContent: React.FC<{ searchQuery: string; activeItem: HydratedSidebarItem | null }> = ({ searchQuery, activeItem }) => {
-  const { tree, scratchpadTree, projectPath } = useSidebarStore();
+  const { tree, scratchpadTree, projectPath, addItemOptimistic } = useSidebarStore();
+  const openTab = useAppStore(state => state.openTab);
   const { setNodeRef } = useDroppable({
     id: 'sidebar-root',
   });
+
+  const handleAddScratchpadRequest = () => {
+    const requestId = crypto.randomUUID();
+    const newItem: HydratedSidebarItem = {
+      id: crypto.randomUUID(),
+      kind: { type: 'request', id: requestId, name: 'New Request', method: 'GET' }
+    };
+    addItemOptimistic(newItem, undefined, true);
+    openTab(requestId);
+  };
 
   return (
     <div ref={setNodeRef} className="flex-1 overflow-y-auto pb-4 custom-scrollbar min-h-[100px]">
@@ -453,16 +482,38 @@ const SidebarContent: React.FC<{ searchQuery: string; activeItem: HydratedSideba
         </SortableContext>
       )}
 
-      {scratchpadTree.length > 0 && (
+      {(projectPath || scratchpadTree.length > 0) && (
         <div className="mt-6">
-          <div className="px-4 py-2 text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest border-t border-border/50">
-            Scratchpad Requests
+          <div className="px-4 py-2 flex items-center justify-between group/scratchpad-header border-t border-border/50">
+            <span className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">
+              Scratchpad
+            </span>
+            <button 
+              onClick={handleAddScratchpadRequest}
+              className="p-1 hover:bg-muted rounded-md text-muted-foreground/40 hover:text-foreground opacity-0 group-hover/scratchpad-header:opacity-100 transition-all"
+              title="New Scratchpad Request"
+            >
+              <Plus size={12} />
+            </button>
           </div>
-          <SortableContext items={scratchpadTree.map(i => i.id)} strategy={verticalListSortingStrategy}>
-            {scratchpadTree.map((item, idx) => (
-              <SidebarNode key={item.id || idx} item={item} depth={0} searchQuery={searchQuery} path={[item.kind.type !== 'error' ? item.kind.name : '']} />
-            ))}
-          </SortableContext>
+          {scratchpadTree.length > 0 ? (
+            <SortableContext items={scratchpadTree.map(i => i.id)} strategy={verticalListSortingStrategy}>
+              {scratchpadTree.map((item, idx) => (
+                <SidebarNode 
+                  key={item.id || idx} 
+                  item={item} 
+                  depth={0} 
+                  searchQuery={searchQuery} 
+                  path={[item.kind.type !== 'error' ? item.kind.name : '']} 
+                  isScratchpad={true}
+                />
+              ))}
+            </SortableContext>
+          ) : (
+            <div className="px-6 py-3 text-[11px] text-muted-foreground/40 italic">
+              No scratchpad requests
+            </div>
+          )}
         </div>
       )}
 

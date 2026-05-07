@@ -27,9 +27,9 @@ interface SidebarState {
   moveItem: (activeId: string, overId: string, overPosition?: 'before' | 'after' | 'inside') => void;
   pendingNames: Record<string, string>;
   updateRequestName: (id: string, newName: string) => void;
-  addItem: (item: HydratedSidebarItem, parentPath?: string[]) => Promise<void>;
-  addItemOptimistic: (item: HydratedSidebarItem, parentPath?: string[]) => void;
-  deleteItem: (path: string[]) => Promise<void>;
+  addItem: (item: HydratedSidebarItem, parentPath?: string[], isScratchpad?: boolean) => Promise<void>;
+  addItemOptimistic: (item: HydratedSidebarItem, parentPath?: string[], isScratchpad?: boolean) => void;
+  deleteItem: (path: string[], isScratchpad?: boolean) => Promise<void>;
   ensureWorkspace: () => Promise<boolean>;
   openWorkspace: () => Promise<void>;
   createWorkspace: () => Promise<void>;
@@ -264,14 +264,14 @@ export const useSidebarStore = create<SidebarState>()(
           return { pendingNames: newPending };
         });
       },
-      addItemOptimistic: (newItem, parentPath) => {
+      addItemOptimistic: (newItem, parentPath, isScratchpad) => {
         const { tree, scratchpadTree, projectPath } = get();
         const itemWithId = {
           ...newItem,
           id: newItem.id || crypto.randomUUID()
         };
 
-        if (!projectPath) {
+        if (isScratchpad || !projectPath) {
           set({ scratchpadTree: [...scratchpadTree, itemWithId] });
           return;
         }
@@ -308,14 +308,14 @@ export const useSidebarStore = create<SidebarState>()(
 
         set({ tree: addItemToItems(tree, parentPath) });
       },
-      addItem: async (newItem, parentPath) => {
+      addItem: async (newItem, parentPath, isScratchpad) => {
         const { tree, scratchpadTree, syncTreeToBackend, projectPath } = get();
         const itemWithId = {
           ...newItem,
           id: newItem.id || crypto.randomUUID()
         };
 
-        if (!projectPath) {
+        if (isScratchpad || !projectPath) {
           set({ scratchpadTree: [...scratchpadTree, itemWithId] });
           return;
         }
@@ -356,25 +356,26 @@ export const useSidebarStore = create<SidebarState>()(
         set({ tree: newTree });
         await syncTreeToBackend(newTree);
       },
-      deleteItem: async (path) => {
+      deleteItem: async (path, isScratchpad) => {
         const { tree, scratchpadTree, projectPath, syncTreeToBackend } = get();
 
-        if (!projectPath) {
-          const deleteFromItems = (items: HydratedSidebarItem[], currentPath: string[]): HydratedSidebarItem[] => {
-            const [targetName, ...remainingPath] = currentPath;
-            if (remainingPath.length === 0) {
-              return items.filter(item => item.kind.type !== 'error' && item.kind.name !== targetName);
+        const deleteFromItems = (items: HydratedSidebarItem[], currentPath: string[]): HydratedSidebarItem[] => {
+          const [targetName, ...remainingPath] = currentPath;
+          if (remainingPath.length === 0) {
+            return items.filter(item => item.kind.type !== 'error' && item.kind.name !== targetName);
+          }
+          return items.map(item => {
+            if (item.kind.type === 'folder' && item.kind.name === targetName) {
+              return {
+                ...item,
+                kind: { ...item.kind, items: deleteFromItems(item.kind.items, remainingPath) }
+              };
             }
-            return items.map(item => {
-              if (item.kind.type === 'folder' && item.kind.name === targetName) {
-                return {
-                  ...item,
-                  kind: { ...item.kind, items: deleteFromItems(item.kind.items, remainingPath) }
-                };
-              }
-              return item;
-            });
-          };
+            return item;
+          });
+        };
+
+        if (isScratchpad || !projectPath) {
           set({ scratchpadTree: deleteFromItems(scratchpadTree, path) });
           return;
         }
@@ -411,27 +412,6 @@ export const useSidebarStore = create<SidebarState>()(
             }
           }
         }
-
-        const deleteFromItems = (items: HydratedSidebarItem[], currentPath: string[]): HydratedSidebarItem[] => {
-          const [targetName, ...remainingPath] = currentPath;
-          
-          if (remainingPath.length === 0) {
-            return items.filter(item => item.kind.type !== 'error' && item.kind.name !== targetName);
-          }
-
-          return items.map(item => {
-            if (item.kind.type === 'folder' && item.kind.name === targetName) {
-              return {
-                ...item,
-                kind: {
-                  ...item.kind,
-                  items: deleteFromItems(item.kind.items, remainingPath)
-                }
-              };
-            }
-            return item;
-          });
-        };
 
         const newTree = deleteFromItems(tree, path);
         set({ tree: newTree });
