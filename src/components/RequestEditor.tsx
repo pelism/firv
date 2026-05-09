@@ -3,7 +3,6 @@ import { Send, Settings, Save, FolderPlus, Check } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { KVEditor, KeyValue } from './editors/KVEditor';
 import { BodyEditor } from './editors/BodyEditor';
-import { ScriptEditor } from './editors/ScriptEditor';
 import { useAppStore } from '../store/appStore';
 import { useSidebarStore } from '../store/sidebarStore';
 import { HydratedSidebarItem } from '../types/hydratedSidebarItem.ts';
@@ -16,13 +15,11 @@ interface RequestEditorProps {
 export function RequestEditor({ requestId }: RequestEditorProps) {
   const [method, setMethod] = useState('GET');
   const [url, setUrl] = useState('');
-  const [activeTab, setActiveTab] = useState<'params'|'headers'|'body'|'scripts'>('params');
+  const [activeTab, setActiveTab] = useState<'params'|'headers'|'body'>('params');
   const [headers, setHeaders] = useState<KeyValue[]>([]);
   const [params, setParams] = useState<KeyValue[]>([]);
   const [body, setBody] = useState('');
   const [bodyMode, setBodyMode] = useState<'json'|'yaml'|'raw'|'none'>('json');
-  const [preScript, setPreScript] = useState('');
-  const [postScript, setPostScript] = useState('');
   const savedStateRef = useRef<any>(null);
   
   const { isRunning, setIsRunning, setResponse, addLog, setDirty, dirtyRequests, scratchpadRequestData, setScratchpadRequestData } = useAppStore();
@@ -50,10 +47,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         }
         if (req.headers) setHeaders(req.headers.map((h: any) => ({ id: Math.random().toString(36).substring(2, 9), ...h })));
         if (req.params) setParams(req.params.map((p: any) => ({ id: Math.random().toString(36).substring(2, 9), ...p })));
-        if (req.scripts) {
-          setPreScript(req.scripts.pre || '');
-          setPostScript(req.scripts.post || '');
-        }
         savedStateRef.current = req;
         setDirty(requestId, false);
         return;
@@ -69,8 +62,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           params: [],
           bodyMode: 'none',
           body: '',
-          preScript: '',
-          postScript: ''
         };
         savedStateRef.current = defaultState;
         setDirty(requestId, true);
@@ -109,14 +100,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         } else {
           setParams([]);
         }
-        if (req.scripts) {
-          setPreScript(req.scripts.pre || '');
-          setPostScript(req.scripts.post || '');
-        } else {
-          setPreScript('');
-          setPostScript('');
-        }
-        
         const initialState = {
           name: req.name || getRequestName(requestId),
           method: req.method || 'GET',
@@ -125,8 +108,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           params: (req.params || []).map((p: any) => ({ key: p.key, value: p.value, enabled: p.enabled })),
           bodyMode: req.body?.mode || 'json',
           body: req.body?.data || '',
-          preScript: req.scripts?.pre || '',
-          postScript: req.scripts?.post || ''
         };
         savedStateRef.current = initialState;
         setDirty(requestId, false);
@@ -142,8 +123,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           params: [],
           bodyMode: 'json',
           body: '',
-          preScript: '',
-          postScript: ''
         };
         savedStateRef.current = defaultState;
         setDirty(requestId, true); // Mark as dirty since it doesn't exist on disk
@@ -164,7 +143,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     };
     window.addEventListener('keydown', handleGlobalKeydown);
     return () => window.removeEventListener('keydown', handleGlobalKeydown);
-  }, [method, url, headers, body, preScript, postScript, requestId]);
+  }, [method, url, headers, body, requestId]);
 
   useEffect(() => {
     const currentState = {
@@ -175,8 +154,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       params: params.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })),
       bodyMode,
       body,
-      preScript,
-      postScript
     };
 
     if (!projectPath) {
@@ -185,7 +162,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         ...currentState,
         id: requestId,
         body: getFormattedBody(),
-        scripts: { pre: preScript || null, post: postScript || null }
       });
       setDirty(requestId, false);
       return;
@@ -198,7 +174,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
     const isDirty = JSON.stringify(currentState) !== JSON.stringify(savedStateRef.current);
     setDirty(requestId, isDirty);
-  }, [method, url, headers, params, bodyMode, body, preScript, postScript, requestId, setDirty, pendingNames, projectPath]);
+  }, [method, url, headers, params, bodyMode, body, requestId, setDirty, pendingNames, projectPath]);
 
   const getFormattedBody = () => {
     if (bodyMode === 'none') return { mode: 'none' };
@@ -213,8 +189,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     url,
     headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
     params: params.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })),
-    body: getFormattedBody(),
-    scripts: { pre: preScript || null, post: postScript || null }
+    body: getFormattedBody()
   });
 
   const saveRequest = async () => {
@@ -305,9 +280,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
         params: params.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })),
         bodyMode,
-        body,
-        preScript,
-        postScript
+        body
       };
       savedStateRef.current = currentState;
       setDirty(requestId, false);
@@ -325,34 +298,25 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     try {
       addLog(`Running request ${method} ${url}...`);
       
-      let workspaceScripts = null;
       let workspaceVars = {};
       if (projectPath) {
         try {
           const manifest: any = await invoke('get_manifest', { projectPath });
-          workspaceScripts = manifest.workspace.scripts;
           workspaceVars = manifest.workspace.globals || {};
         } catch (err) {
           addLog(`Warning: Could not load workspace manifest: ${err}`);
         }
       }
-      
+
       const result: any = await invoke('run_firv_request', {
         request: getFormattedRequest(),
-        workspaceVars: workspaceVars,
-        workspaceScripts: workspaceScripts,
+        workspaceVars,
       });
-      
-      if (result.logs && Array.isArray(result.logs)) {
-        result.logs.forEach((log: string) => addLog(`[Script] ${log}`));
-      }
-      if (result.script_errors && Array.isArray(result.script_errors)) {
-        result.script_errors.forEach((err: string) => addLog(`[Script Error] ${err}`));
-      }
-      
+
       setResponse(requestId, result.response);
       addLog(`Request completed successfully in ${result.execution_time_ms}ms.`);
-    } catch (e: any) {
+    }
+    catch (e: any) {
       console.error(e);
       addLog(`Error: ${e.toString()}`);
     } finally {
@@ -426,7 +390,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       {/* Segmented Editor Tabs */}
       <div className="px-4 py-2 border-b border-border bg-muted/30">
         <div className="flex bg-muted p-1 rounded-lg w-fit">
-          {['params', 'headers', 'body', 'scripts'].map(tab => (
+          {['params', 'headers', 'body'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
@@ -487,26 +451,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
                     <p className="text-xs">Select a mode above to add a body.</p>
                   </div>
                 )}
-              </div>
-            </div>
-          )}
-          {activeTab === 'scripts' && (
-            <div className="h-full flex flex-col space-y-4">
-              <div className="flex-1 min-h-[200px]">
-                <ScriptEditor 
-                  title="Pre-request Script" 
-                  value={preScript} 
-                  onChange={setPreScript} 
-                  placeholder="// Modify request before sending... e.g. firv.request.setHeader('X-Custom', 'val')"
-                />
-              </div>
-              <div className="flex-1 min-h-[200px]">
-                <ScriptEditor 
-                  title="Post-request / Tests" 
-                  value={postScript} 
-                  onChange={setPostScript} 
-                  placeholder="// Process response or run tests... e.g. if (firv.response.status === 200) { ... }"
-                />
               </div>
             </div>
           )}

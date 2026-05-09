@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::models::manifest::ScriptConfig;
-
 #[derive(Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "firvRequest.ts")]
 pub struct FirvRequest {
@@ -20,7 +18,7 @@ pub struct FirvRequest {
     pub body: RequestBody,
 
     #[serde(default)]
-    pub scripts: ScriptConfig,
+    pub transforms: RequestTransforms,
 }
 
 #[derive(Debug, Serialize, Deserialize, TS)]
@@ -55,6 +53,13 @@ pub enum RequestBody {
     Formdata(Vec<KeyValue>),
 }
 
+#[derive(Debug, Serialize, Deserialize, Default, TS, Clone)]
+#[serde(default)]
+#[ts(export, export_to = "requestTransforms.ts")]
+pub struct RequestTransforms {
+    pub pre_request: Option<String>,
+    pub post_response: Option<String>,
+}
 
 fn default_true() -> bool {
     true

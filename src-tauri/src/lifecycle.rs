@@ -3,17 +3,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Instant;
 
-use crate::models::manifest::ScriptConfig;
 use crate::models::{request::HttpMethod, request::RequestBody, FirvRequest};
 use crate::runner::{FirvResponse, CLIENT};
-use crate::scripting::execute_script;
-use crate::variables::VariableResolver;
+use crate::variables::{ExtractionRule, VariableResolver};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HydratedRequestInfo {
     pub url: String,
     pub method: String,
-    pub headers: HashMap<String, String>,
+    pub headers: HashMap<String, String>, 
     pub body: Option<String>,
 }
 
@@ -27,11 +25,18 @@ pub struct LifecycleResult {
     pub variables: HashMap<String, String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct DeclarativeExtraction {
+    target: String,
+    source: Option<String>,
+    pattern: String,
+}
+
 #[tauri::command]
 pub async fn run_firv_request(
+    _app: tauri::AppHandle,
     request: FirvRequest,
-    workspace_vars: HashMap<String, String>,
-    workspace_scripts: Option<ScriptConfig>,
+    workspace_vars: Vec<crate::models::request::KeyValue>,
 ) -> Result<LifecycleResult, String> {
     let start_time = Instant::now();
     let mut logs = Vec::new();
@@ -39,28 +44,18 @@ pub async fn run_firv_request(
 
     // Setup variable resolver
     let mut resolver = VariableResolver::new();
-    resolver.globals = workspace_vars;
+    resolver.globals = workspace_vars
+        .into_iter()
+        .filter(|kv| kv.enabled)
+        .map(|kv| (kv.key, kv.value))
+        .collect();
 
-    // --- Pre-request Scripting ---
-    
-    // 1. Workspace Level
-    if let Some(ws_scripts) = &workspace_scripts {
-        if let Some(pre) = &ws_scripts.pre {
-            if let Err(e) = execute_script(pre, &mut resolver.globals, &mut resolver.request_vars, None, None, &mut logs) {
-                script_errors.push(format!("Workspace Pre-request error: {}", e));
-            }
-        }
-    }
-
-    // 2. Request Level (Before hydration - can modify variables)
-    if let Some(pre) = &request.scripts.pre {
-        if let Err(e) = execute_script(pre, &mut resolver.globals, &mut resolver.request_vars, None, None, &mut logs) {
-            script_errors.push(format!("Request Pre-request error: {}", e));
-        }
-    }
+    // --- Declarative rendering ---
+    let rendered_url = resolver
+        .render_liquid(&request.url)
+        .unwrap_or_else(|_| resolver.resolve_string(&request.url));
 
     // --- Hydration ---
-
     let method = match request.method {
         HttpMethod::GET => Method::GET,
         HttpMethod::POST => Method::POST,
@@ -71,12 +66,12 @@ pub async fn run_firv_request(
         HttpMethod::OPTIONS => Method::OPTIONS,
     };
 
-    let resolved_url = resolver.resolve_string(&request.url);
+    let resolved_url = rendered_url;
     let mut resolved_headers = HashMap::new();
     for kv in &request.headers {
         if kv.enabled {
-            let res_key = resolver.resolve_string(&kv.key);
-            let res_val = resolver.resolve_string(&kv.value);
+            let res_key = resolver.render_liquid(&kv.key).unwrap_or_else(|_| resolver.resolve_string(&kv.key));
+            let res_val = resolver.render_liquid(&kv.value).unwrap_or_else(|_| resolver.resolve_string(&kv.value));
             resolved_headers.insert(res_key.clone(), res_val.clone());
         }
     }
@@ -84,11 +79,11 @@ pub async fn run_firv_request(
     let resolved_body_str = match &request.body {
         RequestBody::None => None,
         RequestBody::Json(data) => {
-            let res_data = resolver.resolve_string(&data);
+            let res_data = resolver.render_liquid(&data).unwrap_or_else(|_| resolver.resolve_string(&data));
             resolved_headers.insert("Content-Type".to_string(), "application/json".to_string());
             Some(res_data)
         }
-        RequestBody::Raw(data) => Some(resolver.resolve_string(&data)),
+        RequestBody::Raw(data) => Some(resolver.render_liquid(&data).unwrap_or_else(|_| resolver.resolve_string(&data))),
         RequestBody::Formdata(_) => None, // Formdata handled separately below
     };
 
@@ -99,12 +94,10 @@ pub async fn run_firv_request(
         body: resolved_body_str,
     };
 
-    // --- Request-level modifications via JS ---
-    // This allows the request script to modify the final hydrated URL/headers/body
-    if let Some(pre) = &request.scripts.pre {
-        if let Err(e) = execute_script(pre, &mut resolver.globals, &mut resolver.request_vars, Some(&mut hydrated_info), None, &mut logs) {
-             // Second pass error handling (optional, already handled for variables)
-             script_errors.push(format!("Request Pre-request (Request Object) error: {}", e));
+    // --- Request-level modifications via declarative transforms ---
+    if let Ok(rendered_body) = resolver.render_liquid(request.transforms.pre_request.as_deref().unwrap_or("")) {
+        if !rendered_body.is_empty() {
+            hydrated_info.body = Some(rendered_body);
         }
     }
 
@@ -122,8 +115,8 @@ pub async fn run_firv_request(
         let mut form = reqwest::multipart::Form::new();
         for field in fields {
             if field.enabled {
-                let res_key = resolver.resolve_string(&field.key);
-                let res_val = resolver.resolve_string(&field.value);
+                let res_key = resolver.render_liquid(&field.key).unwrap_or_else(|_| resolver.resolve_string(&field.key));
+                let res_val = resolver.render_liquid(&field.value).unwrap_or_else(|_| resolver.resolve_string(&field.value));
                 form = form.text(res_key, res_val);
             }
         }
@@ -170,20 +163,19 @@ pub async fn run_firv_request(
         }
     };
 
-    // --- Post-Response Scripting ---
+    // --- Post-response extraction ---
     if let Some(resp) = &firv_resp {
-        // 1. Request Level
-        if let Some(post) = &request.scripts.post {
-            if let Err(e) = execute_script(post, &mut resolver.globals, &mut resolver.request_vars, Some(&mut hydrated_info), Some(resp), &mut logs) {
-                script_errors.push(format!("Request Post-response error: {}", e));
-            }
-        }
-
-        // 2. Workspace Level
-        if let Some(ws_scripts) = &workspace_scripts {
-            if let Some(post) = &ws_scripts.post {
-                if let Err(e) = execute_script(post, &mut resolver.globals, &mut resolver.request_vars, Some(&mut hydrated_info), Some(resp), &mut logs) {
-                    script_errors.push(format!("Workspace Post-response error: {}", e));
+        if let Ok(rule_text) = resolver.render_liquid(request.transforms.post_response.as_deref().unwrap_or("")) {
+            if !rule_text.trim().is_empty() {
+                if let Ok(parsed) = serde_json::from_str::<DeclarativeExtraction>(&rule_text) {
+                    let source = match parsed.source.as_deref() {
+                        Some("response_body_raw") => crate::variables::ExtractionSource::ResponseBodyRaw,
+                        _ => crate::variables::ExtractionSource::ResponseBodyJson,
+                    };
+                    let rule = ExtractionRule { target: parsed.target, source, pattern: parsed.pattern };
+                    if let Some(value) = resolver.apply_extraction_rule(&rule, &resp.body) {
+                        resolver.request_vars.insert(rule.target, value);
+                    }
                 }
             }
         }
