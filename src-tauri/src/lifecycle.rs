@@ -2,10 +2,11 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Instant;
+use std::path::Path;
 
-use crate::models::{request::HttpMethod, request::RequestBody, FirvRequest};
+use crate::models::{request::{ChainCondition, HttpMethod, RequestBody, FirvRequest}, request::RequestChainStep};
 use crate::runner::{FirvResponse, CLIENT};
-use crate::variables::{ExtractionRule, VariableResolver};
+use crate::variables::{VariableResolver, VariableTraceEntry};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HydratedRequestInfo {
@@ -13,6 +14,38 @@ pub struct HydratedRequestInfo {
     pub method: String,
     pub headers: HashMap<String, String>, 
     pub body: Option<String>,
+}
+
+#[async_recursion::async_recursion]
+async fn run_chain_step(
+    project_root: &str,
+    workspace_vars: &[crate::models::request::KeyValue],
+    step: &RequestChainStep,
+    current_resolver: &mut VariableResolver,
+    depth: usize,
+) -> Result<Option<LifecycleResultSummary>, String> {
+    let next_path = Path::new(project_root).join("requests").join(format!("{}.yaml", step.next_request_id));
+    let next_request = match std::fs::read_to_string(&next_path)
+        .ok()
+        .and_then(|content| serde_yaml::from_str::<FirvRequest>(&content).ok())
+    {
+        Some(req) => req,
+        None => return Ok(None),
+    };
+
+    let next_result = execute_chain(project_root.to_string(), next_request, workspace_vars.to_vec(), depth).await?;
+
+    // Merge downstream request vars into the current resolver so the main request can see them.
+    for (k, v) in next_result.variables {
+        current_resolver.request_vars.insert(k, v);
+    }
+
+    Ok(Some(LifecycleResultSummary {
+        request_id: step.next_request_id.clone(),
+        success: next_result.response.as_ref().map(|r| r.status < 400).unwrap_or(false),
+        status: next_result.response.as_ref().map(|r| r.status),
+        execution_time_ms: next_result.execution_time_ms,
+    }))
 }
 
 #[derive(Debug, Serialize)]
@@ -23,24 +56,45 @@ pub struct LifecycleResult {
     pub script_errors: Vec<String>,
     pub execution_time_ms: u64,
     pub variables: HashMap<String, String>,
+    pub variable_trace: Vec<VariableTraceEntry>,
+    pub before_run_results: Vec<LifecycleResultSummary>,
+    pub chained_results: Vec<LifecycleResultSummary>,
 }
 
-#[derive(Debug, Deserialize)]
-struct DeclarativeExtraction {
-    target: String,
-    source: Option<String>,
-    pattern: String,
+#[derive(Debug, Serialize)]
+pub struct LifecycleResultSummary {
+    pub request_id: String,
+    pub success: bool,
+    pub status: Option<u16>,
+    pub execution_time_ms: u64,
 }
 
 #[tauri::command]
 pub async fn run_firv_request(
     _app: tauri::AppHandle,
+    project_root: String,
     request: FirvRequest,
     workspace_vars: Vec<crate::models::request::KeyValue>,
 ) -> Result<LifecycleResult, String> {
+    execute_chain(project_root, request, workspace_vars, 0).await
+}
+
+#[async_recursion::async_recursion]
+async fn execute_chain(
+    project_root: String,
+    request: FirvRequest,
+    workspace_vars: Vec<crate::models::request::KeyValue>,
+    depth: usize,
+) -> Result<LifecycleResult, String> {
+    const MAX_CHAIN_DEPTH: usize = 8;
+    if depth > MAX_CHAIN_DEPTH {
+        return Err(format!("Request chain exceeded max depth of {}", MAX_CHAIN_DEPTH));
+    }
+
     let start_time = Instant::now();
     let mut logs = Vec::new();
     let mut script_errors = Vec::new();
+    let workspace_vars_for_chain = workspace_vars.clone();
 
     // Setup variable resolver
     let mut resolver = VariableResolver::new();
@@ -49,6 +103,15 @@ pub async fn run_firv_request(
         .filter(|kv| kv.enabled)
         .map(|kv| (kv.key, kv.value))
         .collect();
+
+    let mut before_run_results = Vec::new();
+
+    // --- Before-run chain ---
+    for step in &request.transforms.before_run {
+        if let Some(summary) = run_chain_step(&project_root, &workspace_vars_for_chain, step, &mut resolver, depth + 1).await? {
+            before_run_results.push(summary);
+        }
+    }
 
     // --- Declarative rendering ---
     let rendered_url = resolver
@@ -95,9 +158,11 @@ pub async fn run_firv_request(
     };
 
     // --- Request-level modifications via declarative transforms ---
-    if let Ok(rendered_body) = resolver.render_liquid(request.transforms.pre_request.as_deref().unwrap_or("")) {
-        if !rendered_body.is_empty() {
-            hydrated_info.body = Some(rendered_body);
+    if let Some(template) = request.transforms.pre_request_template.as_deref() {
+        if let Ok(rendered_body) = resolver.render_liquid(template) {
+            if !rendered_body.is_empty() {
+                hydrated_info.body = Some(rendered_body);
+            }
         }
     }
 
@@ -165,17 +230,16 @@ pub async fn run_firv_request(
 
     // --- Post-response extraction ---
     if let Some(resp) = &firv_resp {
-        if let Ok(rule_text) = resolver.render_liquid(request.transforms.post_response.as_deref().unwrap_or("")) {
-            if !rule_text.trim().is_empty() {
-                if let Ok(parsed) = serde_json::from_str::<DeclarativeExtraction>(&rule_text) {
-                    let source = match parsed.source.as_deref() {
-                        Some("response_body_raw") => crate::variables::ExtractionSource::ResponseBodyRaw,
-                        _ => crate::variables::ExtractionSource::ResponseBodyJson,
-                    };
-                    let rule = ExtractionRule { target: parsed.target, source, pattern: parsed.pattern };
-                    if let Some(value) = resolver.apply_extraction_rule(&rule, &resp.body) {
-                        resolver.request_vars.insert(rule.target, value);
-                    }
+        for rule in &request.transforms.response_extractions {
+            match resolver.apply_extraction_rule(rule, &resp.body) {
+                Ok(Some(value)) => {
+                    resolver.request_vars.insert(rule.target.clone(), value);
+                }
+                Ok(None) => {
+                    script_errors.push(format!("Extraction '{}' returned no value", rule.target));
+                }
+                Err(err) => {
+                    script_errors.push(err);
                 }
             }
         }
@@ -183,12 +247,32 @@ pub async fn run_firv_request(
 
     let total_time = start_time.elapsed().as_millis() as u64;
 
+    let mut chained_results = Vec::new();
+
+    if let Some(resp) = &firv_resp {
+        for step in &request.transforms.chain_steps {
+            let should_run = match step.when {
+                ChainCondition::OnSuccess => resp.status < 400,
+                ChainCondition::OnFailure => resp.status >= 400,
+            };
+
+            if should_run {
+                if let Some(summary) = run_chain_step(&project_root, &workspace_vars_for_chain, step, &mut resolver, depth + 1).await? {
+                    chained_results.push(summary);
+                }
+            }
+        }
+    }
+
     Ok(LifecycleResult {
         final_request: hydrated_info,
         response: firv_resp,
         logs,
         script_errors,
         execution_time_ms: total_time,
-        variables: resolver.request_vars,
+        variables: resolver.request_vars.clone(),
+        variable_trace: resolver.trace(),
+        before_run_results,
+        chained_results,
     })
 }

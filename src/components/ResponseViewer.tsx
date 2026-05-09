@@ -18,6 +18,15 @@ interface ResponseViewerProps {
   response: FirvResponse | null;
 }
 
+type TraceableResponse = FirvResponse & {
+  __trace?: Record<string, string>;
+  __request?: any;
+  __errors?: string[];
+  __variable_trace?: Array<{ key: string; value: string; scope: string; source: string }>;
+  __before_run_results?: Array<{ request_id: string; success: boolean; status: number | null; execution_time_ms: number }>;
+  __chained_results?: Array<{ request_id: string; success: boolean; status: number | null; execution_time_ms: number }>;
+};
+
 // Basic virtualized JSON tree node
 interface JsonNode {
   keyName: string;
@@ -68,7 +77,7 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
   const [mode, setMode] = useState<'Pretty' | 'Raw' | 'Preview'>('Pretty');
   const [searchQuery, setSearchQuery] = useState('');
   const [jmesQuery, setJmesQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'Body' | 'Headers'>('Body');
+  const [activeTab, setActiveTab] = useState<'Body' | 'Headers' | 'Trace'>('Body');
   
   const [parsedData, setParsedData] = useState<any>(null);
   const [isParsing, setIsParsing] = useState(false);
@@ -88,7 +97,14 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
     };
   }, []);
 
+  const traceableResponse = response as TraceableResponse | null;
   const { status, status_text, time_ms, size_bytes, body, headers } = response || { status: 0, status_text: '', time_ms: 0, size_bytes: 0, body: '', headers: {} };
+  const trace = traceableResponse?.__trace || {};
+  const requestInfo = traceableResponse?.__request || null;
+  const errors = traceableResponse?.__errors || [];
+  const variableTrace = traceableResponse?.__variable_trace || [];
+  const beforeRunResults = traceableResponse?.__before_run_results || [];
+  const chainedResults = traceableResponse?.__chained_results || [];
   const isLarge = size_bytes > 5 * 1024 * 1024;
 
   useEffect(() => {
@@ -313,26 +329,43 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
           </span>
           {activeTab === 'Headers' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />}
         </button>
+
+        <button 
+          className={twMerge(
+            "px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all relative",
+            activeTab === 'Trace' 
+              ? "text-primary" 
+              : "text-muted-foreground hover:text-foreground"
+          )}
+          onClick={() => setActiveTab('Trace')}
+        >
+          <span className="flex items-center gap-2">
+            <Database size={14} />
+            Trace
+            <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full text-muted-foreground">{Object.keys(trace).length}</span>
+          </span>
+          {activeTab === 'Trace' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />}
+        </button>
       </div>
 
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {activeTab === 'Body' ? (
+        {activeTab === 'Body' && (
           <>
             {mode === 'Pretty' && isJson && (
               <div className="p-3 border-b border-border flex gap-3 bg-muted/10">
                 <div className="relative flex-1">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <input 
-                    type="text" 
-                    placeholder="Search response..." 
+                  <input
+                    type="text"
+                    placeholder="Search response..."
                     className="w-full pl-9 pr-3 py-1.5 text-xs bg-background border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                   />
                 </div>
-                <input 
-                  type="text" 
-                  placeholder="JMESPath Filter" 
+                <input
+                  type="text"
+                  placeholder="JMESPath Filter"
                   className="flex-1 px-3 py-1.5 text-xs font-mono bg-background border border-border rounded-lg outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                   value={jmesQuery}
                   onChange={e => setJmesQuery(e.target.value)}
@@ -349,10 +382,10 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
 
               {mode === 'Preview' && isImage ? (
                 <div className="p-8 flex items-center justify-center h-full">
-                   <div className="text-muted-foreground text-center">
+                  <div className="text-muted-foreground text-center">
                     <Database size={48} className="mx-auto mb-4 opacity-10" />
                     <p className="text-sm">Image preview coming soon</p>
-                   </div>
+                  </div>
                 </div>
               ) : mode === 'Preview' && isPdf ? (
                 <div className="p-8 flex items-center justify-center h-full">
@@ -361,9 +394,7 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
               ) : mode === 'Preview' && isHtml ? (
                 <iframe srcDoc={body} className="w-full h-full border-none bg-white" title="preview" />
               ) : mode === 'Raw' || !isJson ? (
-                <pre className="p-6 text-xs font-mono whitespace-pre-wrap text-foreground bg-muted/5">
-                  {body}
-                </pre>
+                <pre className="p-6 text-xs font-mono whitespace-pre-wrap text-foreground bg-muted/5">{body}</pre>
               ) : mode === 'Pretty' && isParsing ? (
                 <div className="p-12 text-center text-muted-foreground">
                   <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
@@ -383,8 +414,10 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
               ) : null}
             </div>
           </>
-        ) : (
-          <div className="flex-1 overflow-auto bg-background p-6 custom-scrollbar">
+        )}
+
+        {activeTab === 'Headers' && (
+          <div className="flex-1 overflow-auto bg-background custom-scrollbar p-6">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-border">
@@ -406,6 +439,114 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {activeTab === 'Trace' && (
+          <div className="flex-1 overflow-auto bg-background custom-scrollbar p-4 space-y-4">
+            {errors.length > 0 && (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-400">
+                <h3 className="text-xs font-bold uppercase tracking-wider mb-2">Execution Errors</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  {errors.map((err, idx) => <li key={idx}>{err}</li>)}
+                </ul>
+              </div>
+            )}
+
+            <div className="rounded-xl border border-border bg-muted/20 p-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Resolved Variables</h3>
+              {Object.keys(trace).length === 0 ? (
+                <div className="text-sm text-muted-foreground">No variables were returned by the run.</div>
+              ) : (
+                <div className="space-y-2 font-mono text-xs">
+                  {Object.entries(trace).map(([key, value]) => (
+                    <div key={key} className="grid grid-cols-[160px_1fr] gap-3 items-start">
+                      <div className="text-primary font-semibold break-all">{key}</div>
+                      <div className="break-all text-foreground/80">{value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-border bg-muted/20 p-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Before-Run Requests</h3>
+              {beforeRunResults.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No before-run requests were executed.</div>
+              ) : (
+                <div className="space-y-2">
+                  {beforeRunResults.map((entry, idx) => (
+                    <div key={`${entry.request_id}-${idx}`} className="rounded-lg border border-border bg-background/60 p-3 text-xs flex items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="font-mono font-semibold break-all">{entry.request_id}</div>
+                        <div className="text-muted-foreground">{entry.execution_time_ms} ms</div>
+                      </div>
+                      <div className={twMerge(
+                        "px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                        entry.success ? "bg-emerald-500/10 text-emerald-600" : "bg-red-500/10 text-red-600"
+                      )}>
+                        {entry.success ? `status ${entry.status ?? 'ok'}` : `status ${entry.status ?? 'fail'}`}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-border bg-muted/20 p-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Variable Provenance</h3>
+              {variableTrace.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No provenance details were returned.</div>
+              ) : (
+                <div className="space-y-2">
+                  {variableTrace.map((entry, idx) => (
+                    <div key={`${entry.key}-${idx}`} className="rounded-lg border border-border bg-background/60 p-3 text-xs font-mono space-y-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-primary font-semibold break-all">{entry.key}</span>
+                        <span className="text-muted-foreground">{entry.scope}</span>
+                      </div>
+                      <div className="text-foreground/80 break-all">{entry.value}</div>
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{entry.source}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-border bg-muted/20 p-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Chained Requests</h3>
+              {chainedResults.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No chained requests were executed.</div>
+              ) : (
+                <div className="space-y-2">
+                  {chainedResults.map((entry, idx) => (
+                    <div key={`${entry.request_id}-${idx}`} className="rounded-lg border border-border bg-background/60 p-3 text-xs flex items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="font-mono font-semibold break-all">{entry.request_id}</div>
+                        <div className="text-muted-foreground">{entry.execution_time_ms} ms</div>
+                      </div>
+                      <div className={twMerge(
+                        "px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                        entry.success ? "bg-emerald-500/10 text-emerald-600" : "bg-red-500/10 text-red-600"
+                      )}>
+                        {entry.success ? `status ${entry.status ?? 'ok'}` : `status ${entry.status ?? 'fail'}`}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {requestInfo && (
+              <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Final Request</h3>
+                <div className="font-mono text-xs space-y-1 text-foreground/80 break-all">
+                  <div><span className="text-muted-foreground">URL:</span> {requestInfo.url}</div>
+                  <div><span className="text-muted-foreground">Method:</span> {requestInfo.method}</div>
+                  <div><span className="text-muted-foreground">Body:</span> {requestInfo.body || '(empty)'}</div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

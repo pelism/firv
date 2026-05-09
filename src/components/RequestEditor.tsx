@@ -6,6 +6,8 @@ import { BodyEditor } from './editors/BodyEditor';
 import { useAppStore } from '../store/appStore';
 import { useSidebarStore } from '../store/sidebarStore';
 import { HydratedSidebarItem } from '../types/hydratedSidebarItem.ts';
+import type { RequestExtractionRule } from '../types/requestExtractionRule';
+import type { RequestChainStep } from '../types/requestChainStep';
 import { twMerge } from 'tailwind-merge';
 
 interface RequestEditorProps {
@@ -15,12 +17,19 @@ interface RequestEditorProps {
 export function RequestEditor({ requestId }: RequestEditorProps) {
   const [method, setMethod] = useState('GET');
   const [url, setUrl] = useState('');
-  const [activeTab, setActiveTab] = useState<'params'|'headers'|'body'>('params');
+  const [activeTab, setActiveTab] = useState<'params'|'headers'|'body'|'transforms'>('params');
   const [headers, setHeaders] = useState<KeyValue[]>([]);
   const [params, setParams] = useState<KeyValue[]>([]);
   const [body, setBody] = useState('');
   const [bodyMode, setBodyMode] = useState<'json'|'yaml'|'raw'|'none'>('json');
   const savedStateRef = useRef<any>(null);
+  const [templateText, setTemplateText] = useState('');
+  const [extractions, setExtractions] = useState<RequestExtractionRule[]>([]);
+  const [beforeRunChain, setBeforeRunChain] = useState<RequestChainStep[]>([]);
+  const [chainSteps, setChainSteps] = useState<RequestChainStep[]>([]);
+  const [showChainPicker, setShowChainPicker] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [bodyErrorLine, setBodyErrorLine] = useState<number | null>(null);
   
   const { isRunning, setIsRunning, setResponse, addLog, setDirty, dirtyRequests, scratchpadRequestData, setScratchpadRequestData } = useAppStore();
   const isDirty = dirtyRequests.has(requestId);
@@ -47,6 +56,10 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         }
         if (req.headers) setHeaders(req.headers.map((h: any) => ({ id: Math.random().toString(36).substring(2, 9), ...h })));
         if (req.params) setParams(req.params.map((p: any) => ({ id: Math.random().toString(36).substring(2, 9), ...p })));
+        setTemplateText(req.transforms?.pre_request_template || '');
+        setExtractions(req.transforms?.response_extractions || []);
+        setBeforeRunChain(req.transforms?.before_run || []);
+        setChainSteps(req.transforms?.chain_steps || []);
         savedStateRef.current = req;
         setDirty(requestId, false);
         return;
@@ -64,6 +77,11 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           body: '',
         };
         savedStateRef.current = defaultState;
+        setTemplateText('');
+        setExtractions([]);
+        setBeforeRunChain([]);
+        setChainSteps([]);
+        setChainPlacement('before_run');
         setDirty(requestId, true);
         return;
       }
@@ -109,6 +127,10 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           bodyMode: req.body?.mode || 'json',
           body: req.body?.data || '',
         };
+        setTemplateText(req.transforms?.pre_request_template || '');
+        setExtractions(req.transforms?.response_extractions || []);
+        setBeforeRunChain(req.transforms?.before_run || []);
+        setChainSteps(req.transforms?.chain_steps || []);
         savedStateRef.current = initialState;
         setDirty(requestId, false);
       } catch (err) {
@@ -125,11 +147,55 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           body: '',
         };
         savedStateRef.current = defaultState;
+        setTemplateText('');
+        setExtractions([]);
+        setBeforeRunChain([]);
+        setChainSteps([]);
+        setChainPlacement('before_run');
         setDirty(requestId, true); // Mark as dirty since it doesn't exist on disk
       }
     }
     loadRequest();
   }, [requestId]);
+
+  const updateChainStep = (index: number, patch: Partial<RequestChainStep>) => {
+    setChainSteps(current => current.map((step, i) => (i === index ? { ...step, ...patch } : step)));
+  };
+
+  const addChainStep = (placement?: 'before' | 'on_success' | 'on_failure') => {
+    const selected = placement;
+    setShowChainPicker(false);
+
+    if (!selected) return;
+
+    if (selected === 'before') {
+      if (beforeRunChain.length > 0) return;
+      setBeforeRunChain(current => [...current, { when: 'on_success', next_request_id: '' }]);
+      return;
+    }
+
+    if (chainSteps.some(step => step.when === selected)) return;
+    setChainSteps(current => [...current, { when: selected, next_request_id: '' }]);
+  };
+
+  const removeChainStep = (index: number) => {
+    setChainSteps(current => current.filter((_, i) => i !== index));
+  };
+
+  const updateExtraction = (index: number, patch: Partial<RequestExtractionRule>) => {
+    setExtractions(current => current.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)));
+  };
+
+  const addExtraction = () => {
+    setExtractions(current => [
+      ...current,
+      { target: '', source: 'response_body_json', pattern: '' },
+    ]);
+  };
+
+  const removeExtraction = (index: number) => {
+    setExtractions(current => current.filter((_, i) => i !== index));
+  };
 
   useEffect(() => {
     const handleGlobalKeydown = (e: KeyboardEvent) => {
@@ -189,7 +255,13 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     url,
     headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
     params: params.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })),
-    body: getFormattedBody()
+    body: getFormattedBody(),
+    transforms: {
+      pre_request_template: templateText.trim() || null,
+      response_extractions: extractions,
+      before_run: beforeRunChain.filter(step => step.next_request_id.trim()),
+      chain_steps: chainSteps.filter(step => step.next_request_id.trim())
+    }
   });
 
   const saveRequest = async () => {
@@ -280,7 +352,13 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
         params: params.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })),
         bodyMode,
-        body
+        body,
+        transforms: {
+          pre_request_template: templateText.trim() || null,
+          response_extractions: extractions,
+          before_run: beforeRunChain.filter(step => step.next_request_id.trim()),
+          chain_steps: chainSteps.filter(step => step.next_request_id.trim())
+        }
       };
       savedStateRef.current = currentState;
       setDirty(requestId, false);
@@ -297,23 +375,57 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     setIsRunning(true);
     try {
       addLog(`Running request ${method} ${url}...`);
+
+      if (bodyMode === 'json' && body.trim()) {
+        try {
+          JSON.parse(body);
+          setValidationError(null);
+          setBodyErrorLine(null);
+        } catch (err: any) {
+          const rawMessage = err?.message || String(err);
+          const positionMatch = rawMessage.match(/position\s+(\d+)/i);
+          const position = positionMatch ? Number(positionMatch[1]) : null;
+          let lineInfo = '';
+          let lineNumber: number | null = null;
+          if (position !== null && Number.isFinite(position)) {
+            const prefix = body.slice(0, position);
+            const line = prefix.split('\n').length;
+            const column = prefix.length - prefix.lastIndexOf('\n');
+            lineInfo = ` (line ${line}, column ${column})`;
+            lineNumber = line;
+          }
+          setBodyErrorLine(lineNumber);
+          setValidationError(`Invalid JSON body${lineInfo}: ${rawMessage}`);
+          addLog(`Validation error: ${rawMessage}${lineInfo}`);
+          return;
+        }
+      }
       
-      let workspaceVars = {};
+      let workspaceVars: Array<{ key: string; value: string; enabled: boolean }> = [];
       if (projectPath) {
         try {
           const manifest: any = await invoke('get_manifest', { projectPath });
-          workspaceVars = manifest.workspace.globals || {};
+          workspaceVars = Array.isArray(manifest?.workspace?.globals) ? manifest.workspace.globals : [];
         } catch (err) {
           addLog(`Warning: Could not load workspace manifest: ${err}`);
         }
       }
 
       const result: any = await invoke('run_firv_request', {
+        projectRoot: projectPath || '.',
         request: getFormattedRequest(),
         workspaceVars,
       });
 
-      setResponse(requestId, result.response);
+      setResponse(requestId, {
+        ...(result.response || null),
+        __trace: result.variables || {},
+        __request: result.final_request || null,
+        __errors: result.script_errors || [],
+        __before_run_results: result.before_run_results || [],
+        __variable_trace: result.variable_trace || [],
+        __chained_results: result.chained_results || []
+      });
       addLog(`Request completed successfully in ${result.execution_time_ms}ms.`);
     }
     catch (e: any) {
@@ -385,12 +497,17 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
             </button>
           </div>
         </div>
+        {validationError && (
+          <div className="mt-3 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+            {validationError}
+          </div>
+        )}
       </div>
 
       {/* Segmented Editor Tabs */}
       <div className="px-4 py-2 border-b border-border bg-muted/30">
         <div className="flex bg-muted p-1 rounded-lg w-fit">
-          {['params', 'headers', 'body'].map(tab => (
+          {['params', 'headers', 'body', 'transforms'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
@@ -441,7 +558,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
               </div>
               <div className="flex-1 min-h-[300px] border border-border rounded-xl overflow-hidden shadow-sm">
                 {bodyMode !== 'none' ? (
-                  <BodyEditor value={body} mode={bodyMode} onChange={setBody} />
+                  <BodyEditor value={body} mode={bodyMode} onChange={setBody} highlightLine={bodyErrorLine} />
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm space-y-2 bg-muted/50">
                     <div className="p-3 rounded-full bg-muted">
@@ -451,6 +568,163 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
                     <p className="text-xs">Select a mode above to add a body.</p>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+          {activeTab === 'transforms' && (
+            <div className="h-full flex flex-col gap-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Pre-request Liquid Template</label>
+                <textarea
+                  value={templateText}
+                  onChange={e => setTemplateText(e.target.value)}
+                  placeholder="{{ token }} or {{ base_url }}/v1/..."
+                  className="w-full min-h-[140px] rounded-xl border border-border bg-background p-3 text-sm font-mono outline-none resize-y"
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">Response Extractions</label>
+                <button onClick={addExtraction} className="text-xs font-semibold text-primary hover:underline">Add extraction</button>
+              </div>
+
+              <div className="space-y-3">
+                {extractions.length === 0 && (
+                  <div className="text-sm text-muted-foreground border border-dashed border-border rounded-xl p-4">
+                    No extraction rules yet. Add one to capture values from the response body.
+                  </div>
+                )}
+                {extractions.map((rule, index) => (
+                  <div key={index} className="rounded-xl border border-border p-3 bg-muted/20 space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm" value={rule.target} onChange={e => updateExtraction(index, { target: e.target.value })} placeholder="target variable" />
+                      <select className="rounded-lg border border-border bg-background px-3 py-2 text-sm" value={rule.source} onChange={e => updateExtraction(index, { source: e.target.value as any })}>
+                        <option value="response_body_json">response_body_json</option>
+                        <option value="response_body_raw">response_body_raw</option>
+                      </select>
+                      <button onClick={() => removeExtraction(index)} className="rounded-lg border border-border px-3 py-2 text-sm text-destructive">Remove</button>
+                    </div>
+                    <input className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono" value={rule.pattern} onChange={e => updateExtraction(index, { pattern: e.target.value })} placeholder='$.access_token or literal substring' />
+                  </div>
+                ))}
+              </div>
+
+              <div className="pt-4 border-t border-border space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">Request Chain</label>
+                  <button onClick={() => setShowChainPicker(v => !v)} className="text-xs font-semibold text-primary hover:underline" title="Add chain step" type="button">
+                    Add chain step
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {beforeRunChain.length === 0 && chainSteps.length === 0 && (
+                    <div className="text-sm text-muted-foreground border border-dashed border-border rounded-xl p-4">
+                      No chain steps yet. Add one before, on success, or on failure.
+                    </div>
+                  )}
+
+                  {showChainPicker && (
+                    <div className="rounded-xl border border-border bg-background p-3 shadow-sm">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Add chain step</span>
+                        <button
+                          className="text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => setShowChainPicker(false)}
+                          type="button"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg border border-border px-3 py-2 text-sm font-semibold hover:bg-muted transition-colors"
+                          onClick={() => addChainStep('before')}
+                        >
+                          before
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-border px-3 py-2 text-sm font-semibold hover:bg-muted transition-colors"
+                          onClick={() => addChainStep('on_success')}
+                        >
+                          on success
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-border px-3 py-2 text-sm font-semibold hover:bg-muted transition-colors"
+                          onClick={() => addChainStep('on_failure')}
+                        >
+                          on failure
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {beforeRunChain.length > 0 && (
+                    <div className="rounded-xl border border-border p-3 bg-muted/20 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">before</span>
+                        <span className="text-[10px] text-muted-foreground">1 of 1</span>
+                      </div>
+                      {beforeRunChain.map((step, index) => (
+                        <div key={`before-${index}`} className="space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input className="md:col-span-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono" value={step.next_request_id} onChange={e => setBeforeRunChain(current => current.map((item, i) => i === index ? { ...item, next_request_id: e.target.value } : item))} placeholder="prerequisite request id" />
+                          </div>
+                          <div className="flex justify-end">
+                            <button onClick={() => setBeforeRunChain([])} className="rounded-lg border border-border px-3 py-2 text-sm text-destructive">Remove</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {chainSteps.filter(step => step.when === 'on_success').length > 0 && (
+                    <div className="rounded-xl border border-border p-3 bg-muted/20 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">success</span>
+                        <span className="text-[10px] text-muted-foreground">1 of 1</span>
+                      </div>
+                      {chainSteps.filter(step => step.when === 'on_success').map((step, index) => {
+                        const actualIndex = chainSteps.findIndex(item => item === step);
+                        return (
+                          <div key={`success-${index}`} className="space-y-3">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <input className="md:col-span-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono" value={step.next_request_id} onChange={e => updateChainStep(actualIndex, { next_request_id: e.target.value })} placeholder="next request id" />
+                            </div>
+                            <div className="flex justify-end">
+                              <button onClick={() => removeChainStep(actualIndex)} className="rounded-lg border border-border px-3 py-2 text-sm text-destructive">Remove</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {chainSteps.filter(step => step.when === 'on_failure').length > 0 && (
+                    <div className="rounded-xl border border-border p-3 bg-muted/20 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">failure</span>
+                        <span className="text-[10px] text-muted-foreground">1 of 1</span>
+                      </div>
+                      {chainSteps.filter(step => step.when === 'on_failure').map((step, index) => {
+                        const actualIndex = chainSteps.findIndex(item => item === step);
+                        return (
+                          <div key={`failure-${index}`} className="space-y-3">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <input className="md:col-span-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono" value={step.next_request_id} onChange={e => updateChainStep(actualIndex, { next_request_id: e.target.value })} placeholder="next request id" />
+                            </div>
+                            <div className="flex justify-end">
+                              <button onClick={() => removeChainStep(actualIndex)} className="rounded-lg border border-border px-3 py-2 text-sm text-destructive">Remove</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

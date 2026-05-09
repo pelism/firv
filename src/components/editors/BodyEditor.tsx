@@ -10,6 +10,7 @@ interface BodyEditorProps {
   mode: 'json' | 'yaml' | 'raw' | 'none';
   onChange: (newValue: string) => void;
   onFormat?: () => void;
+  highlightLine?: number | null;
 }
 
 const firvVariableDecoration = Decoration.mark({ class: 'cm-firv-variable bg-blue-100 text-blue-600 rounded px-1 font-semibold' });
@@ -39,7 +40,19 @@ const firvVariableExtension = StateField.define<DecorationSet>({
   provide: f => EditorView.decorations.from(f)
 });
 
-export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, onFormat }) => {
+const lineHighlightExtension = (highlightLine?: number | null): Extension => {
+  if (!highlightLine || highlightLine < 1) return [];
+  const decorations: any[] = [];
+  const lineDeco = Decoration.line({ class: 'cm-firv-line-error bg-red-500/10' });
+  return EditorView.decorations.of((view) => {
+    const ranges: any[] = [];
+    const line = view.state.doc.line(Math.min(highlightLine, view.state.doc.lines));
+    ranges.push(lineDeco.range(line.from));
+    return Decoration.set(ranges);
+  });
+};
+
+export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, onFormat, highlightLine }) => {
   const [localValue, setLocalValue] = useState(value);
   const [theme, setTheme] = useState<'light' | 'dark'>(
     window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
@@ -73,14 +86,14 @@ export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, o
   }
 
   const extensions = useMemo(() => {
-    const exts: Extension[] = [firvVariableExtension];
+    const exts: Extension[] = [firvVariableExtension, lineHighlightExtension(highlightLine)];
     if (mode === 'json') {
       exts.push(json());
     } else if (mode === 'yaml' || mode === 'raw') {
       exts.push(yaml());
     }
     return exts;
-  }, [mode]);
+  }, [mode, highlightLine]);
 
   const handleFormat = () => {
     if (mode === 'json') {
