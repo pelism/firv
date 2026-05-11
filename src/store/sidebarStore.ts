@@ -531,41 +531,13 @@ export const useSidebarStore = create<SidebarState>()(
           
           const requestsToSave: any[] = [];
 
-          const extractScripts = (events: any[]): { pre: string | null; post: string | null } => {
-            const scripts: { pre: string | null; post: string | null } = { pre: null, post: null };
-            if (!events || !Array.isArray(events)) return scripts;
-
-            for (const event of events) {
-              const exec = event.script?.exec;
-              if (!exec) continue;
-
-              const scriptText = Array.isArray(exec) ? exec.join('\n') : exec;
-              if (!scriptText || scriptText.trim() === '') continue;
-
-              if (event.listen === 'prerequest') {
-                scripts.pre = scriptText;
-              } else if (event.listen === 'test' || event.listen === 'postrequest') {
-                scripts.post = scriptText;
-              }
-            }
-            return scripts;
-          };
-          
-          const processItem = (item: any, parentScripts: { pre: string | null; post: string | null }): any => {
-            const itemScripts = extractScripts(item.event);
-            
-            // Combine with parent scripts (from folders/collection)
-            const combinedScripts = {
-              pre: [parentScripts.pre, itemScripts.pre].filter(s => s && s.trim()).join('\n\n') || null,
-              post: [itemScripts.post, parentScripts.post].filter(s => s && s.trim()).join('\n\n') || null
-            };
-
+          const processItem = (item: any): any => {
             if (item.item) {
               // Folder
               return {
                 type: 'folder',
                 name: item.name,
-                items: item.item.map((child: any) => processItem(child, combinedScripts)).filter(Boolean),
+                items: item.item.map((child: any) => processItem(child)).filter(Boolean),
               };
             } else if (item.request) {
               // Request
@@ -606,7 +578,6 @@ export const useSidebarStore = create<SidebarState>()(
                   enabled: !q.disabled
                 })),
                 body,
-                scripts: combinedScripts
               };
 
               requestsToSave.push(firvReq);
@@ -620,8 +591,7 @@ export const useSidebarStore = create<SidebarState>()(
             }
           };
 
-          const collectionScripts = extractScripts(collection.event);
-          const importedItems = (collection.item || []).map((item: any) => processItem(item, { pre: null, post: null })).filter(Boolean);
+          const importedItems = (collection.item || []).map((item: any) => processItem(item)).filter(Boolean);
 
           const importedGlobals: KeyValue[] = [];
           if (collection.variable && Array.isArray(collection.variable)) {
@@ -664,14 +634,8 @@ export const useSidebarStore = create<SidebarState>()(
             ...importedGlobals
           ];
 
-          // 3. Update manifest with new order, globals, and collection-level scripts
+          // 3. Update manifest with new order and globals
           console.log('Updating manifest structure...');
-          
-          const existingScripts = currentManifest.workspace.scripts || { pre: null, post: null };
-          const mergedScripts = {
-            pre: [existingScripts.pre, collectionScripts.pre].filter(s => s && s.trim()).join('\n\n') || null,
-            post: [collectionScripts.post, existingScripts.post].filter(s => s && s.trim()).join('\n\n') || null
-          };
 
           await invoke('update_manifest_structure', {
             projectRoot,
@@ -679,7 +643,6 @@ export const useSidebarStore = create<SidebarState>()(
               ...currentManifest.workspace,
               order: newOrder,
               globals: mergedGlobals,
-              scripts: mergedScripts
             },
             name: currentWorkspaceName || undefined
           });

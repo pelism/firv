@@ -2,6 +2,6 @@
 import type { HttpMethod } from "./httpMethod";
 import type { KeyValue } from "./keyValue";
 import type { RequestBody } from "./requestBody";
-import type { ScriptConfig } from "./scriptConfig";
+import type { RequestTransforms } from "./requestTransforms";
 
-export type FirvRequest = { id: string, name: string, method: HttpMethod, url: string, headers: Array<KeyValue>, params: Array<KeyValue>, body: RequestBody, scripts: ScriptConfig, };
+export type FirvRequest = { id: string, name: string, method: HttpMethod, url: string, headers: Array<KeyValue>, params: Array<KeyValue>, body: RequestBody, transforms: RequestTransforms, };

@@ -6,7 +6,6 @@ use reqwest::{Client, Method};
 use serde::{Deserialize, Serialize};
 
 use crate::models::{request::HttpMethod, request::RequestBody, FirvRequest};
-use crate::scripting::execute_script;
 use crate::variables::VariableResolver;
 
 pub static CLIENT: LazyLock<Client> = LazyLock::new(|| {
@@ -29,14 +28,6 @@ pub async fn run_request(
     request: FirvRequest,
     mut resolver: VariableResolver,
 ) -> Result<FirvResponse, String> {
-    // 1. Pre-request Script
-    if let Some(pre_script) = &request.scripts.pre {
-        if !pre_script.trim().is_empty() {
-            let mut dummy_logs = Vec::new();
-            execute_script(pre_script, &mut resolver.globals, &mut resolver.request_vars, None, None, &mut dummy_logs)?;
-        }
-    }
-
     let method = match request.method {
         HttpMethod::GET => Method::GET,
         HttpMethod::POST => Method::POST,
@@ -119,21 +110,6 @@ pub async fn run_request(
         time_ms: elapsed,
         size_bytes,
     };
-
-    // 2. Post-response Script
-    if let Some(post_script) = &request.scripts.post {
-        if !post_script.trim().is_empty() {
-            let mut dummy_logs = Vec::new();
-            execute_script(
-                post_script,
-                &mut resolver.globals,
-                &mut resolver.request_vars,
-                None,
-                Some(&firv_resp),
-                &mut dummy_logs,
-            )?;
-        }
-    }
 
     Ok(firv_resp)
 }

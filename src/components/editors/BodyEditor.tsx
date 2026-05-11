@@ -1,15 +1,15 @@
 import React, { useCallback, useMemo, useEffect, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
-import { yaml } from '@codemirror/lang-yaml';
 import { EditorView, Decoration, DecorationSet } from '@codemirror/view';
 import { StateField, Extension } from '@codemirror/state';
 
 interface BodyEditorProps {
   value: string;
-  mode: 'json' | 'yaml' | 'raw' | 'none';
+  mode: 'json' | 'form' | 'raw' | 'none';
   onChange: (newValue: string) => void;
   onFormat?: () => void;
+  highlightLine?: number | null;
 }
 
 const firvVariableDecoration = Decoration.mark({ class: 'cm-firv-variable bg-blue-100 text-blue-600 rounded px-1 font-semibold' });
@@ -39,7 +39,19 @@ const firvVariableExtension = StateField.define<DecorationSet>({
   provide: f => EditorView.decorations.from(f)
 });
 
-export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, onFormat }) => {
+const lineHighlightExtension = (highlightLine?: number | null): Extension => {
+  if (!highlightLine || highlightLine < 1) return [];
+  const decorations: any[] = [];
+  const lineDeco = Decoration.line({ class: 'cm-firv-line-error bg-red-500/10' });
+  return EditorView.decorations.of((view) => {
+    const ranges: any[] = [];
+    const line = view.state.doc.line(Math.min(highlightLine, view.state.doc.lines));
+    ranges.push(lineDeco.range(line.from));
+    return Decoration.set(ranges);
+  });
+};
+
+export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, onFormat, highlightLine }) => {
   const [localValue, setLocalValue] = useState(value);
   const [theme, setTheme] = useState<'light' | 'dark'>(
     window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
@@ -73,14 +85,12 @@ export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, o
   }
 
   const extensions = useMemo(() => {
-    const exts: Extension[] = [firvVariableExtension];
+    const exts: Extension[] = [firvVariableExtension, lineHighlightExtension(highlightLine)];
     if (mode === 'json') {
       exts.push(json());
-    } else if (mode === 'yaml' || mode === 'raw') {
-      exts.push(yaml());
     }
     return exts;
-  }, [mode]);
+  }, [mode, highlightLine]);
 
   const handleFormat = () => {
     if (mode === 'json') {
@@ -109,16 +119,7 @@ export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, o
 
   return (
     <div className="flex flex-col h-full w-full bg-white relative border rounded" onKeyDown={handleKeyDown}>
-      <div className="flex justify-end p-2 absolute top-0 right-4 z-10">
-        <button
-          onClick={handleFormat}
-          disabled={mode !== 'json'}
-          className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 rounded shadow-sm border"
-        >
-          Format JSON
-        </button>
-      </div>
-      <div className="flex-1 overflow-auto mt-8">
+      <div className="flex-1 overflow-auto">
         <CodeMirror
           value={localValue}
           height="100%"

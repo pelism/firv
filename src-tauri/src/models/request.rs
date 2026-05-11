@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::models::manifest::ScriptConfig;
-
 #[derive(Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "firvRequest.ts")]
 pub struct FirvRequest {
@@ -20,7 +18,7 @@ pub struct FirvRequest {
     pub body: RequestBody,
 
     #[serde(default)]
-    pub scripts: ScriptConfig,
+    pub transforms: RequestTransforms,
 }
 
 #[derive(Debug, Serialize, Deserialize, TS)]
@@ -36,7 +34,7 @@ pub enum HttpMethod {
     OPTIONS,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
 #[ts(export, export_to = "keyValue.ts")]
 pub struct KeyValue {
     pub key: String,
@@ -55,6 +53,55 @@ pub enum RequestBody {
     Formdata(Vec<KeyValue>),
 }
 
+#[derive(Debug, Serialize, Deserialize, Default, TS, Clone)]
+#[serde(default)]
+#[ts(export, export_to = "requestTransforms.ts")]
+pub struct RequestTransforms {
+    pub pre_request_template: Option<String>,
+    pub response_extractions: Vec<RequestExtractionRule>,
+    pub before_run: Vec<BeforeRunStep>,
+    pub chain_steps: Vec<RequestChainStep>,
+}
+
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "beforeRunStep.ts")]
+pub struct BeforeRunStep {
+    pub request_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "requestChainStep.ts")]
+pub struct RequestChainStep {
+    pub when: ChainCondition,
+    pub next_request_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "chainCondition.ts")]
+pub enum ChainCondition {
+    OnSuccess,
+    OnFailure,
+}
+
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "requestExtractionRule.ts")]
+pub struct RequestExtractionRule {
+    pub target: String,
+    pub source: ExtractionSource,
+    pub pattern: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "extractionSource.ts")]
+pub enum ExtractionSource {
+    ResponseBodyJson,
+    ResponseBodyRaw,
+}
 
 fn default_true() -> bool {
     true

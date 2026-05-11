@@ -3,7 +3,6 @@ mod hydration;
 mod lifecycle;
 mod models;
 mod runner;
-pub mod scripting;
 mod storage;
 pub mod variables;
 mod watcher;

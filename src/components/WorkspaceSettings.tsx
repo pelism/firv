@@ -1,15 +1,12 @@
 import { useState, useEffect } from 'react';
 import { X, Save, Settings2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { ScriptEditor } from './editors/ScriptEditor';
 import { useSidebarStore } from '../store/sidebarStore';
 import { useAppStore } from '../store/appStore';
 import { KVEditor, KeyValue } from './editors/KVEditor';
 
 export function WorkspaceSettings() {
   const [name, setName] = useState('');
-  const [preScript, setPreScript] = useState('');
-  const [postScript, setPostScript] = useState('');
   const [variables, setVariables] = useState<KeyValue[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const { projectPath, setWorkspaceName: setStoreWorkspaceName, setWorkspaceSettingsOpen, ensureWorkspace, setActiveMenu } = useSidebarStore();
@@ -33,10 +30,6 @@ export function WorkspaceSettings() {
     try {
       const manifest: any = await invoke('get_manifest', { projectPath: currentPath });
       setName(manifest.name || '');
-      if (manifest.workspace.scripts) {
-        setPreScript(manifest.workspace.scripts.pre || '');
-        setPostScript(manifest.workspace.scripts.post || '');
-      }
       if (manifest.workspace.globals) {
         setVariables(manifest.workspace.globals);
       }
@@ -62,10 +55,6 @@ export function WorkspaceSettings() {
       const updatedWorkspace = {
         ...manifest.workspace,
         globals,
-        scripts: {
-          pre: preScript || null,
-          post: postScript || null
-        }
       };
 
       await invoke('update_manifest_structure', {
@@ -161,35 +150,7 @@ export function WorkspaceSettings() {
           </section>
 
           {/* Pre-request Script Section */}
-          <section className="space-y-4">
-            <div>
-              <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Pre-request Script</h2>
-              <p className="text-sm text-zinc-500">This script runs before every request in the workspace. Use it to set dynamic headers or variables.</p>
-            </div>
-            <div className="h-[400px] rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-sm ring-1 ring-black/5 dark:ring-white/5">
-              <ScriptEditor 
-                title="" 
-                value={preScript} 
-                onChange={setPreScript}
-                placeholder="// Runs before every request in the workspace..."
-              />
-            </div>
-          </section>
-
-          {/* Post-request Script Section */}
           <section className="space-y-4 pb-12">
-            <div>
-              <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Post-request</h2>
-              <p className="text-sm text-zinc-500">This script runs after every request in the workspace. Use it for global testing or response processing.</p>
-            </div>
-            <div className="h-[400px] rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-sm ring-1 ring-black/5 dark:ring-white/5">
-              <ScriptEditor 
-                title="" 
-                value={postScript} 
-                onChange={setPostScript}
-                placeholder="// Runs after every request in the workspace..."
-              />
-            </div>
           </section>
         </div>
       </div>
