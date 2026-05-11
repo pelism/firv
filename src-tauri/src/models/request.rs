@@ -59,8 +59,15 @@ pub enum RequestBody {
 pub struct RequestTransforms {
     pub pre_request_template: Option<String>,
     pub response_extractions: Vec<RequestExtractionRule>,
-    pub before_run: Vec<RequestChainStep>,
+    pub before_run: Vec<BeforeRunStep>,
     pub chain_steps: Vec<RequestChainStep>,
+}
+
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "beforeRunStep.ts")]
+pub struct BeforeRunStep {
+    pub request_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, TS, Clone)]

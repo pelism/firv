@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 use std::path::Path;
 
-use crate::models::{request::{ChainCondition, HttpMethod, RequestBody, FirvRequest}, request::RequestChainStep};
+use crate::models::{request::{BeforeRunStep, ChainCondition, HttpMethod, RequestBody, FirvRequest, RequestChainStep}};
 use crate::runner::{FirvResponse, CLIENT};
 use crate::variables::{VariableResolver, VariableTraceEntry};
 
@@ -17,14 +17,14 @@ pub struct HydratedRequestInfo {
 }
 
 #[async_recursion::async_recursion]
-async fn run_chain_step(
+async fn run_request_step_by_id(
     project_root: &str,
     workspace_vars: &[crate::models::request::KeyValue],
-    step: &RequestChainStep,
+    request_id: &str,
     current_resolver: &mut VariableResolver,
     depth: usize,
 ) -> Result<Option<LifecycleResultSummary>, String> {
-    let next_path = Path::new(project_root).join("requests").join(format!("{}.yaml", step.next_request_id));
+    let next_path = Path::new(project_root).join("requests").join(format!("{}.yaml", request_id));
     let next_request = match std::fs::read_to_string(&next_path)
         .ok()
         .and_then(|content| serde_yaml::from_str::<FirvRequest>(&content).ok())
@@ -41,11 +41,47 @@ async fn run_chain_step(
     }
 
     Ok(Some(LifecycleResultSummary {
-        request_id: step.next_request_id.clone(),
+        request_id: request_id.to_string(),
         success: next_result.response.as_ref().map(|r| r.status < 400).unwrap_or(false),
         status: next_result.response.as_ref().map(|r| r.status),
         execution_time_ms: next_result.execution_time_ms,
     }))
+}
+
+#[async_recursion::async_recursion]
+async fn run_before_run_step(
+    project_root: &str,
+    workspace_vars: &[crate::models::request::KeyValue],
+    step: &BeforeRunStep,
+    current_resolver: &mut VariableResolver,
+    depth: usize,
+) -> Result<Option<LifecycleResultSummary>, String> {
+    run_request_step_by_id(
+        project_root,
+        workspace_vars,
+        &step.request_id,
+        current_resolver,
+        depth,
+    )
+    .await
+}
+
+#[async_recursion::async_recursion]
+async fn run_chain_step(
+    project_root: &str,
+    workspace_vars: &[crate::models::request::KeyValue],
+    step: &RequestChainStep,
+    current_resolver: &mut VariableResolver,
+    depth: usize,
+) -> Result<Option<LifecycleResultSummary>, String> {
+    run_request_step_by_id(
+        project_root,
+        workspace_vars,
+        &step.next_request_id,
+        current_resolver,
+        depth,
+    )
+    .await
 }
 
 #[derive(Debug, Serialize)]
@@ -108,7 +144,7 @@ async fn execute_chain(
 
     // --- Before-run chain ---
     for step in &request.transforms.before_run {
-        if let Some(summary) = run_chain_step(&project_root, &workspace_vars_for_chain, step, &mut resolver, depth + 1).await? {
+        if let Some(summary) = run_before_run_step(&project_root, &workspace_vars_for_chain, step, &mut resolver, depth + 1).await? {
             before_run_results.push(summary);
         }
     }

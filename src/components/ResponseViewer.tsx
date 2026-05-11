@@ -74,7 +74,7 @@ function flattenJson(
 }
 
 export function ResponseViewer({ response }: ResponseViewerProps) {
-  const [mode, setMode] = useState<'Pretty' | 'Raw' | 'Preview'>('Pretty');
+  const [mode, setMode] = useState<'Pretty' | 'Raw'>('Pretty');
   const [searchQuery, setSearchQuery] = useState('');
   const [jmesQuery, setJmesQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'Body' | 'Headers' | 'Trace'>('Body');
@@ -284,7 +284,6 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
           >
             <option value="Pretty">Pretty</option>
             <option value="Raw">Raw</option>
-            <option value="Preview">Preview</option>
           </select>
           <button 
             onClick={handleSave}
@@ -380,20 +379,7 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
                 </div>
               )}
 
-              {mode === 'Preview' && isImage ? (
-                <div className="p-8 flex items-center justify-center h-full">
-                  <div className="text-muted-foreground text-center">
-                    <Database size={48} className="mx-auto mb-4 opacity-10" />
-                    <p className="text-sm">Image preview coming soon</p>
-                  </div>
-                </div>
-              ) : mode === 'Preview' && isPdf ? (
-                <div className="p-8 flex items-center justify-center h-full">
-                  <p className="text-muted-foreground">PDF Viewer not available in this version.</p>
-                </div>
-              ) : mode === 'Preview' && isHtml ? (
-                <iframe srcDoc={body} className="w-full h-full border-none bg-white" title="preview" />
-              ) : mode === 'Raw' || !isJson ? (
+              {mode === 'Raw' || !isJson ? (
                 <pre className="p-6 text-xs font-mono whitespace-pre-wrap text-foreground bg-muted/5">{body}</pre>
               ) : mode === 'Pretty' && isParsing ? (
                 <div className="p-12 text-center text-muted-foreground">
@@ -494,9 +480,9 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
             </div>
 
             <div className="rounded-xl border border-border bg-muted/20 p-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Variable Provenance</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Variable Source</h3>
               {variableTrace.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No provenance details were returned.</div>
+                <div className="text-sm text-muted-foreground">No source details were returned.</div>
               ) : (
                 <div className="space-y-2">
                   {variableTrace.map((entry, idx) => (
@@ -544,6 +530,21 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
                   <div><span className="text-muted-foreground">URL:</span> {requestInfo.url}</div>
                   <div><span className="text-muted-foreground">Method:</span> {requestInfo.method}</div>
                   <div><span className="text-muted-foreground">Body:</span> {requestInfo.body || '(empty)'}</div>
+                </div>
+                <div className="space-y-2">
+                  <div className="font-mono text-xs text-foreground/80 break-all"><span className="text-muted-foreground">Headers:</span></div>
+                  {requestInfo.headers && Object.keys(requestInfo.headers).length > 0 ? (
+                    <div className="space-y-1 font-mono text-xs text-foreground/80">
+                      {Object.entries(requestInfo.headers).map(([key, value]) => (
+                        <div key={key} className="grid grid-cols-[180px_1fr] gap-3">
+                          <div className="text-primary font-semibold break-all">{key}</div>
+                          <div className="break-all">{String(value)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">No headers were added.</div>
+                  )}
                 </div>
               </div>
             )}
