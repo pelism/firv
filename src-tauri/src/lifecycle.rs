@@ -128,7 +128,7 @@ async fn execute_chain(
     }
 
     let start_time = Instant::now();
-    let mut logs = Vec::new();
+    let logs = Vec::new();
     let mut script_errors = Vec::new();
     let workspace_vars_for_chain = workspace_vars.clone();
 

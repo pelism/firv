@@ -18,7 +18,7 @@ const firvVariableExtension = StateField.define<DecorationSet>({
   create(state) {
     const widgets: any[] = [];
     const text = state.doc.toString();
-    const regex = /\{\{[\w_-]+\}\}/g;
+    const regex = /\{\{[\w_-]+}}/g;
     let match;
     while ((match = regex.exec(text)) !== null) {
       widgets.push(firvVariableDecoration.range(match.index, match.index + match[0].length));
@@ -29,7 +29,7 @@ const firvVariableExtension = StateField.define<DecorationSet>({
     if (!tr.docChanged) return decorations.map(tr.changes);
     const widgets: any[] = [];
     const text = tr.state.doc.toString();
-    const regex = /\{\{[\w_-]+\}\}/g;
+    const regex = /\{\{[\w_-]+}}/g;
     let match;
     while ((match = regex.exec(text)) !== null) {
       widgets.push(firvVariableDecoration.range(match.index, match.index + match[0].length));
@@ -41,7 +41,6 @@ const firvVariableExtension = StateField.define<DecorationSet>({
 
 const lineHighlightExtension = (highlightLine?: number | null): Extension => {
   if (!highlightLine || highlightLine < 1) return [];
-  const decorations: any[] = [];
   const lineDeco = Decoration.line({ class: 'cm-firv-line-error bg-red-500/10' });
   return EditorView.decorations.of((view) => {
     const ranges: any[] = [];

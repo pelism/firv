@@ -26,7 +26,7 @@ pub struct FirvResponse {
 
 pub async fn run_request(
     request: FirvRequest,
-    mut resolver: VariableResolver,
+    resolver: VariableResolver,
 ) -> Result<FirvResponse, String> {
     let method = match request.method {
         HttpMethod::GET => Method::GET,

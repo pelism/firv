@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Send, Settings, Save, FolderPlus, Check, CircleSlash2 } from 'lucide-react';
+import { Send, Save, FolderPlus, Check, CircleSlash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { KVEditor, KeyValue } from './editors/KVEditor';
 import { BodyEditor } from './editors/BodyEditor';
@@ -641,7 +641,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
                   ))}
                 </div>
               </div>
-              <div className="flex-1 min-h-[300px] overflow-hidden">
+              <div className="flex-1 min-h-75 overflow-hidden">
                 {bodyMode === 'none' ? (
                   <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm space-y-2 bg-muted/50">
                     <div className="p-3 rounded-full bg-muted">
@@ -717,7 +717,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
                       </div>
                     )}
                     {bodyMode === 'json' && jsonViewMode === 'Preview' ? (
-                      <div className="flex-1 min-h-[300px] border border-border rounded-xl overflow-hidden shadow-sm">
+                      <div className="flex-1 min-h-75 border border-border rounded-xl overflow-hidden shadow-sm">
                         {renderJsonPreview()}
                       </div>
                     ) : (
@@ -736,7 +736,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
                   value={templateText}
                   onChange={e => setTemplateText(e.target.value)}
                   placeholder="Build or rewrite the body before the request is sent."
-                  className="w-full min-h-[140px] rounded-xl border border-border bg-background p-3 text-sm font-mono outline-none resize-y"
+                  className="w-full min-h-35 rounded-xl border border-border bg-background p-3 text-sm font-mono outline-none resize-y"
                 />
               </div>
 

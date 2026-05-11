@@ -246,10 +246,7 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
   }
 
   const isJson = headers['content-type']?.includes('application/json');
-  const isImage = headers['content-type']?.includes('image/');
-  const isPdf = headers['content-type']?.includes('application/pdf');
-  const isHtml = headers['content-type']?.includes('text/html');
-
+  
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
       {/* Metric Bar */}

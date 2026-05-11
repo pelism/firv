@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::models::request::{HttpMethod, KeyValue};
+use crate::models::request::{KeyValue};
 
 #[derive(Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "firvManifest.ts")]
