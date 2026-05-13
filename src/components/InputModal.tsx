@@ -32,7 +32,7 @@ export const InputModal: React.FC = () => {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()}>
-      <DialogContent className="sm:max-w-[440px]">
+      <DialogContent className="sm:max-w-[440px]" hideClose>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>

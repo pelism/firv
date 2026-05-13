@@ -34,6 +34,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [bodyErrorLine, setBodyErrorLine] = useState<number | null>(null);
   const hasHydratedRef = useRef(false);
+  const isHydratingRef = useRef(false);
   
   const { isRunning, setIsRunning, setResponse, addLog, setDirty, dirtyRequests, scratchpadRequestData } = useAppStore();
   const clearScratchpadRequestData = useAppStore(state => state.clearScratchpadRequestData);
@@ -123,11 +124,28 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     chain_steps: chainSteps.map(step => ({ when: step.when, next_request_id: step.next_request_id })),
   });
 
+  const normalizeBodyMode = (mode: string | undefined) => {
+    if (mode === 'formdata') return 'form';
+    return mode || 'json';
+  };
+
+  const getHydratedBodySnapshot = (reqBody: any) => {
+    if (!reqBody) return '';
+    if (reqBody.mode === 'formdata') return '';
+    return reqBody.data || '';
+  };
+
+  const getHydratedFormBodySnapshot = (reqBody: any) => {
+    if (!reqBody || reqBody.mode !== 'formdata' || !Array.isArray(reqBody.data)) return [];
+    return reqBody.data.map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled }));
+  };
+
   // Hydration
   useEffect(() => {
     async function loadRequest() {
       if (projectPath) {
         try {
+          isHydratingRef.current = true;
           const req: any = await invoke('get_request', {
             projectRoot: projectPath,
             id: requestId,
@@ -172,9 +190,9 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
             url: req.url || '',
             headers: (req.headers || []).map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled })),
             params: (req.params || []).map((p: any) => ({ key: p.key, value: p.value, enabled: p.enabled })),
-            bodyMode: req.body?.mode || 'json',
-            body: req.body?.data || '',
-            formBody: req.body?.mode === 'formdata' && Array.isArray(req.body?.data) ? req.body.data.map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled })) : [],
+            bodyMode: normalizeBodyMode(req.body?.mode),
+            body: getHydratedBodySnapshot(req.body),
+            formBody: getHydratedFormBodySnapshot(req.body),
             transforms: {
               pre_request_template: req.transforms?.pre_request_template || '',
               response_extractions: req.transforms?.response_extractions || [],
@@ -192,14 +210,17 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           if (scratchpadRequest) {
             clearScratchpadRequestData(requestId);
           }
+          isHydratingRef.current = false;
           return;
         } catch (err) {
           console.error("Failed to load request", err);
+          isHydratingRef.current = false;
           // If it doesn't exist in the workspace, fall back to scratchpad/new-request behavior.
         }
       }
 
       if (scratchpadRequest) {
+        isHydratingRef.current = true;
         const req = scratchpadRequest;
         setMethod(req.method || 'GET');
         setUrl(req.url || '');
@@ -231,12 +252,13 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           url: req.url || '',
           headers: (req.headers || []).map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled })),
           params: (req.params || []).map((p: any) => ({ key: p.key, value: p.value, enabled: p.enabled })),
-          bodyMode: req.body?.mode || 'json',
-          body: req.body?.data || '',
-          formBody: req.body?.mode === 'formdata' && Array.isArray(req.body?.data) ? req.body.data.map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled })) : [],
+          bodyMode: normalizeBodyMode(req.body?.mode),
+          body: getHydratedBodySnapshot(req.body),
+          formBody: getHydratedFormBodySnapshot(req.body),
         };
         hasHydratedRef.current = true;
         setDirty(requestId, false);
+        isHydratingRef.current = false;
         return;
       }
 
@@ -267,6 +289,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       setBeforeRunChain([]);
       setChainSteps([]);
       setDirty(requestId, true); // Mark as dirty since it doesn't exist on disk
+      isHydratingRef.current = false;
     }
     loadRequest();
   }, [requestId, projectPath, scratchpadRequest, getRequestName, setDirty, clearScratchpadRequestData]);
@@ -326,6 +349,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
   useEffect(() => {
     if (!hasHydratedRef.current) return;
+    if (isHydratingRef.current) return;
 
     const currentState = {
       method,

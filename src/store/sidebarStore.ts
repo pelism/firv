@@ -545,7 +545,10 @@ export const useSidebarStore = create<SidebarState>()(
               let body: any = { mode: 'none' };
               if (req.body) {
                 if (req.body.mode === 'raw') {
-                  body = { mode: 'raw', data: req.body.raw || '' };
+                  const rawLanguage = req.body.options?.raw?.language;
+                  body = rawLanguage === 'json'
+                    ? { mode: 'json', data: req.body.raw || '' }
+                    : { mode: 'raw', data: req.body.raw || '' };
                 } else if (req.body.mode === 'formdata') {
                   body = {
                     mode: 'formdata',

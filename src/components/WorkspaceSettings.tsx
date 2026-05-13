@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { X, Save, Settings2 } from 'lucide-react';
+import { Save, Settings2, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useSidebarStore } from '../store/sidebarStore';
 import { useAppStore } from '../store/appStore';
+import { Button } from './ui/button';
 import { KVEditor, KeyValue } from './editors/KVEditor';
 
 export function WorkspaceSettings() {
@@ -90,21 +91,23 @@ export function WorkspaceSettings() {
         </div>
         
         <div className="flex items-center gap-3">
-          <button
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleClose}
+            className="flex items-center gap-2 rounded-xl text-sm font-bold"
+          >
+            <X size={16} />
+            Close
+          </Button>
+          <Button
             onClick={handleSave}
             disabled={isSaving}
-            className="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 rounded-xl text-sm font-bold transition-all shadow-lg shadow-zinc-900/20 dark:shadow-zinc-100/20 disabled:opacity-50 active:scale-95"
+            className="flex items-center gap-2 rounded-xl text-sm font-bold shadow-lg shadow-zinc-900/20 dark:shadow-zinc-100/20 active:scale-95"
           >
             <Save size={16} />
             {isSaving ? 'Saving...' : 'Save Changes'}
-          </button>
-          <div className="w-px h-6 bg-zinc-200 dark:border-zinc-800 mx-1" />
-          <button
-            onClick={handleClose}
-            className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-xl text-zinc-500 transition-colors active:scale-90"
-          >
-            <X size={20} />
-          </button>
+          </Button>
         </div>
       </header>
 

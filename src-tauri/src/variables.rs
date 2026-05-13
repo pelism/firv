@@ -1,6 +1,6 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 use liquid::ParserBuilder;
 use liquid::model::{Object, Value};
@@ -71,6 +71,8 @@ pub struct VariableResolver {
     pub environment: HashMap<String, String>,
     pub folder_stack: Vec<HashMap<String, String>>,
     pub request_vars: HashMap<String, String>,
+    #[serde(skip)]
+    used_variable_keys: HashSet<String>,
 }
 
 impl VariableResolver {
@@ -78,23 +80,35 @@ impl VariableResolver {
         Self::default()
     }
 
+    fn normalize_key(key: &str) -> String {
+        key.to_ascii_lowercase()
+    }
+
+    fn record_used_keys_from_input(&mut self, input: &str) {
+        for caps in TEMPLATE_REGEX.captures_iter(input) {
+            self.used_variable_keys.insert(Self::normalize_key(&caps[1]));
+        }
+    }
+
     pub fn merge(&self) -> HashMap<String, String> {
         let mut final_map = HashMap::new();
 
-        final_map.extend(self.globals.clone());
+        for (k, v) in &self.globals {
+            final_map.insert(Self::normalize_key(k), v.clone());
+        }
 
         for (k, v) in &self.environment {
-            final_map.insert(k.clone(), v.clone());
+            final_map.insert(Self::normalize_key(k), v.clone());
         }
 
         for folder_vars in &self.folder_stack {
             for (k, v) in folder_vars {
-                final_map.insert(k.clone(), v.clone());
+                final_map.insert(Self::normalize_key(k), v.clone());
             }
         }
 
         for (k, v) in &self.request_vars {
-            final_map.insert(k.clone(), v.clone());
+            final_map.insert(Self::normalize_key(k), v.clone());
         }
 
         final_map
@@ -102,8 +116,12 @@ impl VariableResolver {
 
     pub fn trace(&self) -> Vec<VariableTraceEntry> {
         let mut entries = Vec::new();
+        let should_include = |key: &str| self.used_variable_keys.contains(&Self::normalize_key(key));
 
         for (key, value) in &self.globals {
+            if !should_include(key) {
+                continue;
+            }
             entries.push(VariableTraceEntry {
                 key: key.clone(),
                 value: value.clone(),
@@ -112,6 +130,9 @@ impl VariableResolver {
             });
         }
         for (key, value) in &self.environment {
+            if !should_include(key) {
+                continue;
+            }
             entries.push(VariableTraceEntry {
                 key: key.clone(),
                 value: value.clone(),
@@ -121,6 +142,9 @@ impl VariableResolver {
         }
         for (index, folder_vars) in self.folder_stack.iter().enumerate() {
             for (key, value) in folder_vars {
+                if !should_include(key) {
+                    continue;
+                }
                 entries.push(VariableTraceEntry {
                     key: key.clone(),
                     value: value.clone(),
@@ -130,6 +154,9 @@ impl VariableResolver {
             }
         }
         for (key, value) in &self.request_vars {
+            if !should_include(key) {
+                continue;
+            }
             entries.push(VariableTraceEntry {
                 key: key.clone(),
                 value: value.clone(),
@@ -141,12 +168,14 @@ impl VariableResolver {
         entries
     }
 
-    pub fn resolve_string(&self, input: &str) -> String {
+    pub fn resolve_string(&mut self, input: &str) -> String {
+        self.record_used_keys_from_input(input);
         let merged_vars = self.merge();
         self.resolve_string_with_depth(input, &merged_vars, 0)
     }
 
-    pub fn render_liquid(&self, input: &str) -> Result<String, String> {
+    pub fn render_liquid(&mut self, input: &str) -> Result<String, String> {
+        self.record_used_keys_from_input(input);
         let parser = ParserBuilder::with_stdlib()
             .build()
             .map_err(|e| e.to_string())?;
@@ -184,7 +213,7 @@ impl VariableResolver {
     }
 
     fn resolve_string_with_depth(
-        &self,
+        &mut self,
         input: &str,
         variables: &HashMap<String, String>,
         depth: usize,
@@ -197,8 +226,9 @@ impl VariableResolver {
 
         let resolved = TEMPLATE_REGEX
             .replace_all(input, |caps: &regex::Captures| {
-                let var_name = &caps[1];
-                if let Some(val) = variables.get(var_name) {
+                let var_name = Self::normalize_key(&caps[1]);
+                if let Some(val) = variables.get(&var_name) {
+                    self.used_variable_keys.insert(var_name.to_string());
                     changed = true;
                     val.to_string()
                 } else {
@@ -250,7 +280,7 @@ mod tests {
 
     #[test]
     fn resolve_string_leaves_unknown_placeholders_unchanged() {
-        let resolver = VariableResolver::new();
+        let mut resolver = VariableResolver::new();
 
         assert_eq!(resolver.resolve_string("{{missing}}"), "{{missing}}");
     }
@@ -261,6 +291,19 @@ mod tests {
         resolver.globals.insert("name".to_string(), "Firv".to_string());
 
         assert_eq!(resolver.render_liquid("Hello {{ name }}").unwrap(), "Hello Firv");
+    }
+
+    #[test]
+    fn trace_only_includes_used_variables() {
+        let mut resolver = VariableResolver::new();
+        resolver.globals.insert("used".to_string(), "1".to_string());
+        resolver.globals.insert("unused".to_string(), "2".to_string());
+
+        assert_eq!(resolver.resolve_string("/items/{{used}}"), "/items/1");
+
+        let trace = resolver.trace();
+        assert_eq!(trace.len(), 1);
+        assert_eq!(trace[0].key, "used");
     }
 
     #[test]

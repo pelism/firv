@@ -315,3 +315,37 @@ async fn execute_chain(
         chained_results,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::request::{HttpMethod, RequestBody, RequestTransforms};
+
+    #[test]
+    fn trace_only_includes_used_variables() {
+        let mut resolver = VariableResolver::new();
+        resolver.globals.insert("used".to_string(), "1".to_string());
+        resolver.globals.insert("unused".to_string(), "2".to_string());
+
+        let rendered = resolver.resolve_string("/items/{{used}}");
+        assert_eq!(rendered, "/items/1");
+
+        let trace = resolver.trace();
+        assert_eq!(trace.len(), 1);
+        assert_eq!(trace[0].key, "used");
+    }
+
+    #[test]
+    fn lifecycle_request_shape_still_compiles_for_trace_use() {
+        let _request = FirvRequest {
+            id: "id".to_string(),
+            name: "name".to_string(),
+            method: HttpMethod::GET,
+            url: "https://example.com/{{used}}".to_string(),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        };
+    }
+}
