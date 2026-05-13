@@ -525,8 +525,6 @@ export const useSidebarStore = create<SidebarState>()(
           const content = await readTextFile(selected);
           const collection = JSON.parse(content);
 
-          const importName = collection.info?.name || 'Imported Collection';
-          
           const projectRoot = projectPath;
           
           const requestsToSave: any[] = [];
@@ -622,11 +620,7 @@ export const useSidebarStore = create<SidebarState>()(
 
           const newOrder = [
             ...(currentManifest.workspace.order || []),
-            {
-              type: 'folder',
-              name: importName,
-              items: importedItems,
-            }
+            ...importedItems
           ];
 
           const mergedGlobals = [
@@ -650,7 +644,7 @@ export const useSidebarStore = create<SidebarState>()(
           console.log('Import successful, refreshing sidebar...');
           await get().fetchSidebar();
           await get().loadOrphans();
-          useAppStore.getState().addLog(`Successfully imported Postman collection: ${importName}`);
+          useAppStore.getState().addLog(`Successfully imported Postman collection`);
 
         } catch (e) {
           console.error("Failed to import Postman collection:", e);
