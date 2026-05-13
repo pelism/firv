@@ -712,7 +712,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
                     <div className="space-y-3">
                       {formBody.length === 0 && (
                         <div className="text-sm text-muted-foreground border border-dashed border-border rounded-xl p-4 bg-muted/20">
-                          No form fields yet. Add one to build a multipart form body.
+                          No form fields yet. Add one to build a URL-encoded form body.
                         </div>
                       )}
                       {formBody.map((field, index) => (

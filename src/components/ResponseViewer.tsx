@@ -98,7 +98,9 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
   }, []);
 
   const traceableResponse = response as TraceableResponse | null;
-  const { status, status_text, time_ms, size_bytes, body, headers } = response || { status: 0, status_text: '', time_ms: 0, size_bytes: 0, body: '', headers: {} };
+  const safeResponse = response || { status: 0, status_text: '', time_ms: 0, size_bytes: 0, body: '', headers: {} };
+  const { status, status_text, time_ms, size_bytes, body } = safeResponse;
+  const headers = safeResponse.headers ?? {};
   const trace = traceableResponse?.__trace || {};
   const requestInfo = traceableResponse?.__request || null;
   const errors = traceableResponse?.__errors || [];

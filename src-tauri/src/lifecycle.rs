@@ -213,15 +213,18 @@ async fn execute_chain(
     if let Some(body) = &hydrated_info.body {
         req_builder = req_builder.body(body.clone());
     } else if let RequestBody::Formdata(fields) = &request.body {
-        let mut form = reqwest::multipart::Form::new();
+        let mut form_pairs = Vec::new();
         for field in fields {
             if field.enabled {
                 let res_key = resolver.render_liquid(&field.key).unwrap_or_else(|_| resolver.resolve_string(&field.key));
                 let res_val = resolver.render_liquid(&field.value).unwrap_or_else(|_| resolver.resolve_string(&field.value));
-                form = form.text(res_key, res_val);
+                form_pairs.push((res_key, res_val));
             }
         }
-        req_builder = req_builder.multipart(form);
+
+        req_builder = req_builder
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .form(&form_pairs);
     }
 
     // Stage 3: Network Execution
