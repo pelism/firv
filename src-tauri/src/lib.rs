@@ -4,11 +4,51 @@ mod lifecycle;
 mod models;
 mod runner;
 mod storage;
+
 pub mod variables;
 mod watcher;
 
 use models::FirvManifest;
+use serde::{Deserialize, Serialize};
+use tauri::{Manager, PhysicalPosition, PhysicalSize, WindowEvent};
 use std::sync::Mutex;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WindowState {
+    width: u32,
+    height: u32,
+    x: i32,
+    y: i32,
+    maximized: bool,
+}
+
+fn window_state_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let mut path = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("Failed to resolve app config directory: {}", e))?;
+    path.push("window-state.json");
+    Ok(path)
+}
+
+fn load_window_state(app: &tauri::AppHandle) -> Option<WindowState> {
+    let path = window_state_path(app).ok()?;
+    let content = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+fn save_window_state(app: &tauri::AppHandle, state: &WindowState) -> Result<(), String> {
+    let path = window_state_path(app)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create window state directory: {}", e))?;
+    }
+
+    let content = serde_json::to_string(state)
+        .map_err(|e| format!("Failed to serialize window state: {}", e))?;
+    std::fs::write(path, content)
+        .map_err(|e| format!("Failed to write window state: {}", e))
+}
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -60,6 +100,54 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(watcher::WatcherHandle(Mutex::new(None)))
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                if let Some(state) = load_window_state(app.handle()) {
+                    if state.maximized {
+                        let _ = window.maximize();
+                    } else {
+                        let _ = window.set_size(PhysicalSize::new(state.width, state.height));
+                        let _ = window.set_position(PhysicalPosition::new(state.x, state.y));
+                    }
+                }
+
+                let app_handle = app.handle().clone();
+                let window_for_events = window.clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { .. } = event {
+                        if let Ok(maximized) = window_for_events.is_maximized() {
+                            let state = if maximized {
+                                let size = window_for_events.inner_size().ok();
+                                let position = window_for_events.outer_position().ok();
+                                WindowState {
+                                    width: size.map(|s| s.width).unwrap_or(800),
+                                    height: size.map(|s| s.height).unwrap_or(600),
+                                    x: position.map(|p| p.x).unwrap_or(100),
+                                    y: position.map(|p| p.y).unwrap_or(100),
+                                    maximized: true,
+                                }
+                            } else {
+                                let size = window_for_events.inner_size().ok();
+                                let position = window_for_events.outer_position().ok();
+                                WindowState {
+                                    width: size.map(|s| s.width).unwrap_or(800),
+                                    height: size.map(|s| s.height).unwrap_or(600),
+                                    x: position.map(|p| p.x).unwrap_or(100),
+                                    y: position.map(|p| p.y).unwrap_or(100),
+                                    maximized: false,
+                                }
+                            };
+
+                            if let Err(err) = save_window_state(&app_handle, &state) {
+                                eprintln!("{}", err);
+                            }
+                        }
+                    }
+                });
+            }
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             get_manifest,

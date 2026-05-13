@@ -12,19 +12,25 @@ export interface WorkerResponse {
   id: number;
 }
 
-self.onmessage = (e: MessageEvent<WorkerMessage>) => {
-  const { type, payload, id } = e.data;
-  
-  try {
-    if (type === 'PARSE_AND_FILTER') {
-      const { body, jmesQuery } = payload;
-      let parsed = JSON.parse(body);
-      if (jmesQuery && jmesQuery.trim() !== '') {
-        parsed = jmespath.search(parsed, jmesQuery);
-      }
-      self.postMessage({ type: 'SUCCESS', payload: { parsed }, id });
-    }
-  } catch (err: any) {
-    self.postMessage({ type: 'ERROR', payload: err.message, id });
+export function parseAndFilterResponse(body: string, jmesQuery: string) {
+  let parsed = JSON.parse(body);
+  if (jmesQuery && jmesQuery.trim() !== '') {
+    parsed = jmespath.search(parsed, jmesQuery);
   }
-};
+  return { parsed };
+}
+
+if (typeof self !== 'undefined' && 'postMessage' in self) {
+  self.onmessage = (e: MessageEvent<WorkerMessage>) => {
+    const { type, payload, id } = e.data;
+    
+    try {
+      if (type === 'PARSE_AND_FILTER') {
+        const { body, jmesQuery } = payload;
+        self.postMessage({ type: 'SUCCESS', payload: parseAndFilterResponse(body, jmesQuery), id });
+      }
+    } catch (err: any) {
+      self.postMessage({ type: 'ERROR', payload: err.message, id });
+    }
+  };
+}

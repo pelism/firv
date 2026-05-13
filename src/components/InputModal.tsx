@@ -32,13 +32,13 @@ export const InputModal: React.FC = () => {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[440px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             {description && <DialogDescription>{description}</DialogDescription>}
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 py-2">
             <Input
               autoFocus
               placeholder={placeholder}
@@ -46,7 +46,7 @@ export const InputModal: React.FC = () => {
               onChange={(e) => setValue(e.target.value)}
             />
           </div>
-          <DialogFooter>
+          <DialogFooter className="pt-2">
             <Button type="button" variant="outline" onClick={handleCancel}>
               Cancel
             </Button>

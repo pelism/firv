@@ -93,7 +93,7 @@ export function WorkspaceSettings() {
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50 active:scale-95"
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 rounded-xl text-sm font-bold transition-all shadow-lg shadow-zinc-900/20 dark:shadow-zinc-100/20 disabled:opacity-50 active:scale-95"
           >
             <Save size={16} />
             {isSaving ? 'Saving...' : 'Save Changes'}
@@ -126,7 +126,7 @@ export function WorkspaceSettings() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Enter workspace name..."
-                  className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 text-zinc-900 dark:text-zinc-100 transition-all"
+                  className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500/50 text-zinc-900 dark:text-zinc-100 transition-all"
                 />
               </div>
             </div>

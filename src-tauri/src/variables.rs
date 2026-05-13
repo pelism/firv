@@ -214,3 +214,103 @@ impl VariableResolver {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn resolver_with_values() -> VariableResolver {
+        let mut resolver = VariableResolver::new();
+        resolver.globals.insert("global".to_string(), "g".to_string());
+        resolver.environment.insert("env".to_string(), "e".to_string());
+        resolver.folder_stack.push(HashMap::from([("folder".to_string(), "f".to_string())]));
+        resolver.request_vars.insert("request".to_string(), "r".to_string());
+        resolver
+    }
+
+    #[test]
+    fn merge_applies_scope_precedence() {
+        let resolver = resolver_with_values();
+        let merged = resolver.merge();
+
+        assert_eq!(merged.get("global").unwrap(), "g");
+        assert_eq!(merged.get("env").unwrap(), "e");
+        assert_eq!(merged.get("folder").unwrap(), "f");
+        assert_eq!(merged.get("request").unwrap(), "r");
+    }
+
+    #[test]
+    fn resolve_string_replaces_nested_variables() {
+        let mut resolver = VariableResolver::new();
+        resolver.globals.insert("name".to_string(), "Firv".to_string());
+        resolver.globals.insert("greeting".to_string(), "Hello {{name}}".to_string());
+
+        assert_eq!(resolver.resolve_string("{{greeting}}!"), "Hello Firv!");
+    }
+
+    #[test]
+    fn resolve_string_leaves_unknown_placeholders_unchanged() {
+        let resolver = VariableResolver::new();
+
+        assert_eq!(resolver.resolve_string("{{missing}}"), "{{missing}}");
+    }
+
+    #[test]
+    fn render_liquid_uses_merged_variables() {
+        let mut resolver = VariableResolver::new();
+        resolver.globals.insert("name".to_string(), "Firv".to_string());
+
+        assert_eq!(resolver.render_liquid("Hello {{ name }}").unwrap(), "Hello Firv");
+    }
+
+    #[test]
+    fn raw_extraction_returns_matched_substring() {
+        let mut resolver = VariableResolver::new();
+        let rule = RequestExtractionRule {
+            target: "token".to_string(),
+            source: ExtractionSource::ResponseBodyRaw,
+            pattern: "abc123".to_string(),
+        };
+
+        let value = resolver.apply_extraction_rule(&rule, "prefix abc123 suffix").unwrap();
+        assert_eq!(value.as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn raw_extraction_rejects_empty_pattern() {
+        let mut resolver = VariableResolver::new();
+        let rule = RequestExtractionRule {
+            target: "token".to_string(),
+            source: ExtractionSource::ResponseBodyRaw,
+            pattern: "".to_string(),
+        };
+
+        assert!(resolver.apply_extraction_rule(&rule, "anything").is_err());
+    }
+
+    #[test]
+    fn json_extraction_supports_nested_paths_and_arrays() {
+        let mut resolver = VariableResolver::new();
+        let rule = RequestExtractionRule {
+            target: "email".to_string(),
+            source: ExtractionSource::ResponseBodyJson,
+            pattern: "$.users[0].profile.email".to_string(),
+        };
+
+        let body = r#"{"users":[{"profile":{"email":"a@b.com"}}]}"#;
+        let value = resolver.apply_extraction_rule(&rule, body).unwrap();
+        assert_eq!(value.as_deref(), Some("a@b.com"));
+    }
+
+    #[test]
+    fn json_extraction_returns_error_for_invalid_json() {
+        let mut resolver = VariableResolver::new();
+        let rule = RequestExtractionRule {
+            target: "email".to_string(),
+            source: ExtractionSource::ResponseBodyJson,
+            pattern: "$.value".to_string(),
+        };
+
+        assert!(resolver.apply_extraction_rule(&rule, "not json").is_err());
+    }
+}

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
 import { Sidebar } from "./components/Sidebar";
 import { MenuSidebar } from "./components/MenuSidebar";
@@ -67,14 +67,14 @@ function App() {
 
   const handleFinishEdit = async () => {
     if (editingTabId && editingName.trim()) {
-      await updateRequestName(editingTabId, editingName.trim());
+      updateRequestName(editingTabId, editingName.trim());
     }
     setEditingTabId(null);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = async (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      handleFinishEdit();
+      await handleFinishEdit();
     } else if (e.key === 'Escape') {
       setEditingTabId(null);
     }
@@ -118,12 +118,12 @@ function App() {
         {isAppSettingsOpen && <AppSettings />}
         <MenuSidebar />
         <PanelGroup orientation="horizontal">
-          <Panel defaultSize={200} minSize={150} maxSize={500} className="border-r border-border">
+          <Panel defaultSize={225} minSize={225} maxSize={300} className="border-r border-border">
             <Sidebar />
           </Panel>
           
           <PanelResizeHandle className="w-1 group flex items-center justify-center bg-muted hover:bg-primary/50 cursor-col-resize transition-all dark:bg-zinc-900">
-            <div className="w-[1px] h-8 bg-border group-hover:bg-white/50 rounded-full" />
+            <div className="w-px h-8 bg-border group-hover:bg-white/50 rounded-full" />
           </PanelResizeHandle>
           
           <Panel defaultSize={80} minSize={60} className="flex flex-col bg-muted/50">
@@ -164,7 +164,7 @@ function App() {
                           />
                         ) : (
                           <div className="flex items-center gap-1.5">
-                            <span className="max-w-[120px] truncate">{name}</span>
+                            <span className="max-w-30 truncate">{name}</span>
                             {isDirty && (
                               <div className="w-1.5 h-1.5 rounded-full bg-primary" />
                             )}
@@ -223,7 +223,7 @@ function App() {
                 </Panel>
                 
                 <PanelResizeHandle className="h-1 group flex items-center justify-center bg-muted hover:bg-primary/50 cursor-row-resize transition-all dark:bg-zinc-900">
-                  <div className="h-[1px] w-8 bg-border group-hover:bg-white/50 rounded-full" />
+                  <div className="h-px w-8 bg-border group-hover:bg-white/50 rounded-full" />
                 </PanelResizeHandle>
                 
                 <Panel defaultSize={40} minSize={20} className="flex flex-col bg-background">

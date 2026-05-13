@@ -18,6 +18,7 @@ export interface AppState {
   setDirty: (id: string, isDirty: boolean) => void;
   scratchpadRequestData: Record<string, any>;
   setScratchpadRequestData: (id: string, data: any) => void;
+  clearScratchpadRequestData: (id: string) => void;
   reset: () => void;
 }
 
@@ -68,6 +69,12 @@ export const useAppStore = create<AppState>()(
       setScratchpadRequestData: (id, data) => set((state) => ({
         scratchpadRequestData: { ...state.scratchpadRequestData, [id]: data }
       })),
+      clearScratchpadRequestData: (id) => set((state) => {
+        if (!(id in state.scratchpadRequestData)) return state;
+        const next = { ...state.scratchpadRequestData };
+        delete next[id];
+        return { scratchpadRequestData: next };
+      }),
       reset: () => set({
         activeRequestId: null,
         openTabs: [],

@@ -33,9 +33,12 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const [showChainPicker, setShowChainPicker] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [bodyErrorLine, setBodyErrorLine] = useState<number | null>(null);
+  const hasHydratedRef = useRef(false);
   
-  const { isRunning, setIsRunning, setResponse, addLog, setDirty, dirtyRequests, scratchpadRequestData, setScratchpadRequestData } = useAppStore();
+  const { isRunning, setIsRunning, setResponse, addLog, setDirty, dirtyRequests, scratchpadRequestData } = useAppStore();
+  const clearScratchpadRequestData = useAppStore(state => state.clearScratchpadRequestData);
   const isDirty = dirtyRequests.has(requestId);
+  const scratchpadRequest = scratchpadRequestData[requestId];
   const {
     syncTreeToBackend, 
     projectPath, 
@@ -113,12 +116,91 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     return found?.name || getRequestName(id);
   };
 
+  const getTransformsState = () => ({
+    pre_request_template: templateText,
+    response_extractions: extractions,
+    before_run: beforeRunChain.map(step => ({ request_id: step.request_id })),
+    chain_steps: chainSteps.map(step => ({ when: step.when, next_request_id: step.next_request_id })),
+  });
+
   // Hydration
   useEffect(() => {
     async function loadRequest() {
-      // 1. Try loading from scratchpad data first
-      if (scratchpadRequestData[requestId]) {
-        const req = scratchpadRequestData[requestId];
+      if (projectPath) {
+        try {
+          const req: any = await invoke('get_request', {
+            projectRoot: projectPath,
+            id: requestId,
+          });
+          setMethod(req.method || 'GET');
+          setUrl(req.url || '');
+          
+          if (req.body) {
+            if (req.body.mode === 'none') {
+              setBodyMode('none');
+              setBody('');
+              setFormBody([]);
+            } else if (req.body.mode === 'formdata') {
+              setBodyMode('form');
+              setFormBody(Array.isArray(req.body.data) ? req.body.data.map((h: any) => ({ id: Math.random().toString(36).substring(2, 9), ...h })) : []);
+              setBody('');
+            } else if (req.body.mode === 'json') {
+              setBodyMode('json');
+              setBody(req.body.data || '');
+              setFormBody([]);
+            } else if (req.body.mode === 'raw') {
+              setBodyMode('raw');
+              setBody(req.body.data || '');
+              setFormBody([]);
+            }
+          }
+
+          if (req.headers && Array.isArray(req.headers)) {
+            setHeaders(req.headers.map((h: any) => ({ id: Math.random().toString(36).substring(2, 9), ...h })));
+          } else {
+            setHeaders([]);
+          }
+
+          if (req.params && Array.isArray(req.params)) {
+            setParams(req.params.map((p: any) => ({ id: Math.random().toString(36).substring(2, 9), ...p })));
+          } else {
+            setParams([]);
+          }
+
+          const initialState = {
+            method: req.method || 'GET',
+            url: req.url || '',
+            headers: (req.headers || []).map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled })),
+            params: (req.params || []).map((p: any) => ({ key: p.key, value: p.value, enabled: p.enabled })),
+            bodyMode: req.body?.mode || 'json',
+            body: req.body?.data || '',
+            formBody: req.body?.mode === 'formdata' && Array.isArray(req.body?.data) ? req.body.data.map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled })) : [],
+            transforms: {
+              pre_request_template: req.transforms?.pre_request_template || '',
+              response_extractions: req.transforms?.response_extractions || [],
+              before_run: req.transforms?.before_run?.map((step: any) => ({ request_id: step.request_id })) || [],
+              chain_steps: req.transforms?.chain_steps?.map((step: any) => ({ when: step.when, next_request_id: step.next_request_id })) || [],
+            },
+          };
+          setTemplateText(req.transforms?.pre_request_template || '');
+          setExtractions(req.transforms?.response_extractions || []);
+          setBeforeRunChain((req.transforms?.before_run || []).map((step: any) => ({ request_id: step.request_id })));
+          setChainSteps(req.transforms?.chain_steps || []);
+          savedStateRef.current = initialState;
+          hasHydratedRef.current = true;
+          setDirty(requestId, false);
+          if (scratchpadRequest) {
+            clearScratchpadRequestData(requestId);
+          }
+          return;
+        } catch (err) {
+          console.error("Failed to load request", err);
+          // If it doesn't exist in the workspace, fall back to scratchpad/new-request behavior.
+        }
+      }
+
+      if (scratchpadRequest) {
+        const req = scratchpadRequest;
         setMethod(req.method || 'GET');
         setUrl(req.url || '');
         if (req.body) {
@@ -138,73 +220,13 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         setExtractions(req.transforms?.response_extractions || []);
         setBeforeRunChain(req.transforms?.before_run?.map((step: any) => ({ request_id: step.request_id })) || []);
         setChainSteps(req.transforms?.chain_steps?.map((step: any) => ({ when: step.when, next_request_id: step.next_request_id })) || []);
-        savedStateRef.current = req;
-        setDirty(requestId, false);
-        return;
-      }
-
-      if (!projectPath) {
-        // If no project path and no scratchpad data, it's a completely new scratchpad request
-        const defaultState = {
-          name: getRequestName(requestId),
-          method: 'GET',
-          url: '',
-          headers: [],
-          params: [],
-          bodyMode: 'none',
-          body: '',
-          formBody: [],
-        };
-        savedStateRef.current = defaultState;
-        setTemplateText('');
-        setExtractions([]);
-        setBeforeRunChain([]);
-        setChainSteps([]);
-        setDirty(requestId, true);
-        return;
-      }
-      
-      try {
-        const req: any = await invoke('get_request', { 
-          projectRoot: projectPath, 
-          id: requestId 
-        });
-        setMethod(req.method || 'GET');
-        setUrl(req.url || '');
-        
-        if (req.body) {
-          if (req.body.mode === 'none') {
-            setBodyMode('none');
-            setBody('');
-            setFormBody([]);
-          } else if (req.body.mode === 'formdata') {
-            setBodyMode('form');
-            setFormBody(Array.isArray(req.body.data) ? req.body.data.map((h: any) => ({ id: Math.random().toString(36).substring(2, 9), ...h })) : []);
-            setBody('');
-          } else if (req.body.mode === 'json') {
-            setBodyMode('json');
-            setBody(req.body.data || '');
-            setFormBody([]);
-          } else if (req.body.mode === 'raw') {
-            setBodyMode('raw');
-            setBody(req.body.data || '');
-            setFormBody([]);
-          }
-        }
-
-        if (req.headers && Array.isArray(req.headers)) {
-          setHeaders(req.headers.map((h: any) => ({ id: Math.random().toString(36).substring(2, 9), ...h })));
-        } else {
-          setHeaders([]);
-        }
-
-        if (req.params && Array.isArray(req.params)) {
-          setParams(req.params.map((p: any) => ({ id: Math.random().toString(36).substring(2, 9), ...p })));
-        } else {
-          setParams([]);
-        }
-        const initialState = {
-          name: req.name || getRequestName(requestId),
+        savedStateRef.current = {
+          transforms: req.transforms || {
+            pre_request_template: '',
+            response_extractions: [],
+            before_run: [],
+            chain_steps: [],
+          },
           method: req.method || 'GET',
           url: req.url || '',
           headers: (req.headers || []).map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled })),
@@ -213,36 +235,41 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           body: req.body?.data || '',
           formBody: req.body?.mode === 'formdata' && Array.isArray(req.body?.data) ? req.body.data.map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled })) : [],
         };
-        setTemplateText(req.transforms?.pre_request_template || '');
-        setExtractions(req.transforms?.response_extractions || []);
-        setBeforeRunChain((req.transforms?.before_run || []).map((step: any) => ({ request_id: step.request_id })));
-        setChainSteps(req.transforms?.chain_steps || []);
-        savedStateRef.current = initialState;
+        hasHydratedRef.current = true;
         setDirty(requestId, false);
-      } catch (err) {
-        console.error("Failed to load request", err);
-        // If it failed to load, it might be a new request that hasn't been saved yet
-        // Set a default initial state so we can track dirtyness
-        const defaultState = {
-          name: getRequestName(requestId),
-          method: 'GET',
-          url: '',
-          headers: [],
-          params: [],
-          bodyMode: 'json',
-          body: '',
-          formBody: [],
-        };
-        savedStateRef.current = defaultState;
-        setTemplateText('');
-        setExtractions([]);
-        setBeforeRunChain([]);
-        setChainSteps([]);
-        setDirty(requestId, true); // Mark as dirty since it doesn't exist on disk
+        return;
       }
+
+      if (!projectPath) {
+        // Wait for workspace rehydration before deciding whether this is a scratchpad request.
+        return;
+      }
+
+      const defaultState = {
+        method: 'GET',
+        url: '',
+        headers: [],
+        params: [],
+        bodyMode: 'json',
+        body: '',
+        formBody: [],
+        transforms: {
+          pre_request_template: '',
+          response_extractions: [],
+          before_run: [],
+          chain_steps: [],
+        },
+      };
+      savedStateRef.current = defaultState;
+      hasHydratedRef.current = true;
+      setTemplateText('');
+      setExtractions([]);
+      setBeforeRunChain([]);
+      setChainSteps([]);
+      setDirty(requestId, true); // Mark as dirty since it doesn't exist on disk
     }
     loadRequest();
-  }, [requestId]);
+  }, [requestId, projectPath, scratchpadRequest, getRequestName, setDirty, clearScratchpadRequestData]);
 
   const updateChainStep = (index: number, patch: Partial<RequestChainStep>) => {
     setChainSteps(current => current.map((step, i) => (i === index ? { ...step, ...patch } : step)));
@@ -298,8 +325,9 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   }, [method, url, headers, body, requestId]);
 
   useEffect(() => {
+    if (!hasHydratedRef.current) return;
+
     const currentState = {
-      name: getRequestName(requestId),
       method,
       url,
       headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
@@ -307,16 +335,20 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       bodyMode,
       body,
       formBody: formBody.map(item => ({ key: item.key, value: item.value, enabled: item.enabled })),
+      transforms: getTransformsState(),
     };
 
     if (!projectPath) {
-      // Auto-save to scratchpad store
-      setScratchpadRequestData(requestId, {
-        ...currentState,
-        id: requestId,
-        body: getFormattedBody(),
-      });
-      setDirty(requestId, false);
+      // Do not infer scratchpad state during workspace startup rehydration.
+      // If this tab was restored from a workspace, persisting it here would
+      // contaminate scratchpad storage and cause future launches to hydrate
+      // the wrong source.
+      if (!savedStateRef.current) {
+        return;
+      }
+
+      // Existing scratchpad tabs can still mirror their state locally, but we
+      // avoid writing a workspace tab into persisted scratchpad data here.
       return;
     }
 
@@ -327,7 +359,23 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
     const isDirty = JSON.stringify(currentState) !== JSON.stringify(savedStateRef.current);
     setDirty(requestId, isDirty);
-  }, [method, url, headers, params, bodyMode, body, requestId, setDirty, pendingNames, projectPath]);
+  }, [
+    method,
+    url,
+    headers,
+    params,
+    bodyMode,
+    body,
+    formBody,
+    templateText,
+    extractions,
+    beforeRunChain,
+    chainSteps,
+    requestId,
+    setDirty,
+    pendingNames,
+    projectPath,
+  ]);
 
   const getFormattedBody = () => {
     if (bodyMode === 'none') return { mode: 'none' };
@@ -433,7 +481,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       });
       
       const currentState = {
-        name: pendingName || getRequestName(requestId),
         method,
         url,
         headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
@@ -442,10 +489,10 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         body,
         formBody: formBody.map(item => ({ key: item.key, value: item.value, enabled: item.enabled })),
         transforms: {
-          pre_request_template: templateText.trim() || null,
+          pre_request_template: templateText,
           response_extractions: extractions,
-          before_run: beforeRunChain.filter(step => step.request_id.trim()),
-          chain_steps: chainSteps.filter(step => step.next_request_id.trim())
+          before_run: beforeRunChain.map(step => ({ request_id: step.request_id })),
+          chain_steps: chainSteps.map(step => ({ when: step.when, next_request_id: step.next_request_id }))
         }
       };
       savedStateRef.current = currentState;
@@ -556,10 +603,10 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
             <button 
               onClick={saveRequest}
               className={twMerge(
-                "p-2 transition-all flex items-center gap-2 rounded-lg",
-                projectPath 
-                  ? (isDirty ? "text-primary hover:bg-primary/10" : "text-muted-foreground cursor-default")
-                  : "text-primary hover:bg-primary/10"
+                "flex items-center gap-2 px-4 py-1.5 rounded-lg text-primary-foreground font-bold text-sm transition-all shadow-md active:scale-95",
+                projectPath
+                  ? (isDirty ? "bg-primary hover:bg-primary/90 shadow-primary/30" : "bg-muted-foreground cursor-default")
+                  : "bg-primary hover:bg-primary/90 shadow-primary/30"
               )}
               title={projectPath ? "Save to Workspace (Ctrl+S)" : "Move to Workspace"}
             >
