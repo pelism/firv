@@ -10,6 +10,17 @@ import type { BeforeRunStep } from '../types/beforeRunStep';
 import type { RequestExtractionRule } from '../types/requestExtractionRule';
 import type { RequestChainStep } from '../types/requestChainStep';
 import { twMerge } from 'tailwind-merge';
+import {
+  flattenRequestOptions,
+  getFormattedRequest,
+  getHydratedBodySnapshot,
+  getHydratedFormBodySnapshot,
+  getRequestDisplayName,
+  getTransformsState,
+  normalizeBodyMode,
+  resolveRequestDisplayName,
+  resolveRequestIdByName,
+} from './requestEditorUtils';
 
 interface RequestEditorProps {
   requestId: string;
@@ -51,18 +62,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const sidebarTree = useSidebarStore(state => state.tree);
 
   const requestOptions = useMemo(() => {
-    const flatten = (items: HydratedSidebarItem[], prefix: string[] = []): Array<{ id: string; name: string }> => {
-      const result: Array<{ id: string; name: string }> = [];
-      for (const item of items) {
-        if (item.kind.type === 'request') {
-          result.push({ id: item.kind.id, name: [...prefix, item.kind.name].join('/') });
-        } else if (item.kind.type === 'folder') {
-          result.push(...flatten(item.kind.items, [...prefix, item.kind.name]));
-        }
-      }
-      return result;
-    };
-    return flatten(sidebarTree);
+    return flattenRequestOptions(sidebarTree);
   }, [sidebarTree]);
 
   const renderJsonPreview = () => {
@@ -93,51 +93,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     }
 
     return <pre className="h-full overflow-auto p-4 text-xs font-mono whitespace-pre-wrap bg-background text-foreground">{pretty || ''}</pre>;
-  };
-
-  const resolveRequestIdByName = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) return '';
-    const match = requestOptions.find(option => option.name === trimmed || option.name.split('/').pop() === trimmed);
-    return match?.id || '';
-  };
-
-  const resolveRequestDisplayName = (idOrName: string) => {
-    const trimmed = idOrName.trim();
-    if (!trimmed) return '';
-    const byId = requestOptions.find(option => option.id === trimmed);
-    if (byId) return byId.name;
-
-    const byName = requestOptions.find(option => option.name === trimmed || option.name.split('/').pop() === trimmed);
-    return byName?.name || trimmed;
-  };
-
-  const getRequestDisplayName = (id: string) => {
-    const found = requestOptions.find(option => option.id === id);
-    return found?.name || getRequestName(id);
-  };
-
-  const getTransformsState = () => ({
-    pre_request_template: templateText,
-    response_extractions: extractions,
-    before_run: beforeRunChain.map(step => ({ request_id: step.request_id })),
-    chain_steps: chainSteps.map(step => ({ when: step.when, next_request_id: step.next_request_id })),
-  });
-
-  const normalizeBodyMode = (mode: string | undefined) => {
-    if (mode === 'formdata') return 'form';
-    return mode || 'json';
-  };
-
-  const getHydratedBodySnapshot = (reqBody: any) => {
-    if (!reqBody) return '';
-    if (reqBody.mode === 'formdata') return '';
-    return reqBody.data || '';
-  };
-
-  const getHydratedFormBodySnapshot = (reqBody: any) => {
-    if (!reqBody || reqBody.mode !== 'formdata' || !Array.isArray(reqBody.data)) return [];
-    return reqBody.data.map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled }));
   };
 
   // Hydration
@@ -359,7 +314,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       bodyMode,
       body,
       formBody: formBody.map(item => ({ key: item.key, value: item.value, enabled: item.enabled })),
-      transforms: getTransformsState(),
+      transforms: getTransformsState(templateText, extractions, beforeRunChain, chainSteps),
     };
 
     if (!projectPath) {
@@ -401,28 +356,23 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     projectPath,
   ]);
 
-  const getFormattedBody = () => {
-    if (bodyMode === 'none') return { mode: 'none' };
-    if (bodyMode === 'form') return { mode: 'formdata', data: formBody.map(({ key, value, enabled }) => ({ key, value, enabled })) };
-    if (bodyMode === 'json') return { mode: 'json', data: body };
-    return { mode: 'raw', data: body };
+  const buildFormattedRequest = () => {
+    return getFormattedRequest({
+      requestId,
+      requestName: getRequestName(requestId),
+      method,
+      url,
+      headers,
+      params,
+      bodyMode,
+      body,
+      formBody,
+      templateText,
+      extractions,
+      beforeRunChain,
+      chainSteps,
+    });
   };
-
-  const getFormattedRequest = () => ({
-    id: requestId,
-    name: getRequestName(requestId),
-    method,
-    url,
-    headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
-    params: params.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })),
-    body: getFormattedBody(),
-    transforms: {
-      pre_request_template: templateText.trim() || null,
-      response_extractions: extractions,
-      before_run: beforeRunChain.filter(step => step.request_id.trim()),
-      chain_steps: chainSteps.filter(step => step.next_request_id.trim())
-    }
-  });
 
   const saveRequest = async () => {
     if (!projectPath) {
@@ -501,7 +451,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
       await invoke('update_request', {
         projectRoot: currentPath || '.',
-        request: getFormattedRequest()
+        request: buildFormattedRequest()
       });
       
       const currentState = {
@@ -572,7 +522,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
       const result: any = await invoke('run_firv_request', {
         projectRoot: projectPath || '.',
-        request: getFormattedRequest(),
+        request: buildFormattedRequest(),
         workspaceVars,
       });
 
@@ -768,6 +718,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
                         <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">JSON Body</div>
                         <select
                           value={jsonViewMode}
+                          aria-label="JSON view mode"
                           onChange={e => {
                             const nextMode = e.target.value as 'Raw' | 'Pretty' | 'Preview';
                             setJsonViewMode(nextMode);
@@ -908,8 +859,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
                             <input
                               list="request-name-options"
                               className="md:col-span-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono"
-                              value={resolveRequestDisplayName(step.request_id)}
-                              onChange={e => setBeforeRunChain(current => current.map((item, i) => i === index ? { ...item, request_id: resolveRequestIdByName(e.target.value) || e.target.value.trim() } : item))}
+                              value={resolveRequestDisplayName(requestOptions, step.request_id)}
+                              onChange={e => setBeforeRunChain(current => current.map((item, i) => i === index ? { ...item, request_id: resolveRequestIdByName(requestOptions, e.target.value) || e.target.value.trim() } : item))}
                               placeholder="Search request by name"
                             />
                           </div>
@@ -935,8 +886,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
                               <input
                                 list="request-name-options"
                                 className="md:col-span-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono"
-                                value={resolveRequestDisplayName(step.next_request_id)}
-                                onChange={e => updateChainStep(actualIndex, { next_request_id: resolveRequestIdByName(e.target.value) || e.target.value.trim() })}
+                                value={resolveRequestDisplayName(requestOptions, step.next_request_id)}
+                                onChange={e => updateChainStep(actualIndex, { next_request_id: resolveRequestIdByName(requestOptions, e.target.value) || e.target.value.trim() })}
                                 placeholder="Search request by name"
                               />
                             </div>
@@ -963,8 +914,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
                               <input
                                 list="request-name-options"
                                 className="md:col-span-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono"
-                                value={getRequestDisplayName(step.next_request_id)}
-                                onChange={e => updateChainStep(actualIndex, { next_request_id: resolveRequestIdByName(e.target.value) })}
+                                value={getRequestDisplayName(requestOptions, getRequestName, step.next_request_id)}
+                                onChange={e => updateChainStep(actualIndex, { next_request_id: resolveRequestIdByName(requestOptions, e.target.value) })}
                                 placeholder="Search request by name"
                               />
                             </div>
