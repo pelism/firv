@@ -2,7 +2,7 @@ import type { HydratedSidebarItem } from '../types/hydratedSidebarItem.ts';
 import type { BeforeRunStep } from '../types/beforeRunStep';
 import type { RequestExtractionRule } from '../types/requestExtractionRule';
 import type { RequestChainStep } from '../types/requestChainStep';
-import type { KeyValue } from './editors/KVEditor';
+import type { KeyValue } from '../types/keyValue';
 
 export interface RequestOption {
   id: string;
