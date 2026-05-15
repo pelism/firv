@@ -356,4 +356,19 @@ mod tests {
 
         assert!(resolver.apply_extraction_rule(&rule, "not json").is_err());
     }
+
+    #[test]
+    fn extracted_variables_can_be_interpolated_in_headers() {
+        let mut resolver = VariableResolver::new();
+        let rule = RequestExtractionRule {
+            target: "token".to_string(),
+            source: ExtractionSource::ResponseBodyJson,
+            pattern: "$.token".to_string(),
+        };
+
+        let value = resolver.apply_extraction_rule(&rule, r#"{"token":"abc123"}"#).unwrap();
+        resolver.request_vars.insert(rule.target.clone(), value.unwrap());
+
+        assert_eq!(resolver.resolve_string("Bearer {{token}}"), "Bearer abc123");
+    }
 }

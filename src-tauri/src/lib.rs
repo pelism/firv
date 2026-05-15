@@ -12,6 +12,9 @@ use models::FirvManifest;
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, PhysicalPosition, PhysicalSize, WindowEvent};
 use std::sync::Mutex;
+use tokio::sync::oneshot;
+
+pub struct RequestCancellationState(pub Mutex<Option<oneshot::Sender<()>>>);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct WindowState {
@@ -88,6 +91,15 @@ async fn execute_request(
 }
 
 #[tauri::command]
+fn cancel_firv_request(state: tauri::State<'_, RequestCancellationState>) -> Result<(), String> {
+    let sender = state.0.lock().map_err(|e| format!("Failed to lock request cancellation state: {}", e))?.take();
+    if let Some(sender) = sender {
+        let _ = sender.send(());
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn start_project_watcher(app: tauri::AppHandle, path: String) -> Result<(), String> {
     let path_buf = std::path::PathBuf::from(path);
     watcher::start_watching(app, path_buf)
@@ -100,6 +112,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(watcher::WatcherHandle(Mutex::new(None)))
+        .manage(RequestCancellationState(Mutex::new(None)))
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 if let Some(state) = load_window_state(app.handle()) {
@@ -153,6 +166,7 @@ pub fn run() {
             get_manifest,
             load_project,
             execute_request,
+            cancel_firv_request,
             lifecycle::run_firv_request,
             start_project_watcher,
             get_hydrated_sidebar,

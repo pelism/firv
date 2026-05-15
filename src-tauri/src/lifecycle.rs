@@ -3,10 +3,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Instant;
 use std::path::Path;
+use tokio::sync::oneshot;
+use tauri::Manager;
 
 use crate::models::{request::{BeforeRunStep, ChainCondition, HttpMethod, RequestBody, FirvRequest, RequestChainStep}};
 use crate::runner::{FirvResponse, CLIENT};
 use crate::variables::{VariableResolver, VariableTraceEntry};
+use crate::RequestCancellationState;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HydratedRequestInfo {
@@ -107,12 +110,29 @@ pub struct LifecycleResultSummary {
 
 #[tauri::command]
 pub async fn run_firv_request(
-    _app: tauri::AppHandle,
+    app: tauri::AppHandle,
     project_root: String,
     request: FirvRequest,
     workspace_vars: Vec<crate::models::request::KeyValue>,
 ) -> Result<LifecycleResult, String> {
-    execute_chain(project_root, request, workspace_vars, 0).await
+    let (cancel_tx, cancel_rx) = oneshot::channel();
+    {
+        let state = app.state::<RequestCancellationState>();
+        let mut guard = state.0.lock().map_err(|e| format!("Failed to lock request cancellation state: {}", e))?;
+        *guard = Some(cancel_tx);
+    }
+
+    let result = tokio::select! {
+        result = execute_chain(project_root, request, workspace_vars, 0) => result,
+        _ = cancel_rx => Err("Request canceled".to_string()),
+    };
+
+    let state = app.state::<RequestCancellationState>();
+    if let Ok(mut guard) = state.0.lock() {
+        *guard = None;
+    }
+
+    result
 }
 
 #[async_recursion::async_recursion]

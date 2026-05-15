@@ -74,14 +74,14 @@ export function RequestEditorCommandBar({
           </button>
           <button
             onClick={onRun}
-            disabled={isRunning}
             className={twMerge(
               'flex items-center gap-2 px-4 py-1.5 rounded-lg text-primary-foreground font-bold text-sm transition-all shadow-md active:scale-95',
-              isRunning ? 'bg-muted-foreground' : 'bg-primary hover:bg-primary/90 shadow-primary/30'
+              isRunning ? 'bg-destructive hover:bg-destructive/90 shadow-destructive/30' : 'bg-primary hover:bg-primary/90 shadow-primary/30'
             )}
+            title={isRunning ? 'Cancel request' : 'Send request (Ctrl+Enter)'}
           >
             <Send size={16} className={isRunning ? 'animate-pulse' : ''} />
-            {isRunning ? 'Sending' : 'Send'}
+            {isRunning ? 'Cancel' : 'Send'}
           </button>
         </div>
       </div>

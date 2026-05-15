@@ -15,6 +15,7 @@ import {
   getHydratedFormBodySnapshot,
   getTransformsState,
   normalizeBodyMode,
+  type RequestAuthorizationState,
 } from './requestEditorUtils';
 import { RequestEditorCommandBar } from './RequestEditorCommandBar';
 import { RequestEditorBodySection } from './RequestEditorBodySection';
@@ -29,11 +30,12 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const [url, setUrl] = useState('');
   const [activeTab, setActiveTab] = useState<'params'|'headers'|'body'|'transforms'>('params');
   const [headers, setHeaders] = useState<KeyValue[]>([]);
+  const [authorization, setAuthorization] = useState<RequestAuthorizationState>({ mode: 'none', value: '' });
   const [params, setParams] = useState<KeyValue[]>([]);
   const [body, setBody] = useState('');
   const [formBody, setFormBody] = useState<KeyValue[]>([]);
   const [bodyMode, setBodyMode] = useState<'none'|'form'|'json'|'raw'>('json');
-  const [jsonViewMode, setJsonViewMode] = useState<'Raw' | 'Pretty' | 'Preview'>('Raw');
+  const [jsonViewMode, setJsonViewMode] = useState<'Raw' | 'Preview'>('Raw');
   const savedStateRef = useRef<any>(null);
   const [templateText, setTemplateText] = useState('');
   const [extractions, setExtractions] = useState<RequestExtractionRule[]>([]);
@@ -102,6 +104,14 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
             setHeaders([]);
           }
 
+          const authHeader = Array.isArray(req.headers) ? req.headers.find((h: any) => String(h.key).trim().toLowerCase() === 'authorization' && String(h.value || '').trim().toLowerCase().startsWith('bearer ')) : null;
+          if (authHeader) {
+            const bearerValue = String(authHeader.value || '').replace(/^bearer\s+/i, '');
+            setAuthorization({ mode: 'bearer', value: bearerValue });
+          } else {
+            setAuthorization({ mode: 'none', value: '' });
+          }
+
           if (req.params && Array.isArray(req.params)) {
             setParams(req.params.map((p: any) => ({ id: Math.random().toString(36).substring(2, 9), ...p })));
           } else {
@@ -112,6 +122,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
             method: req.method || 'GET',
             url: req.url || '',
             headers: (req.headers || []).map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled })),
+            authorization: authHeader ? { mode: 'bearer', value: String(authHeader.value || '').replace(/^bearer\s+/i, '') } : { mode: 'none', value: '' },
             params: (req.params || []).map((p: any) => ({ key: p.key, value: p.value, enabled: p.enabled })),
             bodyMode: normalizeBodyMode(req.body?.mode),
             body: getHydratedBodySnapshot(req.body),
@@ -159,6 +170,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           }
         }
         if (req.headers) setHeaders(req.headers.map((h: any) => ({ id: Math.random().toString(36).substring(2, 9), ...h })));
+        const scratchAuthHeader = Array.isArray(req.headers) ? req.headers.find((h: any) => String(h.key).trim().toLowerCase() === 'authorization' && String(h.value || '').trim().toLowerCase().startsWith('bearer ')) : null;
+        setAuthorization(scratchAuthHeader ? { mode: 'bearer', value: String(scratchAuthHeader.value || '').replace(/^bearer\s+/i, '') } : { mode: 'none', value: '' });
         if (req.params) setParams(req.params.map((p: any) => ({ id: Math.random().toString(36).substring(2, 9), ...p })));
         setTemplateText(req.transforms?.pre_request_template || '');
         setExtractions(req.transforms?.response_extractions || []);
@@ -174,6 +187,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           method: req.method || 'GET',
           url: req.url || '',
           headers: (req.headers || []).map((h: any) => ({ key: h.key, value: h.value, enabled: h.enabled })),
+          authorization: scratchAuthHeader ? { mode: 'bearer', value: String(scratchAuthHeader.value || '').replace(/^bearer\s+/i, '') } : { mode: 'none', value: '' },
           params: (req.params || []).map((p: any) => ({ key: p.key, value: p.value, enabled: p.enabled })),
           bodyMode: normalizeBodyMode(req.body?.mode),
           body: getHydratedBodySnapshot(req.body),
@@ -194,6 +208,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         method: 'GET',
         url: '',
         headers: [],
+        authorization: { mode: 'none', value: '' },
         params: [],
         bodyMode: 'json',
         body: '',
@@ -258,7 +273,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         saveRequest();
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        handleRun();
+        void handleRun();
       }
     };
     window.addEventListener('keydown', handleGlobalKeydown);
@@ -273,6 +288,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       method,
       url,
       headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
+      authorization,
       params: params.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })),
       bodyMode,
       body,
@@ -305,6 +321,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     method,
     url,
     headers,
+    authorization,
     params,
     bodyMode,
     body,
@@ -326,6 +343,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       method,
       url,
       headers,
+      authorization,
       params,
       bodyMode,
       body,
@@ -335,6 +353,18 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       beforeRunChain,
       chainSteps,
     });
+  };
+
+  const cancelRun = async () => {
+    try {
+      await invoke('cancel_firv_request');
+      addLog(`Canceled request ${requestId}`);
+    } catch (err) {
+      console.error('Failed to cancel request', err);
+      addLog(`Error canceling request: ${err}`);
+    } finally {
+      setIsRunning(false);
+    }
   };
 
   const saveRequest = async () => {
@@ -421,6 +451,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         method,
         url,
         headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
+        authorization,
         params: params.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })),
         bodyMode,
         body,
@@ -442,7 +473,10 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   };
 
   const handleRun = async () => {
-    if (isRunning) return; 
+    if (isRunning) {
+      await cancelRun();
+      return;
+    }
     setIsRunning(true);
     try {
       addLog(`Running request ${method} ${url}...`);
@@ -565,6 +599,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         <RequestEditorBodySection
           activeTab={activeTab}
           headers={headers}
+          authorization={authorization}
           params={params}
           body={body}
           bodyMode={bodyMode}
@@ -573,6 +608,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           onJsonViewModeChange={setJsonViewMode}
           onBodyChange={setBody}
           onHeadersChange={setHeaders}
+          onAuthorizationChange={setAuthorization}
           onParamsChange={setParams}
           formBody={formBody}
           onAddFormField={() => setFormBody(current => [...current, { id: Math.random().toString(36).substring(2, 9), key: '', value: '', enabled: true } as any])}

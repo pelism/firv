@@ -49,8 +49,35 @@ describe('RequestEditor body section', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'body' }));
     const jsonViewSelect = screen.getByRole('combobox', { name: /json view mode/i });
+    expect(jsonViewSelect).toHaveValue('Raw');
     fireEvent.change(jsonViewSelect, { target: { value: 'Preview' } });
 
     await waitFor(() => expect(screen.getByText(/"hello": "world"/)).toBeInTheDocument());
+  });
+
+  it('shows cancel while a request is running and cancels it', async () => {
+    let resolveRun: ((value: any) => void) | undefined;
+    invoke.mockImplementation((name: string) => {
+      if (name === 'get_request') return Promise.resolve(baseRequest);
+      if (name === 'get_manifest') return Promise.resolve({ workspace: { globals: [] } });
+      if (name === 'run_firv_request') {
+        return new Promise<void>(resolve => {
+          resolveRun = resolve;
+        });
+      }
+      if (name === 'cancel_firv_request') return Promise.resolve({});
+      return Promise.resolve({});
+    });
+
+    render(<RequestEditor requestId="req-1" />);
+    await screen.findByDisplayValue('GET');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('cancel_firv_request'));
+
+    resolveRun?.({ response: null, variables: {}, final_request: null, script_errors: [], before_run_results: [], variable_trace: [], chained_results: [], execution_time_ms: 0 });
   });
 });

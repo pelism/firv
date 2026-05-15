@@ -2,18 +2,21 @@ import { CircleSlash2 } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { KVEditor, KeyValue } from './editors/KVEditor';
 import { BodyEditor } from './editors/BodyEditor';
+import type { RequestAuthorizationState } from './requestEditorUtils';
 
 interface RequestEditorBodySectionProps {
   activeTab: 'params' | 'headers' | 'body' | 'transforms';
   headers: KeyValue[];
+  authorization: RequestAuthorizationState;
   params: KeyValue[];
   body: string;
   bodyMode: 'none' | 'form' | 'json' | 'raw';
-  jsonViewMode: 'Raw' | 'Pretty' | 'Preview';
+  jsonViewMode: 'Raw' | 'Preview';
   onBodyModeChange: (mode: 'none' | 'form' | 'json' | 'raw') => void;
-  onJsonViewModeChange: (mode: 'Raw' | 'Pretty' | 'Preview') => void;
+  onJsonViewModeChange: (mode: 'Raw' | 'Preview') => void;
   onBodyChange: (value: string) => void;
   onHeadersChange: (value: KeyValue[]) => void;
+  onAuthorizationChange: (value: RequestAuthorizationState) => void;
   onParamsChange: (value: KeyValue[]) => void;
   formBody: KeyValue[];
   onAddFormField: () => void;
@@ -25,6 +28,7 @@ interface RequestEditorBodySectionProps {
 export function RequestEditorBodySection({
   activeTab,
   headers,
+  authorization,
   params,
   body,
   bodyMode,
@@ -33,6 +37,7 @@ export function RequestEditorBodySection({
   onJsonViewModeChange,
   onBodyChange,
   onHeadersChange,
+  onAuthorizationChange,
   onParamsChange,
   formBody,
   onAddFormField,
@@ -44,7 +49,37 @@ export function RequestEditorBodySection({
     <div className="flex-1 overflow-auto p-4 custom-scrollbar">
       <div className="max-w-5xl h-full flex flex-col">
         {activeTab === 'headers' && (
-          <KVEditor data={headers} onChange={onHeadersChange} placeholderKey="Header Name" placeholderValue="Value" />
+          <div className="space-y-4">
+            <div className="rounded-xl border border-border p-4 bg-muted/20 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Authorization</div>
+                  <div className="text-xs text-muted-foreground mt-1">Configure a bearer token or keep authorization disabled.</div>
+                </div>
+                <select
+                  value={authorization.mode}
+                  onChange={e => onAuthorizationChange({ ...authorization, mode: e.target.value as 'none' | 'bearer' })}
+                  className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="none">none</option>
+                  <option value="bearer">Bearer</option>
+                </select>
+              </div>
+
+              {authorization.mode === 'bearer' && (
+                <div className="grid grid-cols-1 gap-3 items-center">
+                  <input
+                    value={authorization.value}
+                    onChange={e => onAuthorizationChange({ ...authorization, value: e.target.value })}
+                    placeholder="Bearer token or {{token}}"
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              )}
+            </div>
+
+            <KVEditor data={headers} onChange={onHeadersChange} placeholderKey="Header Name" placeholderValue="Value" />
+          </div>
         )}
         {activeTab === 'params' && (
           <KVEditor data={params} onChange={onParamsChange} placeholderKey="Query Param" placeholderValue="Value" />
@@ -69,7 +104,7 @@ export function RequestEditorBodySection({
                 ))}
               </div>
             </div>
-            <div className="flex-1 min-h-75 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-hidden">
               {bodyMode === 'none' ? (
                 <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm space-y-2 bg-muted/50">
                   <div className="p-3 rounded-full bg-muted">
@@ -79,14 +114,14 @@ export function RequestEditorBodySection({
                   <p className="text-xs">Select a mode above to add a body.</p>
                 </div>
               ) : bodyMode === 'form' ? (
-                <div className="h-full flex flex-col gap-4">
+                <div className="h-full min-h-0 flex flex-col gap-4">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Form Fields</span>
                     <button type="button" onClick={onAddFormField} className="text-xs font-semibold text-primary hover:underline">
                       Add field
                     </button>
                   </div>
-                  <div className="space-y-3">
+                  <div className="flex-1 min-h-0 space-y-3 overflow-y-auto pr-2 custom-scrollbar">
                     {formBody.length === 0 && (
                       <div className="text-sm text-muted-foreground border border-dashed border-border rounded-xl p-4 bg-muted/20">
                         No form fields yet. Add one to build a URL-encoded form body.
@@ -113,24 +148,23 @@ export function RequestEditorBodySection({
                   </div>
                 </div>
               ) : (
-                <div className="h-full flex flex-col gap-4">
+                <div className="h-full min-h-0 flex flex-col gap-4">
                   {bodyMode === 'json' && (
                     <div className="flex items-center justify-between">
                       <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">JSON Body</div>
                       <select
                         value={jsonViewMode}
                         aria-label="JSON view mode"
-                        onChange={e => onJsonViewModeChange(e.target.value as 'Raw' | 'Pretty' | 'Preview')}
+                        onChange={e => onJsonViewModeChange(e.target.value as 'Raw' | 'Preview')}
                         className="text-[11px] font-bold uppercase tracking-wider bg-background border border-border rounded-lg px-3 py-1 outline-none focus:ring-2 focus:ring-primary/20 transition-all cursor-pointer"
                       >
                         <option value="Raw">Raw</option>
-                        <option value="Pretty">Pretty</option>
                         <option value="Preview">Preview</option>
                       </select>
                     </div>
                   )}
                   {bodyMode === 'json' && jsonViewMode === 'Preview' ? (
-                    <div className="flex-1 min-h-75 border border-border rounded-xl overflow-hidden shadow-sm">
+                    <div className="flex-1 min-h-0 border border-border rounded-xl overflow-hidden shadow-sm">
                       <div className="h-full overflow-auto p-4 bg-background">
                         <pre className="text-xs font-mono whitespace-pre-wrap text-foreground">{body.trim() ? JSON.stringify(JSON.parse(body), null, 2) : '(empty JSON body)'}</pre>
                       </div>

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import { RequestEditor } from './RequestEditor';
 import { useAppStore } from '../store/appStore';
 import { useSidebarStore } from '../store/sidebarStore';
@@ -35,15 +35,34 @@ describe('RequestEditor transforms section', () => {
   });
 
   it('adds an extraction rule and a chain step', async () => {
-    render(<RequestEditor requestId="req-1" />);
+    await act(async () => {
+      render(<RequestEditor requestId="req-1" />);
+    });
     await screen.findByDisplayValue('GET');
 
-    fireEvent.click(screen.getByRole('button', { name: 'transforms' }));
-    fireEvent.click(screen.getByRole('button', { name: /add extraction/i }));
-    expect(screen.getByPlaceholderText(/target variable/i)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'transforms' }));
+    });
+    await screen.findByTestId('request-editor-transforms-section');
 
-    fireEvent.click(screen.getByRole('button', { name: /add chain step/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'on success' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /add extraction/i }));
+    });
+    const transformsSection = await screen.findByTestId('request-editor-transforms-section');
+    await screen.findByPlaceholderText('token');
+
+    expect(within(transformsSection).getByPlaceholderText('token')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /add chain step/i }));
+    });
+    await screen.findByRole('button', { name: 'on success' });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'on success' }));
+    });
+    await screen.findByText(/success/i);
+
     expect(screen.getByText(/success/i)).toBeInTheDocument();
   });
 });

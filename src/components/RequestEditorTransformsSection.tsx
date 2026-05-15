@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { BeforeRunStep } from '../types/beforeRunStep';
 import type { RequestExtractionRule } from '../types/requestExtractionRule';
 import type { RequestChainStep } from '../types/requestChainStep';
-import { resolveRequestDisplayName, resolveRequestIdByName, getRequestDisplayName, RequestOption } from './requestEditorUtils';
+import { resolveRequestDisplayName, resolveRequestIdByName, getRequestDisplayName, normalizeExtractionTarget, RequestOption } from './requestEditorUtils';
 
 interface RequestEditorTransformsSectionProps {
   templateText: string;
@@ -40,7 +40,7 @@ export function RequestEditorTransformsSection({
   getRequestName,
 }: RequestEditorTransformsSectionProps) {
   return (
-    <div className="h-full flex flex-col gap-4">
+    <div data-testid="request-editor-transforms-section" className="h-full flex flex-col gap-4">
       <div>
         <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Pre-request Liquid Template</label>
         <textarea
@@ -71,7 +71,7 @@ export function RequestEditorTransformsSection({
         {extractions.map((rule, index) => (
           <div key={index} className="rounded-xl border border-border p-3 bg-muted/20 space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm" value={rule.target} onChange={e => onUpdateExtraction(index, { target: e.target.value })} placeholder="target variable" />
+              <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm" value={rule.target} onChange={e => onUpdateExtraction(index, { target: normalizeExtractionTarget(e.target.value) })} placeholder="token" />
               <select className="rounded-lg border border-border bg-background px-3 py-2 text-sm" value={rule.source} onChange={e => onUpdateExtraction(index, { source: e.target.value as any })}>
                 <option value="response_body_json">response_body_json</option>
                 <option value="response_body_raw">response_body_raw</option>

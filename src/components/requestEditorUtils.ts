@@ -44,10 +44,15 @@ export const getTransformsState = (
   chainSteps: RequestChainStep[],
 ) => ({
   pre_request_template: templateText,
-  response_extractions: extractions,
+  response_extractions: extractions.map(rule => ({
+    ...rule,
+    target: normalizeExtractionTarget(rule.target),
+  })),
   before_run: beforeRunChain.map(step => ({ request_id: step.request_id })),
   chain_steps: chainSteps.map(step => ({ when: step.when, next_request_id: step.next_request_id })),
 });
+
+export const normalizeExtractionTarget = (target: string) => target.replace(/^\{\{\s*/, '').replace(/\s*\}\}$/, '').trim();
 
 export const getFormattedBody = (bodyMode: 'none' | 'form' | 'json' | 'raw', body: string, formBody: KeyValue[]) => {
   if (bodyMode === 'none') return { mode: 'none' as const };
@@ -56,12 +61,31 @@ export const getFormattedBody = (bodyMode: 'none' | 'form' | 'json' | 'raw', bod
   return { mode: 'raw' as const, data: body };
 };
 
+export type RequestAuthorizationState = {
+  mode: 'none' | 'bearer';
+  value: string;
+};
+
+export const getFormattedAuthorizationHeader = (authorization: RequestAuthorizationState) => {
+  if (authorization.mode === 'none') return null;
+
+  const value = authorization.value.trim();
+  if (!value) return null;
+
+  return {
+    key: 'Authorization',
+    value: `Bearer ${value}`,
+    enabled: true,
+  } satisfies KeyValue;
+};
+
 export const getFormattedRequest = (args: {
   requestId: string;
   requestName: string;
   method: string;
   url: string;
   headers: KeyValue[];
+  authorization: RequestAuthorizationState;
   params: KeyValue[];
   bodyMode: 'none' | 'form' | 'json' | 'raw';
   body: string;
@@ -75,12 +99,19 @@ export const getFormattedRequest = (args: {
   name: args.requestName,
   method: args.method,
   url: args.url,
-  headers: args.headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
+  headers: (() => {
+    const authHeader = getFormattedAuthorizationHeader(args.authorization);
+    const filtered = args.headers.filter(header => header.key.trim().toLowerCase() !== 'authorization');
+    return authHeader ? [...filtered, authHeader] : filtered;
+  })().map(h => ({ key: h.key, value: h.value, enabled: h.enabled })),
   params: args.params.map(p => ({ key: p.key, value: p.value, enabled: p.enabled })),
   body: getFormattedBody(args.bodyMode, args.body, args.formBody),
   transforms: {
     pre_request_template: args.templateText.trim() || null,
-    response_extractions: args.extractions,
+    response_extractions: args.extractions.map(rule => ({
+      ...rule,
+      target: normalizeExtractionTarget(rule.target),
+    })),
     before_run: args.beforeRunChain.filter(step => step.request_id.trim()),
     chain_steps: args.chainSteps.filter(step => step.next_request_id.trim()),
   }
