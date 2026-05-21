@@ -1,8 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Virtuoso } from 'react-virtuoso';
-import { save } from '@tauri-apps/plugin-dialog';
-import { writeTextFile } from '@tauri-apps/plugin-fs';
-import { Download, Search, Activity, Database, Clock, FileJson, Globe } from 'lucide-react';
+import { Download, Search, Activity, Database, Clock, FileJson, Globe, Copy } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 
 export interface FirvResponse {
@@ -223,12 +221,22 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
 
   const handleSave = async () => {
     try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const { writeTextFile } = await import('@tauri-apps/plugin-fs');
       const filePath = await save({ defaultPath: 'response.json' });
       if (filePath) {
         await writeTextFile(filePath, body);
       }
     } catch (err) {
       console.error('Failed to save file:', err);
+    }
+  };
+
+  const handleCopyResponse = async () => {
+    try {
+      await navigator.clipboard.writeText(body);
+    } catch (err) {
+      console.error('Failed to copy response:', err);
     }
   };
 
@@ -284,6 +292,13 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
             <option value="Pretty">Pretty</option>
             <option value="Raw">Raw</option>
           </select>
+          <button 
+            onClick={handleCopyResponse}
+            className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-all"
+            title="Copy Response"
+          >
+            <Copy size={18} />
+          </button>
           <button 
             onClick={handleSave}
             className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-all"

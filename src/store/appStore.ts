@@ -1,14 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+export type RequestOrigin = 'workspace' | 'scratchpad';
+
 export interface AppState {
   activeRequestId: string | null;
   setActiveRequestId: (id: string | null) => void;
   openTabs: string[];
   openTab: (id: string) => void;
   closeTab: (id: string) => void;
-  isRunning: boolean;
-  setIsRunning: (isRunning: boolean) => void;
+  runningRequests: Record<string, boolean>;
+  isRequestRunning: (id: string) => boolean;
+  setRequestRunning: (id: string, isRunning: boolean) => void;
   responses: Record<string, any>;
   setResponse: (requestId: string, response: any | null) => void;
   logs: string[];
@@ -16,6 +19,9 @@ export interface AppState {
   clearLogs: () => void;
   dirtyRequests: Set<string>;
   setDirty: (id: string, isDirty: boolean) => void;
+  requestOrigins: Record<string, RequestOrigin>;
+  setRequestOrigin: (id: string, origin: RequestOrigin) => void;
+  clearRequestOrigin: (id: string) => void;
   scratchpadRequestData: Record<string, any>;
   setScratchpadRequestData: (id: string, data: any) => void;
   clearScratchpadRequestData: (id: string) => void;
@@ -24,7 +30,7 @@ export interface AppState {
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       activeRequestId: null,
       setActiveRequestId: (id) => set({ activeRequestId: id }),
       openTabs: [],
@@ -38,16 +44,27 @@ export const useAppStore = create<AppState>()(
         const newTabs = state.openTabs.filter(t => t !== id);
         const newResponses = { ...state.responses };
         delete newResponses[id];
+        const newRunningRequests = { ...state.runningRequests };
+        delete newRunningRequests[id];
         const newDirty = new Set(state.dirtyRequests);
         newDirty.delete(id);
         let newActiveId = state.activeRequestId;
         if (state.activeRequestId === id) {
           newActiveId = newTabs.length > 0 ? newTabs[newTabs.length - 1] : null;
         }
-        return { openTabs: newTabs, activeRequestId: newActiveId, responses: newResponses, dirtyRequests: newDirty };
+        return { openTabs: newTabs, activeRequestId: newActiveId, responses: newResponses, runningRequests: newRunningRequests, dirtyRequests: newDirty };
       }),
-      isRunning: false,
-      setIsRunning: (isRunning) => set({ isRunning }),
+      runningRequests: {},
+      isRequestRunning: (id) => !!get().runningRequests[id],
+      setRequestRunning: (id, isRunning) => set((state) => {
+        const next = { ...state.runningRequests };
+        if (isRunning) {
+          next[id] = true;
+        } else {
+          delete next[id];
+        }
+        return { runningRequests: next };
+      }),
       responses: {},
       setResponse: (requestId, response) => set((state) => ({ 
         responses: { ...state.responses, [requestId]: response } 
@@ -65,6 +82,16 @@ export const useAppStore = create<AppState>()(
         }
         return { dirtyRequests: newDirty };
       }),
+      requestOrigins: {},
+      setRequestOrigin: (id, origin) => set((state) => ({
+        requestOrigins: { ...state.requestOrigins, [id]: origin }
+      })),
+      clearRequestOrigin: (id) => set((state) => {
+        if (!(id in state.requestOrigins)) return state;
+        const next = { ...state.requestOrigins };
+        delete next[id];
+        return { requestOrigins: next };
+      }),
       scratchpadRequestData: {},
       setScratchpadRequestData: (id, data) => set((state) => ({
         scratchpadRequestData: { ...state.scratchpadRequestData, [id]: data }
@@ -78,10 +105,11 @@ export const useAppStore = create<AppState>()(
       reset: () => set({
         activeRequestId: null,
         openTabs: [],
-        isRunning: false,
+        runningRequests: {},
         responses: {},
         logs: [],
         dirtyRequests: new Set(),
+        requestOrigins: {},
         scratchpadRequestData: {},
       }),
     }),
@@ -90,7 +118,8 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({ 
         scratchpadRequestData: state.scratchpadRequestData,
         openTabs: state.openTabs,
-        activeRequestId: state.activeRequestId
+        activeRequestId: state.activeRequestId,
+        requestOrigins: state.requestOrigins,
       }),
     }
   )

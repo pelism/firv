@@ -27,6 +27,7 @@ interface SidebarState {
   moveItem: (activeId: string, overId: string, overPosition?: 'before' | 'after' | 'inside') => void;
   pendingNames: Record<string, string>;
   updateRequestName: (id: string, newName: string) => void;
+  renameRequest: (id: string, newName: string) => Promise<void>;
   addItem: (item: HydratedSidebarItem, parentPath?: string[], isScratchpad?: boolean) => Promise<void>;
   addItemOptimistic: (item: HydratedSidebarItem, parentPath?: string[], isScratchpad?: boolean) => void;
   deleteItem: (path: string[], isScratchpad?: boolean) => Promise<void>;
@@ -38,6 +39,7 @@ interface SidebarState {
   getRequestName: (id: string) => string;
   clearPendingName: (id: string) => void;
   closeWorkspace: () => Promise<void>;
+  promoteScratchpadRequest: (requestId: string, item: HydratedSidebarItem) => void;
 }
 
 const transformToManifestItem = (item: HydratedSidebarItem): any => {
@@ -257,12 +259,102 @@ export const useSidebarStore = create<SidebarState>()(
           pendingNames: { ...state.pendingNames, [id]: newName }
         }));
       },
+      renameRequest: async (id, newName) => {
+        const { tree, scratchpadTree, projectPath, syncTreeToBackend, clearPendingName } = get();
+
+        const renameInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
+          return items.map(item => {
+            if (item.kind.type === 'request' && item.kind.id === id) {
+              return {
+                ...item,
+                kind: {
+                  ...item.kind,
+                  name: newName,
+                }
+              };
+            }
+
+            if (item.kind.type === 'folder') {
+              return {
+                ...item,
+                kind: {
+                  ...item.kind,
+                  items: renameInItems(item.kind.items)
+                }
+              };
+            }
+
+            return item;
+          });
+        };
+
+        set({ tree: renameInItems(tree), scratchpadTree: renameInItems(scratchpadTree) });
+        clearPendingName(id);
+
+        if (projectPath) {
+          await syncTreeToBackend(renameInItems(tree));
+        }
+      },
       clearPendingName: (id) => {
         set((state) => {
           const newPending = { ...state.pendingNames };
           delete newPending[id];
           return { pendingNames: newPending };
         });
+      },
+      promoteScratchpadRequest: (requestId, item) => {
+        const removeFromScratchpad = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
+          return items
+            .filter(existing => !(existing.kind.type === 'request' && existing.kind.id === requestId))
+            .map(existing => {
+              if (existing.kind.type !== 'folder') return existing;
+              
+              const nextItems = removeFromScratchpad(existing.kind.items);
+              if (nextItems.length === 0) {
+                return null;
+              }
+
+              return {
+                ...existing,
+                kind: {
+                  ...existing.kind,
+                  items: nextItems,
+                },
+              };
+            })
+            .filter((existing): existing is HydratedSidebarItem => existing !== null);
+        };
+
+        const removeFromTree = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
+          return items
+            .filter(existing => !(existing.kind.type === 'request' && existing.kind.id === requestId))
+            .map(existing => {
+              if (existing.kind.type !== 'folder') return existing;
+
+              const nextItems = removeFromTree(existing.kind.items);
+              if (nextItems === existing.kind.items) {
+                return existing;
+              }
+
+              return {
+                ...existing,
+                kind: {
+                  ...existing.kind,
+                  items: nextItems,
+                },
+              };
+            });
+        };
+
+        const appendToWorkspaceTree = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
+          const cleanedItems = removeFromTree(items);
+          return [...cleanedItems, item];
+        };
+
+        set((state) => ({
+          tree: appendToWorkspaceTree(state.tree),
+          scratchpadTree: removeFromScratchpad(state.scratchpadTree),
+        }));
       },
       addItemOptimistic: (newItem, parentPath, isScratchpad) => {
         const { tree, scratchpadTree, projectPath } = get();

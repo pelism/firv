@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useEffect, useState } from 'react';
+import React, { useCallback, useMemo, useEffect, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
 import { EditorView, Decoration, DecorationSet } from '@codemirror/view';
@@ -52,6 +52,7 @@ const lineHighlightExtension = (highlightLine?: number | null): Extension => {
 
 export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, onFormat, highlightLine }) => {
   const [localValue, setLocalValue] = useState(value);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(
     window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   );
@@ -64,16 +65,28 @@ export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, o
   }, []);
 
   useEffect(() => {
-    setLocalValue(value);
+    setLocalValue(current => (current === value ? current : value));
   }, [value]);
+
+  useEffect(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    debounceRef.current = setTimeout(() => {
+      onChange(localValue);
+    }, 150);
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [localValue, onChange]);
 
   const handleChange = useCallback((val: string) => {
     setLocalValue(val);
-    const handler = setTimeout(() => {
-      onChange(val);
-    }, 150);
-    return () => clearTimeout(handler);
-  }, [onChange]);
+  }, []);
 
   if (mode === 'none') {
     return (

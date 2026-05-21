@@ -47,23 +47,45 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const hasHydratedRef = useRef(false);
   const isHydratingRef = useRef(false);
   
-  const { isRunning, setIsRunning, setResponse, addLog, setDirty, dirtyRequests, scratchpadRequestData } = useAppStore();
+  const isRunning = useAppStore(state => state.isRequestRunning(requestId));
+  const setRequestRunning = useAppStore(state => state.setRequestRunning);
+  const { setResponse, addLog, setDirty, dirtyRequests, scratchpadRequestData, requestOrigins } = useAppStore();
   const clearScratchpadRequestData = useAppStore(state => state.clearScratchpadRequestData);
+  const setRequestOrigin = useAppStore(state => state.setRequestOrigin);
+  const clearRequestOrigin = useAppStore(state => state.clearRequestOrigin);
   const isDirty = dirtyRequests.has(requestId);
   const scratchpadRequest = scratchpadRequestData[requestId];
+  const requestOrigin = requestOrigins[requestId] ?? (scratchpadRequest ? 'scratchpad' : 'workspace');
   const {
     syncTreeToBackend, 
     projectPath, 
     ensureWorkspace, 
     getRequestName, 
     pendingNames,
-    clearPendingName
+    clearPendingName,
+    promoteScratchpadRequest
   } = useSidebarStore();
   const sidebarTree = useSidebarStore(state => state.tree);
+  const sidebarScratchpadTree = useSidebarStore(state => state.scratchpadTree);
+
+  const findRequestInItems = (items: HydratedSidebarItem[], id: string): HydratedSidebarItem | null => {
+    for (const item of items) {
+      if (item.kind.type === 'request' && item.kind.id === id) return item;
+      if (item.kind.type === 'folder') {
+        const found = findRequestInItems(item.kind.items, id);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
 
   const requestOptions = useMemo(() => {
     return flattenRequestOptions(sidebarTree);
   }, [sidebarTree]);
+
+  const isScratchpadRequest = useMemo(() => {
+    return !!findRequestInItems(sidebarScratchpadTree, requestId) || requestOrigin === 'scratchpad';
+  }, [requestId, requestOrigin, sidebarScratchpadTree]);
 
   // Hydration
   useEffect(() => {
@@ -140,7 +162,11 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           setChainSteps(req.transforms?.chain_steps || []);
           savedStateRef.current = initialState;
           hasHydratedRef.current = true;
-          setDirty(requestId, false);
+          if (requestOrigin === 'scratchpad') {
+            setDirty(requestId, false);
+          } else {
+            setDirty(requestId, false);
+          }
           if (scratchpadRequest) {
             clearScratchpadRequestData(requestId);
           }
@@ -284,6 +310,13 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     if (!hasHydratedRef.current) return;
     if (isHydratingRef.current) return;
 
+    const isScratchpad = requestOrigin === 'scratchpad' || !!scratchpadRequest;
+
+    if (isScratchpad) {
+      setDirty(requestId, false);
+      return;
+    }
+
     const currentState = {
       method,
       url,
@@ -334,6 +367,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     setDirty,
     pendingNames,
     projectPath,
+    requestOrigin,
+    scratchpadRequest,
   ]);
 
   const buildFormattedRequest = () => {
@@ -363,20 +398,11 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       console.error('Failed to cancel request', err);
       addLog(`Error canceling request: ${err}`);
     } finally {
-      setIsRunning(false);
+      setRequestRunning(requestId, false);
     }
   };
 
   const saveRequest = async () => {
-    if (!projectPath) {
-      const ok = await ensureWorkspace();
-      if (!ok) return;
-      
-      // After ensuring workspace, it will re-run this function or the user can click again
-      // The auto-save effect will have already synced the current state to the store
-      // We fall through to the workspace save logic below
-    }
-
     const ok = await ensureWorkspace();
     if (!ok) return;
 
@@ -446,6 +472,29 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         projectRoot: currentPath || '.',
         request: buildFormattedRequest()
       });
+
+      if (requestOrigin === 'scratchpad') {
+        const findRequestInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem | null => {
+          for (const item of items) {
+            if (item.kind.type === 'request' && item.kind.id === requestId) return item;
+            if (item.kind.type === 'folder') {
+              const found = findRequestInItems(item.kind.items);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+
+        const scratchpadItem = findRequestInItems(useSidebarStore.getState().scratchpadTree);
+
+        if (scratchpadItem) {
+          promoteScratchpadRequest(requestId, scratchpadItem);
+        }
+
+        clearScratchpadRequestData(requestId);
+        clearRequestOrigin(requestId);
+        setRequestOrigin(requestId, 'workspace');
+      }
       
       savedStateRef.current = {
         method,
@@ -477,7 +526,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       await cancelRun();
       return;
     }
-    setIsRunning(true);
+    setRequestRunning(requestId, true);
     try {
       addLog(`Running request ${method} ${url}...`);
 
@@ -537,7 +586,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       console.error(e);
       addLog(`Error: ${e.toString()}`);
     } finally {
-      setIsRunning(false);
+      setRequestRunning(requestId, false);
     }
   };
 
@@ -554,6 +603,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         isDirty={isDirty}
         projectPath={projectPath}
         validationError={validationError}
+        isScratchpadRequest={isScratchpadRequest}
       />
 
       <div className="px-4 py-2 border-b border-border bg-muted/30">

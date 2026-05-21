@@ -1,4 +1,4 @@
-import { Send, Save, FolderPlus, Check } from 'lucide-react';
+import { Send, Save, FolderPlus } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 
 interface RequestEditorCommandBarProps {
@@ -12,6 +12,7 @@ interface RequestEditorCommandBarProps {
   isDirty: boolean;
   projectPath: string;
   validationError: string | null;
+  isScratchpadRequest: boolean;
 }
 
 export function RequestEditorCommandBar({
@@ -25,7 +26,10 @@ export function RequestEditorCommandBar({
   isDirty,
   projectPath,
   validationError,
+  isScratchpadRequest,
 }: RequestEditorCommandBarProps) {
+  const showMoveToWorkspace = isScratchpadRequest;
+
   return (
     <div className="p-4 border-b border-border">
       <div className="flex items-stretch gap-2 bg-muted p-1 rounded-xl ring-1 ring-border shadow-sm">
@@ -57,18 +61,28 @@ export function RequestEditorCommandBar({
             onClick={onSave}
             className={twMerge(
               'flex items-center gap-2 px-4 py-1.5 rounded-lg text-primary-foreground font-bold text-sm transition-all shadow-md active:scale-95',
-              projectPath
-                ? (isDirty ? 'bg-primary hover:bg-primary/90 shadow-primary/30' : 'bg-muted-foreground cursor-default')
-                : 'bg-primary hover:bg-primary/90 shadow-primary/30'
+              showMoveToWorkspace
+                ? 'bg-primary hover:bg-primary/90 shadow-primary/30'
+                : projectPath
+                  ? (isDirty ? 'bg-primary hover:bg-primary/90 shadow-primary/30' : 'bg-muted-foreground cursor-default')
+                  : 'bg-primary hover:bg-primary/90 shadow-primary/30'
             )}
-            title={projectPath ? 'Save to Workspace (Ctrl+S)' : 'Move to Workspace'}
+            title={showMoveToWorkspace ? 'Move to Workspace' : (projectPath ? 'Save to Workspace (Ctrl+S)' : 'Move to Workspace')}
           >
-            {projectPath ? (
-              isDirty ? <Save size={18} /> : <Check size={18} className="text-green-500" />
-            ) : (
+            {showMoveToWorkspace ? (
               <>
                 <FolderPlus size={18} />
                 <span className="text-[10px] font-bold uppercase tracking-wider">Move to Workspace</span>
+              </>
+            ) : !projectPath ? (
+              <>
+                <FolderPlus size={18} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Move to Workspace</span>
+              </>
+            ) : (
+              <>
+                <Save size={18} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Save</span>
               </>
             )}
           </button>

@@ -458,6 +458,7 @@ export const Sidebar: React.FC = () => {
 const SidebarContent: React.FC<{ searchQuery: string; activeItem: HydratedSidebarItem | null }> = ({ searchQuery, activeItem }) => {
   const { tree, scratchpadTree, projectPath, addItemOptimistic } = useSidebarStore();
   const openTab = useAppStore(state => state.openTab);
+  const setRequestOrigin = useAppStore(state => state.setRequestOrigin);
   const { setNodeRef } = useDroppable({
     id: 'sidebar-root',
   });
@@ -469,6 +470,7 @@ const SidebarContent: React.FC<{ searchQuery: string; activeItem: HydratedSideba
       kind: { type: 'request', id: requestId, name: 'New Request', method: 'GET' }
     };
     addItemOptimistic(newItem, undefined, true);
+    setRequestOrigin(requestId, 'scratchpad');
     openTab(requestId);
   };
 

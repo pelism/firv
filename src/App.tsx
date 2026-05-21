@@ -24,9 +24,12 @@ function App() {
   const openTabs = useAppStore(state => state.openTabs);
   const closeTab = useAppStore(state => state.closeTab);
   const dirtyRequests = useAppStore(state => state.dirtyRequests);
+  const setRequestOrigin = useAppStore(state => state.setRequestOrigin);
+  const requestOrigins = useAppStore(state => state.requestOrigins);
   const responses = useAppStore(state => state.responses);
   const { tree } = useSidebarStore();
   const updateRequestName = useSidebarStore(state => state.updateRequestName);
+  const renameRequest = useSidebarStore(state => state.renameRequest);
   const getRequestName = useSidebarStore(state => state.getRequestName);
 
   const isWorkspaceSettingsOpen = useSidebarStore(state => state.isWorkspaceSettingsOpen);
@@ -67,6 +70,7 @@ function App() {
 
   const handleFinishEdit = async () => {
     if (editingTabId && editingName.trim()) {
+      await renameRequest(editingTabId, editingName.trim());
       updateRequestName(editingTabId, editingName.trim());
     }
     setEditingTabId(null);
@@ -148,7 +152,12 @@ function App() {
                             ? "bg-background border-border text-foreground shadow-sm font-semibold"
                             : "bg-muted/50 border-transparent text-muted-foreground hover:bg-muted"
                         )}
-                        onClick={() => setActiveRequestId(tabId)}
+                        onClick={() => {
+                          if (requestOrigins[tabId] !== 'scratchpad') {
+                            setRequestOrigin(tabId, 'workspace');
+                          }
+                          setActiveRequestId(tabId);
+                        }}
                         onDoubleClick={() => handleStartEdit(tabId, name)}
                       >
                         {isEditing ? (
