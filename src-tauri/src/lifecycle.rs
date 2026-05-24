@@ -1,20 +1,20 @@
-use reqwest::Method;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::time::Instant;
 use std::path::Path;
 use tokio::sync::oneshot;
 use tauri::Manager;
 
-use crate::models::{request::{BeforeRunStep, ChainCondition, HttpMethod, RequestBody, FirvRequest, RequestChainStep}};
+use crate::models::{request::{BeforeRunStep, ChainCondition, RequestBody, FirvRequest, RequestChainStep}};
+use crate::models::request::HttpMethod;
 use crate::runner::{FirvResponse, CLIENT};
 use crate::variables::{VariableResolver, VariableTraceEntry};
 use crate::RequestCancellationState;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct HydratedRequestInfo {
     pub url: String,
-    pub method: String,
+    pub method: HttpMethod,
     pub headers: HashMap<String, String>, 
     pub body: Option<String>,
 }
@@ -174,17 +174,6 @@ async fn execute_chain(
         .render_liquid(&request.url)
         .unwrap_or_else(|_| resolver.resolve_string(&request.url));
 
-    // --- Hydration ---
-    let method = match request.method {
-        HttpMethod::GET => Method::GET,
-        HttpMethod::POST => Method::POST,
-        HttpMethod::PUT => Method::PUT,
-        HttpMethod::DELETE => Method::DELETE,
-        HttpMethod::PATCH => Method::PATCH,
-        HttpMethod::HEAD => Method::HEAD,
-        HttpMethod::OPTIONS => Method::OPTIONS,
-    };
-
     let resolved_url = rendered_url;
     let mut resolved_headers = HashMap::new();
     for kv in &request.headers {
@@ -208,7 +197,7 @@ async fn execute_chain(
 
     let mut hydrated_info = HydratedRequestInfo {
         url: resolved_url,
-        method: method.as_str().to_string(),
+        method: request.method.clone(),
         headers: resolved_headers,
         body: resolved_body_str,
     };
@@ -223,8 +212,8 @@ async fn execute_chain(
     }
 
     // Build the final reqwest builder
-    let final_method = Method::from_bytes(hydrated_info.method.as_bytes()).unwrap_or(Method::GET);
-    let mut req_builder = CLIENT.request(final_method, &hydrated_info.url);
+    let req_method = request.method.to_reqwest_method();
+    let mut req_builder = CLIENT.request(req_method, &hydrated_info.url);
 
     for (k, v) in &hydrated_info.headers {
         req_builder = req_builder.header(k, v);

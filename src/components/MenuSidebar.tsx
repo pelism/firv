@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, Settings, Terminal, FolderOpen, Plus } from 'lucide-react';
+import { Layers, Settings, FolderOpen, Plus } from 'lucide-react';
 import { useSidebarStore } from '../store/sidebarStore';
 import { twMerge } from 'tailwind-merge';
 import { LucideIcon } from 'lucide-react';
@@ -33,7 +33,6 @@ export const MenuSidebar: React.FC = () => {
         { label: 'Open Workspace', icon: FolderOpen, onClick: openWorkspace }
       ]
     },
-    { id: 'terminal', icon: Terminal, label: 'Terminal', onClick: () => {} },
     { id: 'settings', icon: Settings, label: 'Settings', onClick: () => setAppSettingsOpen(true) },
   ];
 

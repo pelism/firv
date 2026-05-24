@@ -54,11 +54,6 @@ fn save_window_state(app: &tauri::AppHandle, state: &WindowState) -> Result<(), 
 }
 
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
 async fn get_hydrated_sidebar(project_path: String) -> Result<hydration::HydratedTree, String> {
     let path = std::path::PathBuf::from(project_path);
     hydration::hydrate_manifest(&path).await
@@ -162,7 +157,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet,
             get_manifest,
             load_project,
             execute_request,

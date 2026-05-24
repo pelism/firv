@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 use std::time::Instant;
 
-use reqwest::{Client, Method};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::models::{request::HttpMethod, request::RequestBody, FirvRequest};
+use crate::models::{request::RequestBody, FirvRequest};
 use crate::variables::VariableResolver;
 
 pub static CLIENT: LazyLock<Client> = LazyLock::new(|| {
@@ -28,17 +28,8 @@ pub async fn run_request(
     request: FirvRequest,
     mut resolver: VariableResolver,
 ) -> Result<FirvResponse, String> {
-    let method = match request.method {
-        HttpMethod::GET => Method::GET,
-        HttpMethod::POST => Method::POST,
-        HttpMethod::PUT => Method::PUT,
-        HttpMethod::DELETE => Method::DELETE,
-        HttpMethod::PATCH => Method::PATCH,
-        HttpMethod::HEAD => Method::HEAD,
-        HttpMethod::OPTIONS => Method::OPTIONS,
-    };
+    let method = request.method.to_reqwest_method();
 
-    // TODO: Variable substitution on URL
     let url = resolver.resolve_string(&request.url);
 
     let mut req_builder = CLIENT.request(method, &url);

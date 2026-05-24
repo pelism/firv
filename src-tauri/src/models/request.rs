@@ -21,7 +21,7 @@ pub struct FirvRequest {
     pub transforms: RequestTransforms,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
 #[serde(rename_all = "UPPERCASE")]
 #[ts(export, export_to = "httpMethod.ts")]
 pub enum HttpMethod {
@@ -32,6 +32,36 @@ pub enum HttpMethod {
     PATCH,
     HEAD,
     OPTIONS,
+}
+
+impl HttpMethod {
+    pub fn to_reqwest_method(&self) -> reqwest::Method {
+        match self {
+            HttpMethod::GET => reqwest::Method::GET,
+            HttpMethod::POST => reqwest::Method::POST,
+            HttpMethod::PUT => reqwest::Method::PUT,
+            HttpMethod::DELETE => reqwest::Method::DELETE,
+            HttpMethod::PATCH => reqwest::Method::PATCH,
+            HttpMethod::HEAD => reqwest::Method::HEAD,
+            HttpMethod::OPTIONS => reqwest::Method::OPTIONS,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HttpMethod;
+
+    #[test]
+    fn converts_http_methods_to_reqwest_methods() {
+        assert_eq!(HttpMethod::GET.to_reqwest_method(), reqwest::Method::GET);
+        assert_eq!(HttpMethod::POST.to_reqwest_method(), reqwest::Method::POST);
+        assert_eq!(HttpMethod::PUT.to_reqwest_method(), reqwest::Method::PUT);
+        assert_eq!(HttpMethod::DELETE.to_reqwest_method(), reqwest::Method::DELETE);
+        assert_eq!(HttpMethod::PATCH.to_reqwest_method(), reqwest::Method::PATCH);
+        assert_eq!(HttpMethod::HEAD.to_reqwest_method(), reqwest::Method::HEAD);
+        assert_eq!(HttpMethod::OPTIONS.to_reqwest_method(), reqwest::Method::OPTIONS);
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, TS, Clone)]

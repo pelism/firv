@@ -101,7 +101,10 @@ function App() {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background text-foreground font-sans selection:bg-primary/30">
+    <div
+      className="flex flex-col h-full overflow-hidden bg-background text-foreground font-sans selection:bg-primary/30"
+      onContextMenu={(e) => e.preventDefault()}
+    >
       {/* Unified Global Header */}
       <header 
         data-tauri-drag-region
