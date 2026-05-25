@@ -5,9 +5,9 @@ use std::path::Path;
 use tokio::sync::oneshot;
 use tauri::Manager;
 
-use crate::models::{request::{BeforeRunStep, ChainCondition, RequestBody, FirvRequest, RequestChainStep}};
+use crate::models::{request::{BeforeRunStep, ChainCondition, FirvRequest, RequestChainStep}};
 use crate::models::request::HttpMethod;
-use crate::runner::{FirvResponse, CLIENT};
+use crate::runner::{FirvResponse, prepare_request, run_request};
 use crate::variables::{VariableResolver, VariableTraceEntry};
 use crate::RequestCancellationState;
 
@@ -170,36 +170,16 @@ async fn execute_chain(
     }
 
     // --- Declarative rendering ---
-    let rendered_url = resolver
-        .render_liquid(&request.url)
-        .unwrap_or_else(|_| resolver.resolve_string(&request.url));
-
-    let resolved_url = rendered_url;
-    let mut resolved_headers = HashMap::new();
-    for kv in &request.headers {
-        if kv.enabled {
-            let res_key = resolver.render_liquid(&kv.key).unwrap_or_else(|_| resolver.resolve_string(&kv.key));
-            let res_val = resolver.render_liquid(&kv.value).unwrap_or_else(|_| resolver.resolve_string(&kv.value));
-            resolved_headers.insert(res_key.clone(), res_val.clone());
-        }
-    }
-
-    let resolved_body_str = match &request.body {
-        RequestBody::None => None,
-        RequestBody::Json(data) => {
-            let res_data = resolver.render_liquid(&data).unwrap_or_else(|_| resolver.resolve_string(&data));
-            resolved_headers.insert("Content-Type".to_string(), "application/json".to_string());
-            Some(res_data)
-        }
-        RequestBody::Raw(data) => Some(resolver.render_liquid(&data).unwrap_or_else(|_| resolver.resolve_string(&data))),
-        RequestBody::Formdata(_) => None, // Formdata handled separately below
-    };
-
+    let prepared_request = prepare_request(&request, &mut resolver);
     let mut hydrated_info = HydratedRequestInfo {
-        url: resolved_url,
-        method: request.method.clone(),
-        headers: resolved_headers,
-        body: resolved_body_str,
+        url: prepared_request.url.clone(),
+        method: prepared_request.method.clone(),
+        headers: prepared_request.headers.clone(),
+        body: match &prepared_request.body {
+            crate::runner::PreparedBody::None => None,
+            crate::runner::PreparedBody::Text(body) => Some(body.clone()),
+            crate::runner::PreparedBody::Form(_) => None,
+        },
     };
 
     // --- Request-level modifications via declarative transforms ---
@@ -211,65 +191,10 @@ async fn execute_chain(
         }
     }
 
-    // Build the final reqwest builder
-    let req_method = request.method.to_reqwest_method();
-    let mut req_builder = CLIENT.request(req_method, &hydrated_info.url);
-
-    for (k, v) in &hydrated_info.headers {
-        req_builder = req_builder.header(k, v);
-    }
-
-    if let Some(body) = &hydrated_info.body {
-        req_builder = req_builder.body(body.clone());
-    } else if let RequestBody::Formdata(fields) = &request.body {
-        let mut form_pairs = Vec::new();
-        for field in fields {
-            if field.enabled {
-                let res_key = resolver.render_liquid(&field.key).unwrap_or_else(|_| resolver.resolve_string(&field.key));
-                let res_val = resolver.render_liquid(&field.value).unwrap_or_else(|_| resolver.resolve_string(&field.value));
-                form_pairs.push((res_key, res_val));
-            }
-        }
-
-        req_builder = req_builder
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .form(&form_pairs);
-    }
-
     // Stage 3: Network Execution
-    let req_start = Instant::now();
-    let response_result = req_builder.send().await;
-    let req_elapsed = req_start.elapsed().as_millis() as u64;
-
-    let firv_resp = match response_result {
-        Ok(response) => {
-            let status = response.status();
-            let status_code = status.as_u16();
-            let status_text = status.canonical_reason().unwrap_or("Unknown").to_string();
-
-            let mut resp_headers = HashMap::new();
-            for (key, value) in response.headers() {
-                if let Ok(v_str) = value.to_str() {
-                    resp_headers.insert(key.to_string(), v_str.to_string());
-                }
-            }
-
-            let body_bytes = response
-                .bytes()
-                .await
-                .map_err(|e| format!("Failed to read body: {}", e))?;
-            let size_bytes = body_bytes.len();
-            let body_str = String::from_utf8_lossy(&body_bytes).to_string();
-
-            Some(FirvResponse {
-                status: status_code,
-                status_text,
-                headers: resp_headers,
-                body: body_str,
-                time_ms: req_elapsed,
-                size_bytes,
-            })
-        }
+    let firv_resp = match run_request(prepared_request).await
+    {
+        Ok(response) => Some(response),
         Err(e) => {
             script_errors.push(format!("Network request failed: {}", e));
             None
@@ -356,5 +281,24 @@ mod tests {
             body: RequestBody::None,
             transforms: RequestTransforms::default(),
         };
+    }
+
+    #[tokio::test]
+    async fn execute_chain_rejects_depth_beyond_limit() {
+        let request = FirvRequest {
+            id: "id".to_string(),
+            name: "name".to_string(),
+            method: HttpMethod::GET,
+            url: "https://example.com".to_string(),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        };
+
+        let result = execute_chain("C:/Repos/firv".to_string(), request, vec![], 9).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exceeded max depth"));
     }
 }

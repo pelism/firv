@@ -9,6 +9,13 @@ pub mod variables;
 mod watcher;
 
 use models::FirvManifest;
+use lifecycle::run_firv_request;
+use storage::get_request;
+use storage::update_request;
+use storage::delete_request;
+use storage::update_manifest_structure;
+use storage::create_workspace;
+use storage::check_workspace_exists;
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, PhysicalPosition, PhysicalSize, WindowEvent};
 use std::sync::Mutex;
@@ -82,7 +89,9 @@ async fn execute_request(
     request: models::FirvRequest,
     resolver: Option<variables::VariableResolver>,
 ) -> Result<runner::FirvResponse, String> {
-    runner::run_request(request, resolver.unwrap_or_default()).await
+    let mut resolver = resolver.unwrap_or_default();
+    let prepared = runner::prepare_request(&request, &mut resolver);
+    runner::run_request(prepared).await
 }
 
 #[tauri::command]
@@ -161,15 +170,15 @@ pub fn run() {
             load_project,
             execute_request,
             cancel_firv_request,
-            lifecycle::run_firv_request,
+            run_firv_request,
             start_project_watcher,
             get_hydrated_sidebar,
-            storage::get_request,
-            storage::update_request,
-            storage::delete_request,
-            storage::update_manifest_structure,
-            storage::create_workspace,
-            storage::check_workspace_exists
+            get_request,
+            update_request,
+            delete_request,
+            update_manifest_structure,
+            create_workspace,
+            check_workspace_exists
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

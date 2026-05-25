@@ -21,7 +21,7 @@ pub struct FirvRequest {
     pub transforms: RequestTransforms,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS, Clone)]
+#[derive(Debug, Serialize, Deserialize, TS, Clone, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
 #[ts(export, export_to = "httpMethod.ts")]
 pub enum HttpMethod {

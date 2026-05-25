@@ -63,7 +63,7 @@ fn extract_json_path<'a>(value: &'a serde_json::Value, path: &str) -> Option<&'a
 }
 
 static TEMPLATE_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}").unwrap());
+    LazyLock::new(|| Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*}}").unwrap());
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VariableResolver {
