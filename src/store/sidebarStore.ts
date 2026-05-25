@@ -595,7 +595,7 @@ export const useSidebarStore = create<SidebarState>()(
       importPostmanCollection: async () => {
         const { projectPath, workspaceName: currentWorkspaceName } = get();
         if (!projectPath) {
-          useAppStore.getState().addLog("No workspace open. Please open a workspace first.");
+          console.error("No workspace open. Please open a workspace first.");
           return;
         }
 
@@ -704,7 +704,6 @@ export const useSidebarStore = create<SidebarState>()(
           for (const req of requestsToSave) {
             await invoke('update_request', { projectRoot, request: req });
           }
-          useAppStore.getState().addLog(`Imported ${requestsToSave.length} requests`);
 
           // 2. Fetch current manifest to append to it
           console.log('Fetching current manifest...');
@@ -739,11 +738,9 @@ export const useSidebarStore = create<SidebarState>()(
           console.log('Import successful, refreshing sidebar...');
           await get().fetchSidebar();
           await get().loadOrphans();
-          useAppStore.getState().addLog(`Successfully imported Postman collection`);
 
         } catch (e) {
           console.error("Failed to import Postman collection:", e);
-          useAppStore.getState().addLog(`Failed to import Postman collection: ${e}`);
         }
       },
       loadOrphans: async () => {

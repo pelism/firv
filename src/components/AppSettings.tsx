@@ -70,6 +70,19 @@ export function AppSettings() {
             </div>
           </section>
 
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-foreground">About</h2>
+              <p className="text-sm text-muted-foreground">Application details and build information.</p>
+            </div>
+            <div className="p-6 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Version</div>
+                <div className="text-sm font-medium text-foreground mt-1">v1.0.0-beta</div>
+              </div>
+            </div>
+          </section>
+
           {/* More sections can be added here as needed (e.g., Font size, Keybindings, etc.) */}
           
         </div>

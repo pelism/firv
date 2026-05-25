@@ -49,7 +49,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   
   const isRunning = useAppStore(state => state.isRequestRunning(requestId));
   const setRequestRunning = useAppStore(state => state.setRequestRunning);
-  const { setResponse, addLog, setDirty, dirtyRequests, scratchpadRequestData, requestOrigins } = useAppStore();
+  const { setResponse, setDirty, dirtyRequests, scratchpadRequestData, requestOrigins } = useAppStore();
   const clearScratchpadRequestData = useAppStore(state => state.clearScratchpadRequestData);
   const setRequestOrigin = useAppStore(state => state.setRequestOrigin);
   const clearRequestOrigin = useAppStore(state => state.clearRequestOrigin);
@@ -393,10 +393,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const cancelRun = async () => {
     try {
       await invoke('cancel_firv_request');
-      addLog(`Canceled request ${requestId}`);
     } catch (err) {
       console.error('Failed to cancel request', err);
-      addLog(`Error canceling request: ${err}`);
     } finally {
       setRequestRunning(requestId, false);
     }
@@ -513,11 +511,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         }
       };
       setDirty(requestId, false);
-
-      addLog(`Saved request ${requestId}`);
     } catch (err) {
       console.error("Failed to save", err);
-      addLog(`Error saving: ${err}`);
     }
   };
 
@@ -528,8 +523,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     }
     setRequestRunning(requestId, true);
     try {
-      addLog(`Running request ${method} ${url}...`);
-
       if (bodyMode === 'json' && body.trim()) {
         try {
           JSON.parse(body);
@@ -550,7 +543,6 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           }
           setBodyErrorLine(lineNumber);
           setValidationError(`Invalid JSON body${lineInfo}: ${rawMessage}`);
-          addLog(`Validation error: ${rawMessage}${lineInfo}`);
           return;
         }
       }
@@ -561,7 +553,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           const manifest: any = await invoke('get_manifest', { projectPath });
           workspaceVars = Array.isArray(manifest?.workspace?.globals) ? manifest.workspace.globals : [];
         } catch (err) {
-          addLog(`Warning: Could not load workspace manifest: ${err}`);
+          console.error(`Warning: Could not load workspace manifest: ${err}`);
         }
       }
 
@@ -580,11 +572,9 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         __variable_trace: result.variable_trace || [],
         __chained_results: result.chained_results || []
       });
-      addLog(`Request completed successfully in ${result.execution_time_ms}ms.`);
     }
     catch (e: any) {
       console.error(e);
-      addLog(`Error: ${e.toString()}`);
     } finally {
       setRequestRunning(requestId, false);
     }

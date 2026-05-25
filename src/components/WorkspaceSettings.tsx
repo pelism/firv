@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Save, Settings2, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useSidebarStore } from '../store/sidebarStore';
-import { useAppStore } from '../store/appStore';
 import { Button } from './ui/button';
 import { KVEditor, KeyValue } from './editors/KVEditor';
 
@@ -11,7 +10,6 @@ export function WorkspaceSettings() {
   const [variables, setVariables] = useState<KeyValue[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const { projectPath, setWorkspaceName: setStoreWorkspaceName, setWorkspaceSettingsOpen, ensureWorkspace, setActiveMenu } = useSidebarStore();
-  const { addLog } = useAppStore();
 
   const handleClose = () => {
     setWorkspaceSettingsOpen(false);
@@ -66,11 +64,9 @@ export function WorkspaceSettings() {
       
       setStoreWorkspaceName(name.trim() || currentPath.split(/[/\\]/).filter(Boolean).pop() || 'Workspace');
       console.log("Successfully saved workspace settings");
-      addLog("Saved workspace settings");
       handleClose();
     } catch (err) {
       console.error("Failed to save workspace settings", err);
-      addLog(`Error saving workspace settings: ${err}`);
     } finally {
       setIsSaving(false);
     }
@@ -92,15 +88,6 @@ export function WorkspaceSettings() {
         
         <div className="flex items-center gap-3">
           <Button
-            type="button"
-            variant="outline"
-            onClick={handleClose}
-            className="flex items-center gap-2 rounded-xl text-sm font-bold"
-          >
-            <X size={16} />
-            Close
-          </Button>
-          <Button
             onClick={handleSave}
             disabled={isSaving}
             className="flex items-center gap-2 rounded-xl text-sm font-bold shadow-lg shadow-zinc-900/20 dark:shadow-zinc-100/20 active:scale-95"
@@ -108,6 +95,14 @@ export function WorkspaceSettings() {
             <Save size={16} />
             {isSaving ? 'Saving...' : 'Save Changes'}
           </Button>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-xl text-zinc-500 transition-colors active:scale-90"
+            aria-label="Close workspace settings"
+          >
+            <X size={20} />
+          </button>
         </div>
       </header>
 

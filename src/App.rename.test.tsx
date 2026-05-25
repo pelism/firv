@@ -23,9 +23,6 @@ vi.mock('./components/RequestEditor', () => ({
 vi.mock('./components/ResponseViewer', () => ({
   ResponseViewer: () => <div data-testid="response-viewer" />,
 }));
-vi.mock('./components/LogDrawer', () => ({
-  LogDrawer: () => <div data-testid="log-drawer" />,
-}));
 vi.mock('./components/WorkspaceSettings', () => ({
   WorkspaceSettings: () => <div data-testid="workspace-settings" />,
 }));

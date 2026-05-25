@@ -14,9 +14,6 @@ export interface AppState {
   setRequestRunning: (id: string, isRunning: boolean) => void;
   responses: Record<string, any>;
   setResponse: (requestId: string, response: any | null) => void;
-  logs: string[];
-  addLog: (log: string) => void;
-  clearLogs: () => void;
   dirtyRequests: Set<string>;
   setDirty: (id: string, isDirty: boolean) => void;
   requestOrigins: Record<string, RequestOrigin>;
@@ -69,9 +66,6 @@ export const useAppStore = create<AppState>()(
       setResponse: (requestId, response) => set((state) => ({ 
         responses: { ...state.responses, [requestId]: response } 
       })),
-      logs: [],
-      addLog: (log) => set((state) => ({ logs: [...state.logs, log] })),
-      clearLogs: () => set({ logs: [] }),
       dirtyRequests: new Set(),
       setDirty: (id, isDirty) => set((state) => {
         const newDirty = new Set(state.dirtyRequests);
@@ -107,7 +101,6 @@ export const useAppStore = create<AppState>()(
         openTabs: [],
         runningRequests: {},
         responses: {},
-        logs: [],
         dirtyRequests: new Set(),
         requestOrigins: {},
         scratchpadRequestData: {},
