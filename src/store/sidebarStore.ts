@@ -76,7 +76,7 @@ export const useSidebarStore = create<SidebarState>()(
       setActiveMenu: (activeMenu) => set({ activeMenu }),
       setProjectPath: (path) => {
         set({ projectPath: path });
-        get().fetchSidebar();
+        void get().fetchSidebar();
       },
       setWorkspaceName: (workspaceName) => set({ workspaceName }),
       fetchSidebar: async () => {
@@ -839,5 +839,5 @@ export const useSidebarStore = create<SidebarState>()(
 // Set up file watcher
 listen('firv://file-changed', (event) => {
   console.log('File changed:', event.payload);
-  useSidebarStore.getState().fetchSidebar();
+  void useSidebarStore.getState().fetchSidebar();
 });

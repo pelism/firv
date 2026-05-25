@@ -3,7 +3,7 @@ import { useSidebarStore } from '../store/sidebarStore';
 import { HydratedSidebarItem } from '../types/hydratedSidebarItem.ts';
 import { useAppStore } from '../store/appStore';
 import { useModalStore } from '../store/modalStore';
-import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search, Trash2, Settings2, GripVertical, X, MoreVertical, Download, Upload } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search, Trash2, Settings2, GripVertical, X, MoreVertical, Download, Upload, ChevronsDown, ChevronsUp } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { 
   DndContext, 
@@ -41,8 +41,9 @@ const SidebarNode: React.FC<{
   searchQuery: string; 
   path: string[];
   isScratchpad?: boolean;
-}> = React.memo(({ item, depth, searchQuery, path, isScratchpad }) => {
-  const [isOpen, setIsOpen] = useState(true);
+  expandedFolderIds: Set<string>;
+  toggleFolder: (folderId: string) => void;
+}> = React.memo(({ item, depth, searchQuery, path, isScratchpad, expandedFolderIds, toggleFolder }) => {
   const activeRequestId = useAppStore(state => state.activeRequestId);
   const openTab = useAppStore(state => state.openTab);
   const { addItem, deleteItem } = useSidebarStore();
@@ -88,6 +89,7 @@ const SidebarNode: React.FC<{
   const paddingLeft = depth * 12 + 12;
 
   const matchesSearch = (item.kind.type !== 'error' ? item.kind.name : '').toLowerCase().includes(searchQuery.toLowerCase());
+  const isOpen = item.kind.type !== 'folder' ? true : expandedFolderIds.has(item.id);
   
   const handleAddRequest = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -133,7 +135,7 @@ const SidebarNode: React.FC<{
           ref={setNodeRef}
           className="flex items-center py-2 hover:bg-muted/50 cursor-pointer text-sm text-muted-foreground group transition-colors pr-2"
           style={{ paddingLeft }}
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => toggleFolder(item.id)}
         >
           <div className="flex items-center flex-1 min-w-0">
             <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-muted-foreground/60">
@@ -173,7 +175,7 @@ const SidebarNode: React.FC<{
         </div>
         {(isOpen || searchQuery) && (
           <div className="relative">
-            <div className="absolute left-[18px] top-0 bottom-0 w-[1px] bg-border ml-[depth * 12]" style={{ left: paddingLeft + 6 }} />
+            <div className="absolute left-4.5 top-0 bottom-0 w-px bg-border ml-[depth * 12]" style={{ left: paddingLeft + 6 }} />
             {item.kind.items.length === 0 ? (
               <div style={{ paddingLeft: paddingLeft + 28 }} className="text-[11px] text-muted-foreground/60 py-2 italic">
               </div>
@@ -187,6 +189,8 @@ const SidebarNode: React.FC<{
                     searchQuery={searchQuery} 
                     path={[...path, child.kind.type !== 'error' ? child.kind.name : '']} 
                     isScratchpad={isScratchpad}
+                    expandedFolderIds={expandedFolderIds}
+                    toggleFolder={toggleFolder}
                   />
                 ))}
               </SortableContext>
@@ -220,7 +224,7 @@ const SidebarNode: React.FC<{
         <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-muted-foreground/60">
           <GripVertical size={12} />
         </div>
-        <span className={twMerge("text-[10px] font-bold px-1.5 py-0.5 rounded-md mr-3 min-w-[32px] text-center", getMethodStyles(item.kind.method))}>
+        <span className={twMerge("text-[10px] font-bold px-1.5 py-0.5 rounded-md mr-3 min-w-8 text-center", getMethodStyles(item.kind.method))}>
           {item.kind.method}
         </span>
         <span className="truncate flex-1">{item.kind.name}</span>
@@ -246,9 +250,10 @@ const SidebarNode: React.FC<{
 });
 
 export const Sidebar: React.FC = () => {
-  const { fetchSidebar, addItem, setWorkspaceSettingsOpen, moveItem, workspaceName, closeWorkspace, importPostmanCollection, projectPath } = useSidebarStore();
+  const { fetchSidebar, addItem, setWorkspaceSettingsOpen, moveItem, workspaceName, closeWorkspace, importPostmanCollection, projectPath, tree } = useSidebarStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
   const openTab = useAppStore(state => state.openTab);
 
   const [activeItem, setActiveItem] = useState<HydratedSidebarItem | null>(null);
@@ -265,8 +270,62 @@ export const Sidebar: React.FC = () => {
   );
 
   useEffect(() => {
-    fetchSidebar();
+    void fetchSidebar();
   }, [fetchSidebar]);
+
+  useEffect(() => {
+    const expandedIds = new Set<string>();
+
+    const collectFolderIds = (items: HydratedSidebarItem[]) => {
+      for (const item of items) {
+        if (item.kind.type === 'folder') {
+          expandedIds.add(item.id);
+          collectFolderIds(item.kind.items);
+        }
+      }
+    };
+
+    collectFolderIds(tree);
+    setExpandedFolderIds(expandedIds);
+  }, [tree]);
+
+  const hasAnyFolders = (items: HydratedSidebarItem[]): boolean => {
+    for (const item of items) {
+      if (item.kind.type === 'folder') {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const workspaceHasFolders = hasAnyFolders(tree);
+
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolderIds(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  };
+
+  const expandAllFolders = () => {
+    const next = new Set<string>();
+    const collectFolderIds = (items: HydratedSidebarItem[]) => {
+      for (const item of items) {
+        if (item.kind.type === 'folder') {
+          next.add(item.id);
+          collectFolderIds(item.kind.items);
+        }
+      }
+    };
+    collectFolderIds(tree);
+    setExpandedFolderIds(next);
+  };
+
+  const collapseAllFolders = () => {
+    setExpandedFolderIds(new Set());
+  };
 
   const handleDragStart = (event: any) => {
     const { active } = event;
@@ -376,7 +435,40 @@ export const Sidebar: React.FC = () => {
                   <div className="absolute right-0 mt-1 w-36 bg-popover border border-border rounded-xl shadow-2xl py-1.5 z-50 animate-in fade-in zoom-in duration-100 origin-top-right">
                     <button
                       onClick={() => {
-                        importPostmanCollection();
+                        expandAllFolders();
+                        setIsMenuOpen(false);
+                      }}
+                      disabled={!workspaceHasFolders}
+                      className={twMerge(
+                        "w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider",
+                        !workspaceHasFolders 
+                          ? "text-muted-foreground/40 cursor-not-allowed" 
+                          : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                      )}
+                    >
+                      <ChevronsDown size={14} className="opacity-70" />
+                      Expand all
+                    </button>
+                    <button
+                      onClick={() => {
+                        collapseAllFolders();
+                        setIsMenuOpen(false);
+                      }}
+                      disabled={!workspaceHasFolders}
+                      className={twMerge(
+                        "w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider",
+                        !workspaceHasFolders 
+                          ? "text-muted-foreground/40 cursor-not-allowed" 
+                          : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                      )}
+                    >
+                      <ChevronsUp size={14} className="opacity-70" />
+                      Collapse all
+                    </button>
+                    <div className="my-1 h-px bg-border/70" />
+                    <button
+                      onClick={() => {
+                        void importPostmanCollection();
                         setIsMenuOpen(false);
                       }}
                       disabled={!projectPath}
@@ -438,7 +530,7 @@ export const Sidebar: React.FC = () => {
               <button 
                 onClick={(e) => {
                   e.stopPropagation();
-                  closeWorkspace();
+                  void closeWorkspace();
                 }}
                 className="opacity-0 group-hover/workspace-pill:opacity-100 p-1 hover:bg-primary/10 rounded-md text-primary hover:text-destructive transition-all"
                 title="Close Workspace"
@@ -449,13 +541,23 @@ export const Sidebar: React.FC = () => {
           )}
         </div>
 
-        <SidebarContent searchQuery={searchQuery} activeItem={activeItem} />
+        <SidebarContent
+          searchQuery={searchQuery}
+          activeItem={activeItem}
+          expandedFolderIds={expandedFolderIds}
+          toggleFolder={toggleFolder}
+        />
       </div>
     </DndContext>
   );
 };
 
-const SidebarContent: React.FC<{ searchQuery: string; activeItem: HydratedSidebarItem | null }> = ({ searchQuery, activeItem }) => {
+const SidebarContent: React.FC<{ 
+  searchQuery: string; 
+  activeItem: HydratedSidebarItem | null;
+  expandedFolderIds: Set<string>;
+  toggleFolder: (folderId: string) => void;
+}> = ({ searchQuery, activeItem, expandedFolderIds, toggleFolder }) => {
   const { tree, scratchpadTree, projectPath, addItemOptimistic } = useSidebarStore();
   const openTab = useAppStore(state => state.openTab);
   const setRequestOrigin = useAppStore(state => state.setRequestOrigin);
@@ -475,11 +577,11 @@ const SidebarContent: React.FC<{ searchQuery: string; activeItem: HydratedSideba
   };
 
   return (
-    <div ref={setNodeRef} className="flex-1 overflow-y-auto pb-4 custom-scrollbar min-h-[100px]">
+    <div ref={setNodeRef} className="flex-1 overflow-y-auto pb-4 custom-scrollbar min-h-25">
       {projectPath && tree.length > 0 && (
         <SortableContext items={tree.map(i => i.id)} strategy={verticalListSortingStrategy}>
           {tree.map((item, idx) => (
-            <SidebarNode key={item.id || idx} item={item} depth={0} searchQuery={searchQuery} path={[item.kind.type !== 'error' ? item.kind.name : '']} />
+            <SidebarNode key={item.id || idx} item={item} depth={0} searchQuery={searchQuery} path={[item.kind.type !== 'error' ? item.kind.name : '']} expandedFolderIds={expandedFolderIds} toggleFolder={toggleFolder} />
           ))}
         </SortableContext>
       )}
@@ -508,6 +610,8 @@ const SidebarContent: React.FC<{ searchQuery: string; activeItem: HydratedSideba
                   searchQuery={searchQuery} 
                   path={[item.kind.type !== 'error' ? item.kind.name : '']} 
                   isScratchpad={true}
+                  expandedFolderIds={expandedFolderIds}
+                  toggleFolder={toggleFolder}
                 />
               ))}
             </SortableContext>
@@ -529,7 +633,7 @@ const SidebarContent: React.FC<{ searchQuery: string; activeItem: HydratedSideba
               </>
             ) : (
               <>
-                <span className={twMerge("text-[10px] font-bold px-1.5 py-0.5 rounded-md min-w-[32px] text-center", getMethodStyles(activeItem.kind.type === 'request' ? activeItem.kind.method : ''))}>
+                <span className={twMerge("text-[10px] font-bold px-1.5 py-0.5 rounded-md min-w-8 text-center", getMethodStyles(activeItem.kind.type === 'request' ? activeItem.kind.method : ''))}>
                   {activeItem.kind.type === 'request' ? activeItem.kind.method : ''}
                 </span>
                 <span className="text-muted-foreground">{activeItem.kind.type !== 'error' ? activeItem.kind.name : ''}</span>
