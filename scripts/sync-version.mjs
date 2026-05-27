@@ -16,12 +16,13 @@ if (typeof version !== 'string' || version.length === 0) {
 }
 
 const contents = `export const APP_VERSION = '${version}';\n`;
+const tauriVersion = version.split('-')[0];
 
 await writeFile(versionFilePath, contents, 'utf8');
 
 const tauriConfig = JSON.parse(await readFile(tauriConfigPath, 'utf8'));
-tauriConfig.version = version;
+tauriConfig.version = tauriVersion;
 
 await writeFile(tauriConfigPath, `${JSON.stringify(tauriConfig, null, 2)}\n`, 'utf8');
 
-console.log(`Wrote ${versionFilePath} and ${tauriConfigPath} with version ${version}`);
+console.log(`Wrote ${versionFilePath} with ${version} and ${tauriConfigPath} with ${tauriVersion}`);
