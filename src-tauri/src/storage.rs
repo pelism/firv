@@ -1,4 +1,4 @@
-use crate::models::{manifest::Workspace, FirvManifest, FirvRequest};
+use crate::models::{manifest::{FirvManifest, SidebarItem, Workspace}, FirvRequest};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -88,6 +88,71 @@ pub fn update_manifest_structure(project_root: String, workspace: Workspace, nam
         manifest.name = n;
     }
 
+    save_atomic(manifest_path, &manifest)
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ExportedWorkspace {
+    version: String,
+    name: String,
+    workspace: Workspace,
+    requests: Vec<FirvRequest>,
+}
+
+fn collect_request_ids(items: &[SidebarItem], request_ids: &mut Vec<String>) {
+    for item in items {
+        match item {
+            SidebarItem::Folder { items, .. } => collect_request_ids(items, request_ids),
+            SidebarItem::Request { id, .. } => request_ids.push(id.clone()),
+        }
+    }
+}
+
+#[tauri::command]
+pub fn export_workspace(project_root: String, output_path: String) -> Result<(), String> {
+    let manifest_path = Path::new(&project_root).join("firv.yaml");
+    let manifest_content = std::fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("Failed to read manifest: {}", e))?;
+    let manifest: FirvManifest = serde_yaml::from_str(&manifest_content)
+        .map_err(|e| format!("Failed to parse manifest: {}", e))?;
+
+    let mut request_ids = Vec::new();
+    collect_request_ids(&manifest.workspace.order, &mut request_ids);
+
+    let mut requests = Vec::new();
+    for id in request_ids {
+        let request = get_request(project_root.clone(), id)?;
+        requests.push(request);
+    }
+
+    let exported = ExportedWorkspace {
+        version: manifest.version,
+        name: manifest.name,
+        workspace: manifest.workspace,
+        requests,
+    };
+
+    save_atomic(PathBuf::from(output_path), &exported)
+}
+
+#[tauri::command]
+pub fn import_firv_export(project_root: String, input_path: String) -> Result<(), String> {
+    let content = std::fs::read_to_string(&input_path)
+        .map_err(|e| format!("Failed to read export file: {}", e))?;
+    let exported: ExportedWorkspace = serde_yaml::from_str(&content)
+        .map_err(|e| format!("Failed to parse export file: {}", e))?;
+
+    for request in exported.requests {
+        update_request(project_root.clone(), request)?;
+    }
+
+    let manifest = FirvManifest {
+        version: exported.version,
+        name: exported.name,
+        workspace: exported.workspace,
+    };
+
+    let manifest_path = Path::new(&project_root).join("firv.yaml");
     save_atomic(manifest_path, &manifest)
 }
 

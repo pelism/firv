@@ -124,7 +124,7 @@ function App() {
         {isAppSettingsOpen && <AppSettings />}
         <MenuSidebar />
         <PanelGroup orientation="horizontal">
-          <Panel defaultSize={225} minSize={225} maxSize={300} className="border-r border-border">
+          <Panel defaultSize={225} minSize={225} maxSize={300} className="relative z-20 border-r border-border">
             <Sidebar />
           </Panel>
           

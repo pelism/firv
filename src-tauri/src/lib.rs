@@ -16,6 +16,8 @@ use storage::delete_request;
 use storage::update_manifest_structure;
 use storage::create_workspace;
 use storage::check_workspace_exists;
+use storage::export_workspace;
+use storage::import_firv_export;
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, PhysicalPosition, PhysicalSize, WindowEvent};
 use std::sync::Mutex;
@@ -178,7 +180,9 @@ pub fn run() {
             delete_request,
             update_manifest_structure,
             create_workspace,
-            check_workspace_exists
+            check_workspace_exists,
+            export_workspace,
+            import_firv_export
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

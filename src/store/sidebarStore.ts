@@ -34,6 +34,8 @@ interface SidebarState {
   ensureWorkspace: () => Promise<boolean>;
   openWorkspace: () => Promise<void>;
   createWorkspace: () => Promise<void>;
+  exportWorkspace: () => Promise<void>;
+  importFirvExport: () => Promise<void>;
   importPostmanCollection: () => Promise<void>;
   loadOrphans: () => Promise<void>;
   getRequestName: (id: string) => string;
@@ -58,6 +60,36 @@ const transformToManifestItem = (item: HydratedSidebarItem): any => {
     };
   }
   return null;
+};
+
+const collectRequestIds = (items: HydratedSidebarItem[]): string[] => {
+  const ids: string[] = [];
+
+  for (const item of items) {
+    if (item.kind.type === 'request') {
+      ids.push(item.kind.id);
+    } else if (item.kind.type === 'folder') {
+      ids.push(...collectRequestIds(item.kind.items));
+    }
+  }
+
+  return ids;
+};
+
+const buildExportTree = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
+  return items.map(item => {
+    if (item.kind.type === 'folder') {
+      return {
+        ...item,
+        kind: {
+          ...item.kind,
+          items: buildExportTree(item.kind.items)
+        }
+      };
+    }
+
+    return item;
+  });
 };
 
 export const useSidebarStore = create<SidebarState>()(
@@ -590,6 +622,52 @@ export const useSidebarStore = create<SidebarState>()(
           await get().loadOrphans();
         } catch (e) {
           console.error("Failed to open workspace:", e);
+        }
+      },
+      exportWorkspace: async () => {
+        const { projectPath, workspaceName } = get();
+        if (!projectPath) {
+          console.error('No workspace open. Please open a workspace first.');
+          return;
+        }
+
+        try {
+          const { save } = await import('@tauri-apps/plugin-dialog');
+          const selected = await save({
+            title: 'Export FIRV Workspace',
+            defaultPath: `${workspaceName || 'workspace'}.yaml`,
+            filters: [{ name: 'YAML', extensions: ['yaml', 'yml'] }],
+          });
+
+          if (!selected) return;
+
+          await invoke('export_workspace', { projectRoot: projectPath, outputPath: selected });
+        } catch (e) {
+          console.error('Failed to export workspace:', e);
+        }
+      },
+      importFirvExport: async () => {
+        const { projectPath } = get();
+        if (!projectPath) {
+          console.error('No workspace open. Please open a workspace first.');
+          return;
+        }
+
+        try {
+          const { open } = await import('@tauri-apps/plugin-dialog');
+          const selected = await open({
+            multiple: false,
+            filters: [{ name: 'FIRV Export', extensions: ['yaml', 'yml'] }],
+            title: 'Select FIRV Export YAML',
+          });
+
+          if (!selected || Array.isArray(selected)) return;
+
+          await invoke('import_firv_export', { projectRoot: projectPath, inputPath: selected });
+          await get().fetchSidebar();
+          await get().loadOrphans();
+        } catch (e) {
+          console.error('Failed to import FIRV export:', e);
         }
       },
       importPostmanCollection: async () => {

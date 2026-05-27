@@ -39,6 +39,9 @@ jobs:
       - name: install frontend dependencies
         run: npm install
 
+      - name: sync version from package.json
+        run: npm run sync:version
+
       - name: run frontend tests
         run: npm test
 
@@ -55,7 +58,7 @@ jobs:
           releaseName: "firv v__VERSION__"
           releaseBody: "firv release for Windows (Portable EXE & MSI) and Linux (DEB & AppImage)."
           releaseDraft: true
-          prerelease: false
+          prerelease: true
 
       - name: upload standalone exe (windows only)
         if: matrix.platform == 'windows-latest'

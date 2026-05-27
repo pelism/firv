@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSidebarStore } from '../store/sidebarStore';
 import { HydratedSidebarItem } from '../types/hydratedSidebarItem.ts';
 import { useAppStore } from '../store/appStore';
@@ -250,9 +251,12 @@ const SidebarNode: React.FC<{
 });
 
 export const Sidebar: React.FC = () => {
-  const { fetchSidebar, addItem, setWorkspaceSettingsOpen, moveItem, workspaceName, closeWorkspace, importPostmanCollection, projectPath, tree } = useSidebarStore();
+  const { fetchSidebar, addItem, setWorkspaceSettingsOpen, moveItem, workspaceName, closeWorkspace, exportWorkspace, importPostmanCollection, importFirvExport, projectPath, tree } = useSidebarStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isImportFlyoutOpen, setIsImportFlyoutOpen] = useState(false);
+  const importTriggerRef = useRef<HTMLDivElement>(null);
+  const [importFlyoutPosition, setImportFlyoutPosition] = useState({ top: 0, left: 0 });
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
   const openTab = useAppStore(state => state.openTab);
 
@@ -288,6 +292,29 @@ export const Sidebar: React.FC = () => {
     collectFolderIds(tree);
     setExpandedFolderIds(expandedIds);
   }, [tree]);
+
+  useLayoutEffect(() => {
+    if (!isImportFlyoutOpen) return;
+
+    const updatePosition = () => {
+      const rect = importTriggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      setImportFlyoutPosition({
+        top: rect.top,
+        left: rect.right + 6,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [isImportFlyoutOpen]);
 
   const hasAnyFolders = (items: HydratedSidebarItem[]): boolean => {
     for (const item of items) {
@@ -395,7 +422,7 @@ export const Sidebar: React.FC = () => {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="h-full bg-muted/20 flex flex-col overflow-hidden border-r border-border">
+      <div className="h-full bg-muted/20 flex flex-col overflow-visible border-r border-border">
         <div className="p-4 flex items-center justify-between">
           <div className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">
             {projectPath ? 'Workspace' : 'Scratchpad'}
@@ -466,25 +493,63 @@ export const Sidebar: React.FC = () => {
                       Collapse all
                     </button>
                     <div className="my-1 h-px bg-border/70" />
-                    <button
-                      onClick={() => {
-                        void importPostmanCollection();
-                        setIsMenuOpen(false);
-                      }}
-                      disabled={!projectPath}
-                      className={twMerge(
-                        "w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider",
-                        !projectPath 
-                          ? "text-muted-foreground/40 cursor-not-allowed" 
-                          : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-                      )}
+                    <div
+                      ref={importTriggerRef}
+                      className="relative"
+                      onMouseEnter={() => setIsImportFlyoutOpen(true)}
+                      onMouseLeave={() => setIsImportFlyoutOpen(false)}
                     >
-                      <Download size={14} className={twMerge("opacity-70", !projectPath && "opacity-30")} />
-                      Import
-                    </button>
+                      <button
+                        onClick={() => setIsImportFlyoutOpen(prev => !prev)}
+                        disabled={!projectPath}
+                        className={twMerge(
+                          "w-full flex items-center justify-between gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider",
+                          !projectPath
+                            ? "text-muted-foreground/40 cursor-not-allowed"
+                            : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                        )}
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <Download size={14} className={twMerge("opacity-70", !projectPath && "opacity-30")} />
+                          Import
+                        </span>
+                        <ChevronRight size={12} className={twMerge("opacity-60", !projectPath && "opacity-30")} />
+                      </button>
+
+                      {isImportFlyoutOpen && projectPath && createPortal(
+                        <div
+                          className="fixed w-40 bg-popover border border-border rounded-xl shadow-2xl py-1.5 z-[9999] animate-in fade-in zoom-in duration-100 origin-top-left"
+                          style={{ top: importFlyoutPosition.top, left: importFlyoutPosition.left }}
+                          onMouseEnter={() => setIsImportFlyoutOpen(true)}
+                          onMouseLeave={() => setIsImportFlyoutOpen(false)}
+                        >
+                          <button
+                            onClick={() => {
+                              void importPostmanCollection();
+                              setIsImportFlyoutOpen(false);
+                              setIsMenuOpen(false);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider text-muted-foreground hover:text-primary hover:bg-primary/10"
+                          >
+                            Postman
+                          </button>
+                          <button
+                            onClick={() => {
+                              void importFirvExport();
+                              setIsImportFlyoutOpen(false);
+                              setIsMenuOpen(false);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider text-muted-foreground hover:text-primary hover:bg-primary/10"
+                          >
+                            FIRV
+                          </button>
+                        </div>,
+                        document.body
+                      )}
+                    </div>
                     <button
                       onClick={() => {
-                        // Export functionality placeholder
+                        void exportWorkspace();
                         setIsMenuOpen(false);
                       }}
                       disabled={!projectPath}

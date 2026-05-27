@@ -1,10 +1,12 @@
 {
   "name": "firv",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0-alpha",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "sync:version": "node scripts/sync-version.mjs",
+    "prebuild": "npm run sync:version",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

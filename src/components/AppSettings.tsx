@@ -2,6 +2,7 @@ import { X, Settings, Moon, Sun, Monitor } from 'lucide-react';
 import { useSidebarStore } from '../store/sidebarStore';
 import { useThemeStore, Theme } from '../store/themeStore';
 import { twMerge } from 'tailwind-merge';
+import { APP_VERSION } from '../version';
 
 export function AppSettings() {
   const { setAppSettingsOpen, setActiveMenu } = useSidebarStore();
@@ -78,7 +79,7 @@ export function AppSettings() {
             <div className="p-6 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between gap-4">
               <div>
                 <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Version</div>
-                <div className="text-sm font-medium text-foreground mt-1">v1.0.0-beta</div>
+                <div className="text-sm font-medium text-foreground mt-1">v{APP_VERSION}</div>
               </div>
             </div>
           </section>
