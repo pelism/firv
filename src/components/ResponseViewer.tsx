@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Virtuoso } from 'react-virtuoso';
 import { Download, Search, Activity, Database, Clock, FileJson, Globe, Copy } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
+import { writeClipboardText } from '../lib/clipboard';
 
 export interface FirvResponse {
   status: number;
@@ -155,9 +156,13 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
     return flattenJson(parsedData, expandedPaths);
   }, [parsedData, expandedPaths]);
 
-  const handleCopyPath = (e: React.MouseEvent, path: string) => {
+  const handleCopyPath = async (e: React.MouseEvent, path: string) => {
     e.preventDefault();
-    navigator.clipboard.writeText(path);
+    try {
+      await writeClipboardText(path);
+    } catch (error) {
+      console.error('Failed to copy path:', error);
+    }
   };
 
   const renderNode = (_index: number, node: JsonNode) => {
@@ -234,7 +239,7 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
 
   const handleCopyResponse = async () => {
     try {
-      await navigator.clipboard.writeText(body);
+      await writeClipboardText(body);
     } catch (err) {
       console.error('Failed to copy response:', err);
     }

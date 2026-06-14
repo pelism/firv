@@ -14,6 +14,7 @@ import logo from "./assets/icons/firv-logo.png";
 import { twMerge } from "tailwind-merge";
 import { InputModal } from "./components/InputModal";
 import { WindowControls } from "./components/WindowControls";
+import { useNativeContextMenu } from "./hooks/useNativeContextMenu";
 import "./App.css";
 
 function App() {
@@ -37,6 +38,7 @@ function App() {
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
+  const triggerNativeContextMenu = useNativeContextMenu();
 
   useEffect(() => {
     if (editingTabId && editInputRef.current) {
@@ -102,7 +104,7 @@ function App() {
   return (
     <div
       className="flex flex-col h-full overflow-hidden bg-background text-foreground font-sans selection:bg-primary/30"
-      onContextMenu={(e) => e.preventDefault()}
+      onContextMenu={triggerNativeContextMenu}
     >
       {/* Unified Global Header */}
       <header 

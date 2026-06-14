@@ -1,11 +1,15 @@
+use liquid::model::{Object, Value};
+use liquid::ParserBuilder;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
-use liquid::ParserBuilder;
-use liquid::model::{Object, Value};
 
 use crate::models::request::{ExtractionSource, RequestExtractionRule};
+
+mod uuid_filter;
+
+use uuid_filter::UuidFilterParser;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VariableTraceEntry {
@@ -64,6 +68,13 @@ fn extract_json_path<'a>(value: &'a serde_json::Value, path: &str) -> Option<&'a
 
 static TEMPLATE_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*}}").unwrap());
+
+static LIQUID_PARSER: LazyLock<liquid::Parser> = LazyLock::new(|| {
+    ParserBuilder::with_stdlib()
+        .filter(UuidFilterParser::default())
+        .build()
+        .expect("Failed to build Liquid parser")
+});
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VariableResolver {
@@ -176,10 +187,9 @@ impl VariableResolver {
 
     pub fn render_liquid(&mut self, input: &str) -> Result<String, String> {
         self.record_used_keys_from_input(input);
-        let parser = ParserBuilder::with_stdlib()
-            .build()
+        let template = LIQUID_PARSER
+            .parse(input)
             .map_err(|e| e.to_string())?;
-        let template = parser.parse(input).map_err(|e| e.to_string())?;
         let mut globals = Object::new();
         for (key, value) in self.merge() {
             globals.insert(key.into(), Value::scalar(value));
@@ -291,6 +301,17 @@ mod tests {
         resolver.globals.insert("name".to_string(), "Firv".to_string());
 
         assert_eq!(resolver.render_liquid("Hello {{ name }}").unwrap(), "Hello Firv");
+    }
+
+    #[test]
+    fn render_liquid_supports_uuid_filter() {
+        let mut resolver = VariableResolver::new();
+        let rendered = resolver
+            .render_liquid("{% assign id = \"\" | uuid %}{{ id }}")
+            .unwrap();
+
+        assert_eq!(rendered.len(), 36);
+        assert!(rendered.chars().filter(|c| *c == '-').count() == 4);
     }
 
     #[test]

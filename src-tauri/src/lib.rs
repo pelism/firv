@@ -19,8 +19,9 @@ use storage::check_workspace_exists;
 use storage::export_workspace;
 use storage::import_firv_export;
 use serde::{Deserialize, Serialize};
-use tauri::{Manager, PhysicalPosition, PhysicalSize, WindowEvent};
 use std::sync::Mutex;
+use tauri::menu::{MenuBuilder, SubmenuBuilder};
+use tauri::{Manager, PhysicalPosition, PhysicalSize, WindowEvent};
 use tokio::sync::oneshot;
 
 pub struct RequestCancellationState(pub Mutex<Option<oneshot::Sender<()>>>);
@@ -117,9 +118,22 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(watcher::WatcherHandle(Mutex::new(None)))
         .manage(RequestCancellationState(Mutex::new(None)))
         .setup(|app| {
+            let edit_menu = SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+
+            let menu = MenuBuilder::new(app).item(&edit_menu).build()?;
+            app.set_menu(menu)?;
+
             if let Some(window) = app.get_webview_window("main") {
                 if let Some(state) = load_window_state(app.handle()) {
                     if state.maximized {
