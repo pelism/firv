@@ -1,9 +1,8 @@
-import { X, Settings, Moon, Sun, Monitor, Scissors } from 'lucide-react';
+import { X, Settings, Moon, Sun, Monitor } from 'lucide-react';
 import { useSidebarStore } from '../store/sidebarStore';
 import { useThemeStore, Theme } from '../store/themeStore';
 import { twMerge } from 'tailwind-merge';
 import { APP_VERSION } from '../version';
-import { ClipboardInput } from './ClipboardInput';
 
 export function AppSettings() {
   const { setAppSettingsOpen, setActiveMenu } = useSidebarStore();
@@ -83,18 +82,6 @@ export function AppSettings() {
                 <div className="text-sm font-medium text-foreground mt-1">v{APP_VERSION}</div>
               </div>
             </div>
-          </section>
-
-          <section className="space-y-4">
-            <div>
-              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                <Scissors size={18} /> Clipboard Utilities
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Use this sandbox to verify native cut/copy/paste behaviors and the system context menu integration.
-              </p>
-            </div>
-            <ClipboardInput />
           </section>
 
           {/* More sections can be added here as needed (e.g., Font size, Keybindings, etc.) */}
