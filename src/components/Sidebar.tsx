@@ -1,6 +1,6 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useSidebarStore } from '../store/sidebarStore';
+import { SCRATCHPAD_WORKSPACE_KEY, useSidebarStore } from '../store/sidebarStore';
 import { HydratedSidebarItem } from '../types/hydratedSidebarItem.ts';
 import { useAppStore } from '../store/appStore';
 import { useModalStore } from '../store/modalStore';
@@ -251,16 +251,35 @@ const SidebarNode: React.FC<{
 });
 
 export const Sidebar: React.FC = () => {
-  const { fetchSidebar, addItem, setWorkspaceSettingsOpen, moveItem, workspaceName, closeWorkspace, exportWorkspace, importPostmanCollection, importFirvExport, projectPath, tree } = useSidebarStore();
+  const { 
+    fetchSidebar, 
+    addItem, 
+    setWorkspaceSettingsOpen, 
+    moveItem, 
+    workspaceName, 
+    closeWorkspace, 
+    exportWorkspace, 
+    importPostmanCollection, 
+    importFirvExport, 
+    projectPath, 
+    tree,
+    expandedFolderIdsByWorkspace,
+    toggleFolderExpansion,
+    expandAllFoldersForWorkspace,
+    collapseAllFoldersForWorkspace,
+    syncExpandedFoldersWithTree,
+  } = useSidebarStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isImportFlyoutOpen, setIsImportFlyoutOpen] = useState(false);
   const importTriggerRef = useRef<HTMLDivElement>(null);
   const [importFlyoutPosition, setImportFlyoutPosition] = useState({ top: 0, left: 0 });
-  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
   const openTab = useAppStore(state => state.openTab);
 
   const [activeItem, setActiveItem] = useState<HydratedSidebarItem | null>(null);
+
+  const workspaceKey = projectPath || SCRATCHPAD_WORKSPACE_KEY;
+  const expandedFolderIds = useMemo(() => new Set(expandedFolderIdsByWorkspace[workspaceKey] ?? []), [expandedFolderIdsByWorkspace, workspaceKey]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -278,20 +297,8 @@ export const Sidebar: React.FC = () => {
   }, [fetchSidebar]);
 
   useEffect(() => {
-    const expandedIds = new Set<string>();
-
-    const collectFolderIds = (items: HydratedSidebarItem[]) => {
-      for (const item of items) {
-        if (item.kind.type === 'folder') {
-          expandedIds.add(item.id);
-          collectFolderIds(item.kind.items);
-        }
-      }
-    };
-
-    collectFolderIds(tree);
-    setExpandedFolderIds(expandedIds);
-  }, [tree]);
+    syncExpandedFoldersWithTree(workspaceKey, tree);
+  }, [syncExpandedFoldersWithTree, workspaceKey, tree]);
 
   useLayoutEffect(() => {
     if (!isImportFlyoutOpen) return;
@@ -327,32 +334,17 @@ export const Sidebar: React.FC = () => {
 
   const workspaceHasFolders = hasAnyFolders(tree);
 
-  const toggleFolder = (folderId: string) => {
-    setExpandedFolderIds(prev => {
-      const next = new Set(prev);
-      if (next.has(folderId)) next.delete(folderId);
-      else next.add(folderId);
-      return next;
-    });
-  };
+  const toggleFolder = useCallback((folderId: string) => {
+    toggleFolderExpansion(workspaceKey, folderId);
+  }, [toggleFolderExpansion, workspaceKey]);
 
-  const expandAllFolders = () => {
-    const next = new Set<string>();
-    const collectFolderIds = (items: HydratedSidebarItem[]) => {
-      for (const item of items) {
-        if (item.kind.type === 'folder') {
-          next.add(item.id);
-          collectFolderIds(item.kind.items);
-        }
-      }
-    };
-    collectFolderIds(tree);
-    setExpandedFolderIds(next);
-  };
+  const expandAllFolders = useCallback(() => {
+    expandAllFoldersForWorkspace(workspaceKey, tree);
+  }, [expandAllFoldersForWorkspace, workspaceKey, tree]);
 
-  const collapseAllFolders = () => {
-    setExpandedFolderIds(new Set());
-  };
+  const collapseAllFolders = useCallback(() => {
+    collapseAllFoldersForWorkspace(workspaceKey);
+  }, [collapseAllFoldersForWorkspace, workspaceKey]);
 
   const handleDragStart = (event: any) => {
     const { active } = event;

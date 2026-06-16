@@ -8,6 +8,45 @@ import { HydratedSidebarItem } from "../types/hydratedSidebarItem.ts";
 import { HydratedTree } from "../types/hydratedTree.ts";
 import {KeyValue} from "../types/keyValue.ts";
 
+export const SCRATCHPAD_WORKSPACE_KEY = '__scratchpad__';
+
+const getWorkspaceKey = (projectPath?: string) => projectPath || SCRATCHPAD_WORKSPACE_KEY;
+
+const collectFolderIdsFromTree = (items: HydratedSidebarItem[], acc: Set<string> = new Set()): Set<string> => {
+  for (const item of items) {
+    if (item.kind.type === 'folder') {
+      acc.add(item.id);
+      collectFolderIdsFromTree(item.kind.items, acc);
+    }
+  }
+  return acc;
+};
+
+const addItemToPath = (items: HydratedSidebarItem[], path: string[], itemToInsert: HydratedSidebarItem): HydratedSidebarItem[] => {
+  const [currentName, ...rest] = path;
+  return items.map(item => {
+    if (item.kind.type === 'folder' && item.kind.name === currentName) {
+      if (rest.length === 0) {
+        return {
+          ...item,
+          kind: {
+            ...item.kind,
+            items: [...item.kind.items, itemToInsert]
+          }
+        };
+      }
+      return {
+        ...item,
+        kind: {
+          ...item.kind,
+          items: addItemToPath(item.kind.items, rest, itemToInsert)
+        }
+      };
+    }
+    return item;
+  });
+};
+
 interface SidebarState {
   tree: HydratedSidebarItem[];
   scratchpadTree: HydratedSidebarItem[];
@@ -42,6 +81,12 @@ interface SidebarState {
   clearPendingName: (id: string) => void;
   closeWorkspace: () => Promise<void>;
   promoteScratchpadRequest: (requestId: string, item: HydratedSidebarItem) => void;
+  expandedFolderIdsByWorkspace: Record<string, string[]>;
+  toggleFolderExpansion: (workspaceKey: string, folderId: string) => void;
+  expandAllFoldersForWorkspace: (workspaceKey: string, tree: HydratedSidebarItem[]) => void;
+  collapseAllFoldersForWorkspace: (workspaceKey: string) => void;
+  syncExpandedFoldersWithTree: (workspaceKey: string, tree: HydratedSidebarItem[]) => void;
+  expandedStateHydrated: boolean;
 }
 
 const transformToManifestItem = (item: HydratedSidebarItem): any => {
@@ -60,36 +105,6 @@ const transformToManifestItem = (item: HydratedSidebarItem): any => {
     };
   }
   return null;
-};
-
-const collectRequestIds = (items: HydratedSidebarItem[]): string[] => {
-  const ids: string[] = [];
-
-  for (const item of items) {
-    if (item.kind.type === 'request') {
-      ids.push(item.kind.id);
-    } else if (item.kind.type === 'folder') {
-      ids.push(...collectRequestIds(item.kind.items));
-    }
-  }
-
-  return ids;
-};
-
-const buildExportTree = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
-  return items.map(item => {
-    if (item.kind.type === 'folder') {
-      return {
-        ...item,
-        kind: {
-          ...item.kind,
-          items: buildExportTree(item.kind.items)
-        }
-      };
-    }
-
-    return item;
-  });
 };
 
 export const useSidebarStore = create<SidebarState>()(
@@ -231,7 +246,7 @@ export const useSidebarStore = create<SidebarState>()(
             updatedTree = insertItemToList(newTreeWithoutItem);
           }
           set({ tree: updatedTree, scratchpadTree: updatedScratchpadTree });
-          syncTreeToBackend(updatedTree);
+          void syncTreeToBackend(updatedTree);
         } else {
           // Otherwise drop into scratchpadTree
           updatedScratchpadTree = insertItemToList(newScratchpadTreeWithoutItem);
@@ -249,7 +264,7 @@ export const useSidebarStore = create<SidebarState>()(
             updatedScratchpadTree = [...newScratchpadTreeWithoutItem, draggedItem];
           }
           set({ tree: updatedTree, scratchpadTree: updatedScratchpadTree });
-          syncTreeToBackend(updatedTree);
+          void syncTreeToBackend(updatedTree);
         }
       },
       syncTreeToBackend: async (newTree) => {
@@ -283,7 +298,7 @@ export const useSidebarStore = create<SidebarState>()(
           // Optionally refetch here if needed
         } catch (e) {
           console.error('Failed to sync tree:', e);
-          get().fetchSidebar(); // Rollback on fail
+          await get().fetchSidebar(); // Rollback on fail
         }
       },
       updateRequestName: (id, newName) => {
@@ -388,6 +403,78 @@ export const useSidebarStore = create<SidebarState>()(
           scratchpadTree: removeFromScratchpad(state.scratchpadTree),
         }));
       },
+      expandedFolderIdsByWorkspace: {},
+      expandedStateHydrated: false,
+      toggleFolderExpansion: (workspaceKey, folderId) => {
+        const key = getWorkspaceKey(workspaceKey);
+        set((state) => {
+          const current = new Set(state.expandedFolderIdsByWorkspace[key] ?? []);
+          if (current.has(folderId)) current.delete(folderId);
+          else current.add(folderId);
+
+          return {
+            expandedFolderIdsByWorkspace: {
+              ...state.expandedFolderIdsByWorkspace,
+              [key]: Array.from(current)
+            }
+          };
+        });
+      },
+      expandAllFoldersForWorkspace: (workspaceKey, tree) => {
+        const key = getWorkspaceKey(workspaceKey);
+        const allFolderIds = Array.from(collectFolderIdsFromTree(tree));
+        set((state) => ({
+          expandedFolderIdsByWorkspace: {
+            ...state.expandedFolderIdsByWorkspace,
+            [key]: allFolderIds
+          }
+        }));
+      },
+      collapseAllFoldersForWorkspace: (workspaceKey) => {
+        const key = getWorkspaceKey(workspaceKey);
+        set((state) => ({
+          expandedFolderIdsByWorkspace: {
+            ...state.expandedFolderIdsByWorkspace,
+            [key]: []
+          }
+        }));
+      },
+      syncExpandedFoldersWithTree: (workspaceKey, tree) => {
+        const key = getWorkspaceKey(workspaceKey);
+        const allFolderIds = collectFolderIdsFromTree(tree);
+        set((state) => {
+          const existing = state.expandedFolderIdsByWorkspace[key];
+          let nextSet: Set<string> | null = null;
+          let changed = false;
+
+          if (!existing) {
+            if (!state.expandedStateHydrated) {
+              return {};
+            }
+            nextSet = new Set(allFolderIds);
+            changed = true;
+          } else {
+            nextSet = new Set(existing);
+            for (const id of Array.from(nextSet)) {
+              if (!allFolderIds.has(id)) {
+                nextSet.delete(id);
+                changed = true;
+              }
+            }
+          }
+
+          if (!changed) {
+            return {};
+          }
+
+          return {
+            expandedFolderIdsByWorkspace: {
+              ...state.expandedFolderIdsByWorkspace,
+              [key]: Array.from(nextSet ?? [])
+            }
+          };
+        });
+      },
       addItemOptimistic: (newItem, parentPath, isScratchpad) => {
         const { tree, scratchpadTree, projectPath } = get();
         const itemWithId = {
@@ -405,32 +492,7 @@ export const useSidebarStore = create<SidebarState>()(
           return;
         }
 
-        const addItemToItems = (items: HydratedSidebarItem[], path: string[]): HydratedSidebarItem[] => {
-          const [currentName, ...rest] = path;
-          return items.map(item => {
-            if (item.kind.type === 'folder' && item.kind.name === currentName) {
-              if (rest.length === 0) {
-                return {
-                  ...item,
-                  kind: {
-                    ...item.kind,
-                    items: [...item.kind.items, itemWithId]
-                  }
-                };
-              }
-              return {
-                ...item,
-                kind: {
-                  ...item.kind,
-                  items: addItemToItems(item.kind.items, rest)
-                }
-              };
-            }
-            return item;
-          });
-        };
-
-        set({ tree: addItemToItems(tree, parentPath) });
+        set({ tree: addItemToPath(tree, parentPath, itemWithId) });
       },
       addItem: async (newItem, parentPath, isScratchpad) => {
         const { tree, scratchpadTree, syncTreeToBackend, projectPath } = get();
@@ -451,32 +513,7 @@ export const useSidebarStore = create<SidebarState>()(
           return;
         }
 
-        const addItemToItems = (items: HydratedSidebarItem[], path: string[]): HydratedSidebarItem[] => {
-          const [currentName, ...rest] = path;
-          return items.map(item => {
-            if (item.kind.type === 'folder' && item.kind.name === currentName) {
-              if (rest.length === 0) {
-                return {
-                  ...item,
-                  kind: {
-                    ...item.kind,
-                    items: [...item.kind.items, itemWithId]
-                  }
-                };
-              }
-              return {
-                ...item,
-                kind: {
-                  ...item.kind,
-                  items: addItemToItems(item.kind.items, rest)
-                }
-              };
-            }
-            return item;
-          });
-        };
-
-        const newTree = addItemToItems(tree, parentPath);
+        const newTree = addItemToPath(tree, parentPath, itemWithId);
         set({ tree: newTree });
         await syncTreeToBackend(newTree);
       },
@@ -787,7 +824,8 @@ export const useSidebarStore = create<SidebarState>()(
           console.log('Fetching current manifest...');
           const currentManifest: any = await invoke('get_manifest', { projectPath });
           if (!currentManifest || !currentManifest.workspace) {
-            throw new Error("Invalid manifest structure");
+            console.error("Invalid manifest structure during Postman import");
+            return;
           }
 
           const newOrder = [
@@ -908,14 +946,21 @@ export const useSidebarStore = create<SidebarState>()(
       partialize: (state) => ({ 
         scratchpadTree: state.scratchpadTree,
         projectPath: state.projectPath,
-        workspaceName: state.workspaceName
+        workspaceName: state.workspaceName,
+        expandedFolderIdsByWorkspace: state.expandedFolderIdsByWorkspace,
       }),
+      onRehydrateStorage: () => (_state, error) => {
+        if (error) {
+          console.error('Failed to rehydrate sidebar store:', error);
+        }
+        useSidebarStore.setState({ expandedStateHydrated: true });
+      }
     }
   )
 );
 
 // Set up file watcher
-listen('firv://file-changed', (event) => {
+void listen('firv://file-changed', (event) => {
   console.log('File changed:', event.payload);
   void useSidebarStore.getState().fetchSidebar();
 });
