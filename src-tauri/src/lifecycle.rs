@@ -7,7 +7,7 @@ use tauri::Manager;
 
 use crate::models::{request::{BeforeRunStep, ChainCondition, FirvRequest, RequestChainStep}};
 use crate::models::request::HttpMethod;
-use crate::runner::{FirvResponse, prepare_request, run_request};
+use crate::runner::{FirvResponse, PreparedBody, prepare_request, run_request};
 use crate::variables::{VariableResolver, VariableTraceEntry};
 use crate::RequestCancellationState;
 
@@ -170,7 +170,7 @@ async fn execute_chain(
     }
 
     // --- Declarative rendering ---
-    let prepared_request = prepare_request(&request, &mut resolver);
+    let mut prepared_request = prepare_request(&request, &mut resolver);
     let mut hydrated_info = HydratedRequestInfo {
         url: prepared_request.url.clone(),
         method: prepared_request.method.clone(),
@@ -186,7 +186,8 @@ async fn execute_chain(
     if let Some(template) = request.transforms.pre_request_template.as_deref() {
         if let Ok(rendered_body) = resolver.render_liquid(template) {
             if !rendered_body.is_empty() {
-                hydrated_info.body = Some(rendered_body);
+                hydrated_info.body = Some(rendered_body.clone());
+                prepared_request.body = PreparedBody::Text(rendered_body);
             }
         }
     }
@@ -253,7 +254,8 @@ async fn execute_chain(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::request::{HttpMethod, RequestBody, RequestTransforms};
+    use crate::models::request::{HttpMethod, KeyValue, RequestBody, RequestTransforms};
+    use httpmock::prelude::*;
 
     #[test]
     fn trace_only_includes_used_variables() {
@@ -300,5 +302,47 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("exceeded max depth"));
+    }
+
+    #[tokio::test]
+    async fn pre_request_template_body_is_sent_over_network() {
+        let server = MockServer::start();
+        let expected_body = "{\"greeting\":\"Hello Firv\"}";
+
+        let mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/greet")
+                .body(expected_body);
+            then.status(200)
+                .header("Content-Type", "text/plain")
+                .body("ok");
+        });
+
+        let request = FirvRequest {
+            id: "id".to_string(),
+            name: "template".to_string(),
+            method: HttpMethod::POST,
+            url: format!("{}/greet", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms {
+                pre_request_template: Some("{\"greeting\":\"Hello {{name}}\"}".to_string()),
+                ..Default::default()
+            },
+        };
+
+        let workspace_vars = vec![KeyValue {
+            key: "name".to_string(),
+            value: "Firv".to_string(),
+            enabled: true,
+        }];
+
+        let result = execute_chain(".".to_string(), request, workspace_vars, 0)
+            .await
+            .expect("chain should succeed");
+
+        mock.assert();
+        assert_eq!(result.final_request.body.as_deref(), Some(expected_body));
     }
 }
