@@ -227,7 +227,7 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
               />
               <button
                 onClick={() => deleteRow(index)}
-                className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-500 transition-opacity rounded focus:outline-none focus:opacity-100"
+                className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
                 title="Remove"
               >
                 <Trash2 className="w-4 h-4" />

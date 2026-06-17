@@ -146,19 +146,19 @@ const SidebarNode: React.FC<{
             <FolderIcon size={14} className="mr-2 text-amber-500/80" />
             <span className="truncate font-medium">{item.kind.name}</span>
           </div>
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-0.5 transition-opacity">
             {!isScratchpad && (
               <>
                 <button 
                   onClick={handleAddRequest}
-                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Add Request"
                 >
                   <Plus size={14} />
                 </button>
                 <button 
                   onClick={handleAddFolder}
-                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Add Subfolder"
                 >
                   <FolderPlus size={14} />
@@ -167,7 +167,7 @@ const SidebarNode: React.FC<{
             )}
             <button 
               onClick={handleDelete}
-              className="p-1 hover:bg-destructive/10 rounded text-muted-foreground hover:text-destructive"
+              className="p-1 hover:bg-destructive/10 rounded text-muted-foreground/80 hover:text-destructive opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/40 transition-all"
               title="Delete Folder"
             >
               <Trash2 size={14} />
@@ -229,10 +229,10 @@ const SidebarNode: React.FC<{
           {item.kind.method}
         </span>
         <span className="truncate flex-1">{item.kind.name}</span>
-        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+        <div className="flex items-center ml-2 transition-opacity">
           <button 
             onClick={handleDelete}
-            className="p-1 hover:bg-destructive/10 rounded text-muted-foreground hover:text-destructive"
+            className="p-1 hover:bg-destructive/10 rounded text-muted-foreground/80 hover:text-destructive opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/40 transition-all"
             title="Delete Request"
           >
             <Trash2 size={14} />
@@ -420,16 +420,16 @@ export const Sidebar: React.FC = () => {
             {projectPath ? 'Workspace' : 'Scratchpad'}
           </div>
           <div className="flex items-center gap-1 relative">
-            <button onClick={handleAddRequest} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title={projectPath ? "New Workspace Request" : "New Scratchpad Request"}>
+            <button onClick={handleAddRequest} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground/80 hover:text-foreground transition-colors" title={projectPath ? "New Workspace Request" : "New Scratchpad Request"}>
               <Plus size={16} />
             </button>
             {projectPath && (
-              <button onClick={handleAddFolder} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title="New Workspace Folder">
+              <button onClick={handleAddFolder} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground/80 hover:text-foreground transition-colors" title="New Workspace Folder">
                 <FolderPlus size={16} />
               </button>
             )}
             {projectPath && (
-              <button onClick={() => setWorkspaceSettingsOpen(true)} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors" title="Workspace Settings">
+              <button onClick={() => setWorkspaceSettingsOpen(true)} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground/80 hover:text-foreground transition-colors" title="Workspace Settings">
                 <Settings2 size={16} />
               </button>
             )}
@@ -589,7 +589,7 @@ export const Sidebar: React.FC = () => {
                   e.stopPropagation();
                   void closeWorkspace();
                 }}
-                className="opacity-0 group-hover/workspace-pill:opacity-100 p-1 hover:bg-primary/10 rounded-md text-primary hover:text-destructive transition-all"
+                className="opacity-80 group-hover/workspace-pill:opacity-100 p-1 hover:bg-primary/10 rounded-md text-primary/80 hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40 transition-all"
                 title="Close Workspace"
               >
                 <X size={12} />
@@ -651,7 +651,7 @@ const SidebarContent: React.FC<{
             </span>
             <button 
               onClick={handleAddScratchpadRequest}
-              className="p-1 hover:bg-muted rounded-md text-muted-foreground/40 hover:text-foreground opacity-0 group-hover/scratchpad-header:opacity-100 transition-all"
+              className="p-1 hover:bg-muted rounded-md text-muted-foreground/60 hover:text-foreground opacity-80 group-hover/scratchpad-header:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 transition-all"
               title="New Scratchpad Request"
             >
               <Plus size={12} />
