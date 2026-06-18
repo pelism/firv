@@ -3,6 +3,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
 import { EditorView, Decoration, DecorationSet } from '@codemirror/view';
 import { StateField, Extension } from '@codemirror/state';
+import { buildSingleVariableHoverTitle, type VariableLookup } from '../../lib/variableHover';
 
 interface BodyEditorProps {
   value: string;
@@ -10,18 +11,25 @@ interface BodyEditorProps {
   onChange: (newValue: string) => void;
   onFormat?: () => void;
   highlightLine?: number | null;
+  workspaceGlobals?: VariableLookup;
 }
 
-const firvVariableDecoration = Decoration.mark({ class: 'cm-firv-variable bg-blue-100 text-blue-600 rounded px-1 font-semibold' });
+const buildVariableDeco = (variableName: string, lookup: VariableLookup) => {
+  const title = buildSingleVariableHoverTitle(variableName, lookup);
+  return Decoration.mark({
+    class: 'cm-firv-variable bg-blue-100 text-blue-600 rounded px-1 font-semibold',
+    attributes: title ? { title } : {},
+  });
+};
 
-const firvVariableExtension = StateField.define<DecorationSet>({
+const firvVariableExtension = (lookup: VariableLookup) => StateField.define<DecorationSet>({
   create(state) {
     const widgets: any[] = [];
     const text = state.doc.toString();
-    const regex = /\{\{[\w_-]+}}/g;
+    const regex = /\{\{\s*([a-zA-Z0-9_-]+)\s*}}/g;
     let match;
     while ((match = regex.exec(text)) !== null) {
-      widgets.push(firvVariableDecoration.range(match.index, match.index + match[0].length));
+      widgets.push(buildVariableDeco(match[1], lookup).range(match.index, match.index + match[0].length));
     }
     return Decoration.set(widgets);
   },
@@ -29,10 +37,10 @@ const firvVariableExtension = StateField.define<DecorationSet>({
     if (!tr.docChanged) return decorations.map(tr.changes);
     const widgets: any[] = [];
     const text = tr.state.doc.toString();
-    const regex = /\{\{[\w_-]+}}/g;
+    const regex = /\{\{\s*([a-zA-Z0-9_-]+)\s*}}/g;
     let match;
     while ((match = regex.exec(text)) !== null) {
-      widgets.push(firvVariableDecoration.range(match.index, match.index + match[0].length));
+      widgets.push(buildVariableDeco(match[1], lookup).range(match.index, match.index + match[0].length));
     }
     return Decoration.set(widgets);
   },
@@ -50,7 +58,7 @@ const lineHighlightExtension = (highlightLine?: number | null): Extension => {
   });
 };
 
-export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, onFormat, highlightLine }) => {
+export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, onFormat, highlightLine, workspaceGlobals = {} }) => {
   const [localValue, setLocalValue] = useState(value);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(
@@ -97,12 +105,12 @@ export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, o
   }
 
   const extensions = useMemo(() => {
-    const exts: Extension[] = [firvVariableExtension, lineHighlightExtension(highlightLine)];
+    const exts: Extension[] = [firvVariableExtension(workspaceGlobals), lineHighlightExtension(highlightLine)];
     if (mode === 'json') {
       exts.push(json());
     }
     return exts;
-  }, [mode, highlightLine]);
+  }, [mode, highlightLine, workspaceGlobals]);
 
   const handleFormat = () => {
     if (mode === 'json') {

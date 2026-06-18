@@ -9,7 +9,7 @@ export function WorkspaceSettings() {
   const [name, setName] = useState('');
   const [variables, setVariables] = useState<KeyValue[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const { projectPath, setWorkspaceName: setStoreWorkspaceName, setWorkspaceSettingsOpen, ensureWorkspace, setActiveMenu } = useSidebarStore();
+  const { projectPath, setWorkspaceName: setStoreWorkspaceName, setWorkspaceSettingsOpen, ensureWorkspace, setActiveMenu, setWorkspaceGlobals } = useSidebarStore();
 
   const handleClose = () => {
     setWorkspaceSettingsOpen(false);
@@ -61,6 +61,8 @@ export function WorkspaceSettings() {
         workspace: updatedWorkspace,
         name: name.trim() || null
       });
+
+      setWorkspaceGlobals(globals);
       
       setStoreWorkspaceName(name.trim() || currentPath.split(/[/\\]/).filter(Boolean).pop() || 'Workspace');
       console.log("Successfully saved workspace settings");

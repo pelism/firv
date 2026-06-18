@@ -3,6 +3,7 @@ import { twMerge } from 'tailwind-merge';
 import { KVEditor, KeyValue } from './editors/KVEditor';
 import { BodyEditor } from './editors/BodyEditor';
 import type { RequestAuthorizationState } from './requestEditorUtils';
+import { buildVariableHoverTitle, type VariableLookup } from '../lib/variableHover';
 
 interface RequestEditorBodySectionProps {
   activeTab: 'params' | 'headers' | 'body' | 'transforms';
@@ -23,6 +24,7 @@ interface RequestEditorBodySectionProps {
   onRemoveFormField: (index: number) => void;
   onUpdateFormField: (index: number, patch: Partial<KeyValue>) => void;
   bodyErrorLine: number | null;
+  workspaceGlobals: VariableLookup;
 }
 
 export function RequestEditorBodySection({
@@ -44,7 +46,10 @@ export function RequestEditorBodySection({
   onRemoveFormField,
   onUpdateFormField,
   bodyErrorLine,
+  workspaceGlobals,
 }: RequestEditorBodySectionProps) {
+  const authTooltip = buildVariableHoverTitle(authorization.value, workspaceGlobals);
+
   return (
     <div className="flex-1 overflow-auto p-4 custom-scrollbar">
       <div className="max-w-5xl h-full flex flex-col">
@@ -72,17 +77,18 @@ export function RequestEditorBodySection({
                     value={authorization.value}
                     onChange={e => onAuthorizationChange({ ...authorization, value: e.target.value })}
                     placeholder="Bearer token or {{token}}"
+                    title={authTooltip}
                     className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono"
                   />
                 </div>
               )}
             </div>
 
-            <KVEditor data={headers} onChange={onHeadersChange} placeholderKey="Header Name" placeholderValue="Value" />
+            <KVEditor data={headers} onChange={onHeadersChange} placeholderKey="Header Name" placeholderValue="Value" variableLookup={workspaceGlobals} />
           </div>
         )}
         {activeTab === 'params' && (
-          <KVEditor data={params} onChange={onParamsChange} placeholderKey="Query Param" placeholderValue="Value" />
+          <KVEditor data={params} onChange={onParamsChange} placeholderKey="Query Param" placeholderValue="Value" variableLookup={workspaceGlobals} />
         )}
         {activeTab === 'body' && (
           <div className="h-full flex flex-col">
@@ -170,7 +176,7 @@ export function RequestEditorBodySection({
                       </div>
                     </div>
                   ) : (
-                    <BodyEditor value={body} mode={bodyMode} onChange={onBodyChange} highlightLine={bodyErrorLine} />
+                    <BodyEditor value={body} mode={bodyMode} onChange={onBodyChange} highlightLine={bodyErrorLine} workspaceGlobals={workspaceGlobals} />
                   )}
                 </div>
               )}

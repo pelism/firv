@@ -67,6 +67,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   } = useSidebarStore();
   const sidebarTree = useSidebarStore(state => state.tree);
   const sidebarScratchpadTree = useSidebarStore(state => state.scratchpadTree);
+  const workspaceGlobals = useSidebarStore(state => state.workspaceGlobals);
 
   const findRequestInItems = (items: HydratedSidebarItem[], id: string): HydratedSidebarItem | null => {
     for (const item of items) {
@@ -594,6 +595,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         projectPath={projectPath}
         validationError={validationError}
         isScratchpadRequest={isScratchpadRequest}
+        workspaceGlobals={workspaceGlobals}
       />
 
       <div className="px-4 py-2 border-b border-border bg-muted/30">
@@ -632,6 +634,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
               onAddChainStep={addChainStep}
               requestOptions={requestOptions}
               getRequestName={getRequestName}
+              workspaceGlobals={workspaceGlobals}
             />
           </div>
         </div>
@@ -655,6 +658,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           onRemoveFormField={index => setFormBody(current => current.filter((_, i) => i !== index))}
           onUpdateFormField={updateFormField}
           bodyErrorLine={bodyErrorLine}
+          workspaceGlobals={workspaceGlobals}
         />
       )}
     </div>

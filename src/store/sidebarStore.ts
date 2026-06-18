@@ -7,6 +7,7 @@ import { useAppStore } from './appStore';
 import { HydratedSidebarItem } from "../types/hydratedSidebarItem.ts";
 import { HydratedTree } from "../types/hydratedTree.ts";
 import {KeyValue} from "../types/keyValue.ts";
+import { normalizeVariableLookup } from '../lib/variableHover';
 
 export const SCRATCHPAD_WORKSPACE_KEY = '__scratchpad__';
 
@@ -87,6 +88,9 @@ interface SidebarState {
   collapseAllFoldersForWorkspace: (workspaceKey: string) => void;
   syncExpandedFoldersWithTree: (workspaceKey: string, tree: HydratedSidebarItem[]) => void;
   expandedStateHydrated: boolean;
+  workspaceGlobals: Record<string, string>;
+  setWorkspaceGlobals: (globals: KeyValue[] | Record<string, string>) => void;
+  clearWorkspaceGlobals: () => void;
 }
 
 const transformToManifestItem = (item: HydratedSidebarItem): any => {
@@ -113,6 +117,7 @@ export const useSidebarStore = create<SidebarState>()(
       tree: [],
       scratchpadTree: [],
       pendingNames: {},
+      workspaceGlobals: {},
       projectPath: '', // Default or replace with dynamic project path
       workspaceName: '',
       activeMenu: 'workspace',
@@ -122,7 +127,7 @@ export const useSidebarStore = create<SidebarState>()(
       setAppSettingsOpen: (open) => set({ isAppSettingsOpen: open }),
       setActiveMenu: (activeMenu) => set({ activeMenu }),
       setProjectPath: (path) => {
-        set({ projectPath: path });
+        set({ projectPath: path, workspaceGlobals: {} });
         void get().fetchSidebar();
       },
       setWorkspaceName: (workspaceName) => set({ workspaceName }),
@@ -136,17 +141,23 @@ export const useSidebarStore = create<SidebarState>()(
           try {
             const manifest: any = await invoke('get_manifest', { projectPath });
             if (manifest && manifest.name) {
-              set({ workspaceName: manifest.name });
+              set({
+                workspaceName: manifest.name,
+                workspaceGlobals: normalizeVariableLookup(manifest.workspace?.globals),
+              });
             } else {
               // Fallback to directory name if name is missing in manifest
               const dirName = projectPath.split(/[/\\]/).filter(Boolean).pop() || '';
-              set({ workspaceName: dirName });
+              set({
+                workspaceName: dirName,
+                workspaceGlobals: normalizeVariableLookup(manifest?.workspace?.globals),
+              });
             }
           } catch (me) {
             console.error('Failed to fetch manifest for name:', me);
             // Fallback to directory name if manifest fetch fails
             const dirName = projectPath.split(/[/\\]/).filter(Boolean).pop() || '';
-            set({ workspaceName: dirName });
+            set({ workspaceName: dirName, workspaceGlobals: {} });
           }
           
           set({ tree: tree.items });
@@ -405,6 +416,8 @@ export const useSidebarStore = create<SidebarState>()(
       },
       expandedFolderIdsByWorkspace: {},
       expandedStateHydrated: false,
+      setWorkspaceGlobals: (globals) => set({ workspaceGlobals: normalizeVariableLookup(globals) }),
+      clearWorkspaceGlobals: () => set({ workspaceGlobals: {} }),
       toggleFolderExpansion: (workspaceKey, folderId) => {
         const key = getWorkspaceKey(workspaceKey);
         set((state) => {
@@ -936,7 +949,8 @@ export const useSidebarStore = create<SidebarState>()(
           tree: [], 
           projectPath: '', 
           workspaceName: '',
-          isWorkspaceSettingsOpen: false 
+          isWorkspaceSettingsOpen: false,
+          workspaceGlobals: {},
         });
         reset();
       }

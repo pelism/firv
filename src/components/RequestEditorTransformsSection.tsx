@@ -3,6 +3,7 @@ import type { BeforeRunStep } from '../types/beforeRunStep';
 import type { RequestExtractionRule } from '../types/requestExtractionRule';
 import type { RequestChainStep } from '../types/requestChainStep';
 import { resolveRequestDisplayName, resolveRequestIdByName, getRequestDisplayName, normalizeExtractionTarget, RequestOption } from './requestEditorUtils';
+import { buildVariableHoverTitle, type VariableLookup } from '../lib/variableHover';
 
 interface RequestEditorTransformsSectionProps {
   templateText: string;
@@ -20,6 +21,7 @@ interface RequestEditorTransformsSectionProps {
   onAddChainStep: (placement?: 'before' | 'on_success' | 'on_failure') => void;
   requestOptions: RequestOption[];
   getRequestName: (id: string) => string;
+  workspaceGlobals: VariableLookup;
 }
 
 export function RequestEditorTransformsSection({
@@ -38,7 +40,10 @@ export function RequestEditorTransformsSection({
   onAddChainStep,
   requestOptions,
   getRequestName,
+  workspaceGlobals,
 }: RequestEditorTransformsSectionProps) {
+  const templateTooltip = buildVariableHoverTitle(templateText, workspaceGlobals);
+
   return (
     <div data-testid="request-editor-transforms-section" className="h-full flex flex-col gap-4">
       <div>
@@ -47,6 +52,7 @@ export function RequestEditorTransformsSection({
           value={templateText}
           onChange={e => onTemplateTextChange(e.target.value)}
           placeholder="Build or rewrite the body before the request is sent."
+          title={templateTooltip}
           className="w-full min-h-35 rounded-xl border border-border bg-background p-3 text-sm font-mono outline-none resize-y"
         />
       </div>

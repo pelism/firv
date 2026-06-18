@@ -1,5 +1,6 @@
 import { Send, Save, FolderPlus } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
+import { buildVariableHoverTitle, type VariableLookup } from '../lib/variableHover';
 
 interface RequestEditorCommandBarProps {
   method: string;
@@ -13,6 +14,7 @@ interface RequestEditorCommandBarProps {
   projectPath: string;
   validationError: string | null;
   isScratchpadRequest: boolean;
+  workspaceGlobals: VariableLookup;
 }
 
 export function RequestEditorCommandBar({
@@ -27,8 +29,10 @@ export function RequestEditorCommandBar({
   projectPath,
   validationError,
   isScratchpadRequest,
+  workspaceGlobals,
 }: RequestEditorCommandBarProps) {
   const showMoveToWorkspace = isScratchpadRequest;
+  const urlTooltip = buildVariableHoverTitle(url, workspaceGlobals);
 
   return (
     <div className="p-4 border-b border-border">
@@ -50,6 +54,7 @@ export function RequestEditorCommandBar({
           value={url}
           onChange={e => onUrlChange(e.target.value)}
           placeholder="Enter URL or paste request..."
+          title={urlTooltip}
           className="flex-1 px-3 py-2 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground"
           onKeyDown={e => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onRun();

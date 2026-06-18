@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Trash2, FileText, Table } from 'lucide-react';
+import { buildVariableHoverTitle, type VariableLookup } from '../../lib/variableHover';
 
 export interface KeyValue {
   id: string;
@@ -14,11 +15,12 @@ interface KVEditorProps {
   placeholderKey?: string;
   placeholderValue?: string;
   uniqueEnabledKeys?: boolean;
+  variableLookup?: VariableLookup;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
-const HighlightedInput = ({ value, onChange, onKeyDown, placeholder, inputRef }: any) => {
+const HighlightedInput = ({ value, onChange, onKeyDown, placeholder, inputRef, tooltip }: any) => {
   const localRef = useRef<HTMLInputElement>(null);
   const bgRef = useRef<HTMLDivElement>(null);
   const ref = inputRef || localRef;
@@ -58,13 +60,14 @@ const HighlightedInput = ({ value, onChange, onKeyDown, placeholder, inputRef }:
         onKeyDown={onKeyDown}
         onScroll={handleScroll}
         placeholder={placeholder}
+        title={tooltip}
         className="w-full bg-transparent font-mono text-sm px-3 py-1.5 focus:outline-none relative z-10 text-gray-900"
       />
     </div>
   );
 };
 
-export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderValue = "Value", uniqueEnabledKeys = false }: KVEditorProps) {
+export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderValue = "Value", uniqueEnabledKeys = false, variableLookup = {} }: KVEditorProps) {
   const [rows, setRows] = useState<KeyValue[]>([]);
   const [nextEmptyId, setNextEmptyId] = useState(generateId());
   const [bulkMode, setBulkMode] = useState(false);
@@ -224,6 +227,7 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateRow(index, { value: e.target.value })}
                 onKeyDown={(e: React.KeyboardEvent) => handleKeyDown(e, index, 'value')}
                 placeholder={placeholderValue}
+                tooltip={buildVariableHoverTitle(row.value, variableLookup)}
               />
               <button
                 onClick={() => deleteRow(index)}
