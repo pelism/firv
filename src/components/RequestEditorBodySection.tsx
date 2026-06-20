@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import { CircleSlash2 } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { KVEditor, KeyValue } from './editors/KVEditor';
 import { BodyEditor } from './editors/BodyEditor';
 import type { RequestAuthorizationState } from './requestEditorUtils';
-import { buildVariableHoverTitle, type VariableLookup } from '../lib/variableHover';
+import { getVariableHoverTitleAtPoint, type VariableLookup } from '../lib/variableHover';
 
 interface RequestEditorBodySectionProps {
   activeTab: 'params' | 'headers' | 'body' | 'transforms';
@@ -48,7 +49,30 @@ export function RequestEditorBodySection({
   bodyErrorLine,
   workspaceGlobals,
 }: RequestEditorBodySectionProps) {
-  const authTooltip = buildVariableHoverTitle(authorization.value, workspaceGlobals);
+  const [authHover, setAuthHover] = useState<{ title: string; left: number } | null>(null);
+  const [templateHover, setTemplateHover] = useState<{ title: string; left: number } | null>(null);
+
+  const handleAuthMouseMove = (e: React.MouseEvent<HTMLInputElement>) => {
+    const title = getVariableHoverTitleAtPoint(authorization.value, workspaceGlobals, e.currentTarget, e.clientX, e.clientY);
+    if (!title) {
+      setAuthHover(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    setAuthHover({ title, left: e.clientX - rect.left });
+  };
+
+  const handleTemplateMouseMove = (e: React.MouseEvent<HTMLTextAreaElement>) => {
+    const title = getVariableHoverTitleAtPoint((e.currentTarget as HTMLTextAreaElement).value, workspaceGlobals, e.currentTarget, e.clientX, e.clientY);
+    if (!title) {
+      setTemplateHover(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTemplateHover({ title, left: e.clientX - rect.left });
+  };
 
   return (
     <div className="flex-1 overflow-auto p-4 custom-scrollbar">
@@ -72,14 +96,20 @@ export function RequestEditorBodySection({
               </div>
 
               {authorization.mode === 'bearer' && (
-                <div className="grid grid-cols-1 gap-3 items-center">
+                <div className="relative grid grid-cols-1 gap-3 items-center">
                   <input
                     value={authorization.value}
                     onChange={e => onAuthorizationChange({ ...authorization, value: e.target.value })}
                     placeholder="Bearer token or {{token}}"
-                    title={authTooltip}
+                    onMouseMove={handleAuthMouseMove}
+                    onMouseLeave={() => setAuthHover(null)}
                     className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono"
                   />
+                  {authHover && (
+                    <div role="tooltip" className="pointer-events-none absolute left-0 top-full z-50 mt-2 rounded-md bg-neutral-900 px-2 py-1 text-xs text-white shadow-lg whitespace-pre-wrap" style={{ left: Math.max(8, authHover.left) }}>
+                      {authHover.title}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

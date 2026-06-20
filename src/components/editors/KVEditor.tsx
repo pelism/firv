@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Trash2, FileText, Table } from 'lucide-react';
-import { buildVariableHoverTitle, type VariableLookup } from '../../lib/variableHover';
+import { getVariableHoverTitleAtPoint, type VariableLookup } from '../../lib/variableHover';
 
 export interface KeyValue {
   id: string;
@@ -20,7 +20,7 @@ interface KVEditorProps {
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
-const HighlightedInput = ({ value, onChange, onKeyDown, placeholder, inputRef, tooltip }: any) => {
+const HighlightedInput = ({ value, onChange, onKeyDown, placeholder, inputRef, onMouseMove, onMouseLeave, tooltip }: any) => {
   const localRef = useRef<HTMLInputElement>(null);
   const bgRef = useRef<HTMLDivElement>(null);
   const ref = inputRef || localRef;
@@ -58,11 +58,21 @@ const HighlightedInput = ({ value, onChange, onKeyDown, placeholder, inputRef, t
         value={value}
         onChange={onChange}
         onKeyDown={onKeyDown}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
         onScroll={handleScroll}
         placeholder={placeholder}
-        title={tooltip}
         className="w-full bg-transparent font-mono text-sm px-3 py-1.5 focus:outline-none relative z-10 text-gray-900"
       />
+      {tooltip && (
+        <div
+          role="tooltip"
+          className="pointer-events-none absolute left-0 top-full z-50 mt-2 rounded-md bg-neutral-900 px-2 py-1 text-xs text-white shadow-lg whitespace-pre-wrap"
+          style={{ left: Math.max(8, tooltip.left) }}
+        >
+          {tooltip.title}
+        </div>
+      )}
     </div>
   );
 };
@@ -72,6 +82,7 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
   const [nextEmptyId, setNextEmptyId] = useState(generateId());
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState("");
+  const [hoverState, setHoverState] = useState<{ [rowId: string]: { title: string; left: number } | null }>({});
   const valueInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const keyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -183,6 +194,17 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
     onChange(newPairs);
   };
 
+  const handleValueMouseMove = (rowId: string, value: string, event: React.MouseEvent<HTMLInputElement>) => {
+    const title = getVariableHoverTitleAtPoint(value, variableLookup, event.currentTarget, event.clientX, event.clientY);
+    if (!title) {
+      setHoverState(prev => ({ ...prev, [rowId]: null }));
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    setHoverState(prev => ({ ...prev, [rowId]: { title, left: event.clientX - rect.left } }));
+  };
+
   return (
     <div className="flex flex-col space-y-2">
       <div className="flex justify-start mb-2">
@@ -227,7 +249,9 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateRow(index, { value: e.target.value })}
                 onKeyDown={(e: React.KeyboardEvent) => handleKeyDown(e, index, 'value')}
                 placeholder={placeholderValue}
-                tooltip={buildVariableHoverTitle(row.value, variableLookup)}
+                onMouseMove={(e: React.MouseEvent<HTMLInputElement>) => handleValueMouseMove(row.id, row.value, e)}
+                onMouseLeave={() => setHoverState(prev => ({ ...prev, [row.id]: null }))}
+                tooltip={hoverState[row.id]}
               />
               <button
                 onClick={() => deleteRow(index)}

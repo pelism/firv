@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { Send, Save, FolderPlus } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
-import { buildVariableHoverTitle, type VariableLookup } from '../lib/variableHover';
+import { getVariableHoverTitleAtPoint, type VariableLookup } from '../lib/variableHover';
 
 interface RequestEditorCommandBarProps {
   method: string;
@@ -32,7 +33,21 @@ export function RequestEditorCommandBar({
   workspaceGlobals,
 }: RequestEditorCommandBarProps) {
   const showMoveToWorkspace = isScratchpadRequest;
-  const urlTooltip = buildVariableHoverTitle(url, workspaceGlobals);
+  const [urlHover, setUrlHover] = useState<{ title: string; left: number } | null>(null);
+
+  const handleUrlMouseMove = (e: React.MouseEvent<HTMLInputElement>) => {
+    const title = getVariableHoverTitleAtPoint(url, workspaceGlobals, e.currentTarget, e.clientX, e.clientY);
+    if (!title) {
+      setUrlHover(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    setUrlHover({
+      title,
+      left: e.clientX - rect.left,
+    });
+  };
 
   return (
     <div className="p-4 border-b border-border">
@@ -49,17 +64,29 @@ export function RequestEditorCommandBar({
           <option>PATCH</option>
         </select>
 
-        <input
-          type="text"
-          value={url}
-          onChange={e => onUrlChange(e.target.value)}
-          placeholder="Enter URL or paste request..."
-          title={urlTooltip}
-          className="flex-1 px-3 py-2 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground"
-          onKeyDown={e => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onRun();
-          }}
-        />
+        <div className="relative flex-1 min-w-0">
+          <input
+            type="text"
+            value={url}
+            onChange={e => onUrlChange(e.target.value)}
+            placeholder="Enter URL or paste request..."
+            className="w-full px-3 py-2 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground"
+            onMouseMove={handleUrlMouseMove}
+            onMouseLeave={() => setUrlHover(null)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onRun();
+            }}
+          />
+          {urlHover && (
+            <div
+              role="tooltip"
+              className="pointer-events-none absolute top-full z-50 mt-2 rounded-md bg-neutral-900 px-2 py-1 text-xs text-white shadow-lg whitespace-pre-wrap"
+              style={{ left: Math.max(8, urlHover.left) }}
+            >
+              {urlHover.title}
+            </div>
+          )}
+        </div>
 
         <div className="flex items-center gap-1 pr-1">
           <button

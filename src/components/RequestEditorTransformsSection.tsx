@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { BeforeRunStep } from '../types/beforeRunStep';
 import type { RequestExtractionRule } from '../types/requestExtractionRule';
 import type { RequestChainStep } from '../types/requestChainStep';
 import { resolveRequestDisplayName, resolveRequestIdByName, getRequestDisplayName, normalizeExtractionTarget, RequestOption } from './requestEditorUtils';
-import { buildVariableHoverTitle, type VariableLookup } from '../lib/variableHover';
+import { getVariableHoverTitleAtPoint, type VariableLookup } from '../lib/variableHover';
 
 interface RequestEditorTransformsSectionProps {
   templateText: string;
@@ -42,19 +43,40 @@ export function RequestEditorTransformsSection({
   getRequestName,
   workspaceGlobals,
 }: RequestEditorTransformsSectionProps) {
-  const templateTooltip = buildVariableHoverTitle(templateText, workspaceGlobals);
+  const [templateHover, setTemplateHover] = useState<{ title: string; left: number } | null>(null);
+
+  const handleTemplateMouseMove = (e: React.MouseEvent<HTMLTextAreaElement>) => {
+    const title = getVariableHoverTitleAtPoint(e.currentTarget.value, workspaceGlobals, e.currentTarget, e.clientX, e.clientY);
+    if (!title) {
+      setTemplateHover(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTemplateHover({ title, left: e.clientX - rect.left });
+  };
 
   return (
     <div data-testid="request-editor-transforms-section" className="h-full flex flex-col gap-4">
-      <div>
+      <div className="relative">
         <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Pre-request Liquid Template</label>
         <textarea
           value={templateText}
           onChange={e => onTemplateTextChange(e.target.value)}
           placeholder="Build or rewrite the body before the request is sent."
-          title={templateTooltip}
+          onMouseMove={handleTemplateMouseMove}
+          onMouseLeave={() => setTemplateHover(null)}
           className="w-full min-h-35 rounded-xl border border-border bg-background p-3 text-sm font-mono outline-none resize-y"
         />
+        {templateHover && (
+          <div
+            role="tooltip"
+            className="pointer-events-none absolute left-0 top-full z-50 mt-2 rounded-md bg-neutral-900 px-2 py-1 text-xs text-white shadow-lg whitespace-pre-wrap"
+            style={{ left: Math.max(8, templateHover.left) }}
+          >
+            {templateHover.title}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between">
