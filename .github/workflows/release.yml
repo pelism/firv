@@ -1,8 +1,7 @@
 name: Release
 on:
   push:
-    branches:
-      - main
+    # Trigger ONLY when pushing a version tag (e.g., git push origin v1.0.4)
     tags:
       - 'v*'
 
@@ -66,26 +65,15 @@ jobs:
         run: cargo test
         working-directory: src-tauri
 
-      - uses: tauri-apps/tauri-action@v0
-        id: tauri_build
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: v__VERSION__
-          releaseName: "firv v__VERSION__"
-          releaseBody: "firv release for Windows (Portable EXE & MSI) and Linux (DEB & AppImage)."
-          releaseDraft: true
-          prerelease: true
-
-      - name: Build and Sign Tauri App
+      - name: Build, Sign, and Deploy Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: app-v__VERSION__
-          releaseName: 'firv v__VERSION__'
+          tagName: v__VERSION__
+          releaseName: "firv v__VERSION__"
 
       - name: upload standalone exe (windows only)
         if: matrix.platform == 'windows-latest'
