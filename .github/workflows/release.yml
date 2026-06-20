@@ -19,16 +19,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: extract version from tag
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [[ -z "$VERSION" ]]; then
-            echo "::error::Unable to derive version from ref $GITHUB_REF_NAME" >&2
-            exit 1
-          fi
-          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: setup GitVersion
+        uses: gittools/actions/gitversion/setup@v0
+        with:
+          versionSpec: '6.x'
+
+      - name: determine version via GitVersion
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v0
 
       - name: setup node
         uses: actions/setup-node@v4
@@ -37,8 +35,7 @@ jobs:
           cache: 'npm'
 
       - name: bump package version
-        if: startsWith(github.ref, 'refs/tags/')
-        run: npm version ${{ env.RELEASE_VERSION }} --no-git-tag-version
+        run: npm version ${{ steps.gitversion.outputs.FullSemVer }} --no-git-tag-version
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable

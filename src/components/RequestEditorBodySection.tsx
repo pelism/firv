@@ -50,7 +50,6 @@ export function RequestEditorBodySection({
   workspaceGlobals,
 }: RequestEditorBodySectionProps) {
   const [authHover, setAuthHover] = useState<{ title: string; left: number } | null>(null);
-  const [templateHover, setTemplateHover] = useState<{ title: string; left: number } | null>(null);
 
   const handleAuthMouseMove = (e: React.MouseEvent<HTMLInputElement>) => {
     const title = getVariableHoverTitleAtPoint(authorization.value, workspaceGlobals, e.currentTarget, e.clientX, e.clientY);
@@ -61,17 +60,6 @@ export function RequestEditorBodySection({
 
     const rect = e.currentTarget.getBoundingClientRect();
     setAuthHover({ title, left: e.clientX - rect.left });
-  };
-
-  const handleTemplateMouseMove = (e: React.MouseEvent<HTMLTextAreaElement>) => {
-    const title = getVariableHoverTitleAtPoint((e.currentTarget as HTMLTextAreaElement).value, workspaceGlobals, e.currentTarget, e.clientX, e.clientY);
-    if (!title) {
-      setTemplateHover(null);
-      return;
-    }
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    setTemplateHover({ title, left: e.clientX - rect.left });
   };
 
   return (
