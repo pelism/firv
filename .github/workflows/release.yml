@@ -20,6 +20,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: extract version from tag
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -36,6 +37,7 @@ jobs:
           cache: 'npm'
 
       - name: bump package version
+        if: startsWith(github.ref, 'refs/tags/')
         run: npm version ${{ env.RELEASE_VERSION }} --no-git-tag-version
 
       - name: install Rust stable
