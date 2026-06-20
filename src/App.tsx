@@ -15,6 +15,7 @@ import { twMerge } from "tailwind-merge";
 import { InputModal } from "./components/InputModal";
 import { WindowControls } from "./components/WindowControls";
 import { useNativeContextMenu } from "./hooks/useNativeContextMenu";
+import { runDailyUpdateCheck } from "./lib/updaterClient";
 import "./App.css";
 
 function App() {
@@ -46,6 +47,10 @@ function App() {
       editInputRef.current.select();
     }
   }, [editingTabId]);
+
+  useEffect(() => {
+    runDailyUpdateCheck();
+  }, []);
 
 
 

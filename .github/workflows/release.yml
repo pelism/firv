@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
 
 jobs:
   release:
@@ -13,14 +15,28 @@ jobs:
       matrix:
         platform: [ubuntu-22.04, windows-latest]
     runs-on: ${{ matrix.platform }}
+    environment: production
     steps:
       - uses: actions/checkout@v4
+
+      - name: extract version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::Unable to derive version from ref $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: setup node
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
           cache: 'npm'
+
+      - name: bump package version
+        run: npm version ${{ env.RELEASE_VERSION }} --no-git-tag-version
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -59,6 +75,16 @@ jobs:
           releaseBody: "firv release for Windows (Portable EXE & MSI) and Linux (DEB & AppImage)."
           releaseDraft: true
           prerelease: true
+
+      - name: Build and Sign Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: app-v__VERSION__
+          releaseName: 'firv v__VERSION__'
 
       - name: upload standalone exe (windows only)
         if: matrix.platform == 'windows-latest'

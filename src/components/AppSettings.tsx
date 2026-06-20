@@ -1,16 +1,50 @@
+import { useState } from 'react';
 import { X, Settings, Moon, Sun, Monitor } from 'lucide-react';
 import { useSidebarStore } from '../store/sidebarStore';
 import { useThemeStore, Theme } from '../store/themeStore';
 import { twMerge } from 'tailwind-merge';
 import { APP_VERSION } from '../version';
+import { isTauriEnvironment, runUpdateFlow } from '../lib/updaterClient';
 
 export function AppSettings() {
   const { setAppSettingsOpen, setActiveMenu } = useSidebarStore();
   const { theme, setTheme } = useThemeStore();
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const [supportsUpdater] = useState(() => isTauriEnvironment());
 
   const handleClose = () => {
     setAppSettingsOpen(false);
     setActiveMenu('workspace');
+  };
+
+  const handleCheckForUpdates = async () => {
+    if (!supportsUpdater) {
+      setUpdateMessage('Updates are only available in the desktop app.');
+      return;
+    }
+
+    setIsCheckingUpdates(true);
+    setUpdateMessage(null);
+
+    try {
+      const result = await runUpdateFlow();
+
+      if (result.available) {
+        setUpdateMessage(
+          result.version
+            ? `Installing update ${result.version}. The app will relaunch automatically.`
+            : 'Installing the latest update. The app will relaunch automatically.'
+        );
+      } else {
+        setUpdateMessage('You are already running the latest version.');
+      }
+    } catch (error) {
+      console.error('Manual update check failed', error);
+      setUpdateMessage('Unable to check for updates. Please try again later.');
+    } finally {
+      setIsCheckingUpdates(false);
+    }
   };
 
   return (
@@ -76,10 +110,31 @@ export function AppSettings() {
               <h2 className="text-lg font-bold text-foreground">About</h2>
               <p className="text-sm text-muted-foreground">Application details and build information.</p>
             </div>
-            <div className="p-6 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between gap-4">
+            <div className="p-6 rounded-2xl bg-card border border-border shadow-sm flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Version</div>
                 <div className="text-sm font-medium text-foreground mt-1">v{APP_VERSION}</div>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:items-end">
+                <button
+                  type="button"
+                  onClick={handleCheckForUpdates}
+                  disabled={isCheckingUpdates || !supportsUpdater}
+                  className={twMerge(
+                    'px-4 py-2 rounded-xl text-xs font-bold transition-colors border border-border',
+                    supportsUpdater
+                      ? 'bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-70'
+                      : 'bg-muted text-muted-foreground cursor-not-allowed'
+                  )}
+                >
+                  {isCheckingUpdates ? 'Checking…' : 'Check for updates'}
+                </button>
+                {updateMessage && (
+                  <p className="text-xs text-muted-foreground max-w-xs text-left sm:text-right">
+                    {updateMessage}
+                  </p>
+                )}
               </div>
             </div>
           </section>
