@@ -1,20 +1,17 @@
 name: Release
 on:
   push:
-    # Trigger ONLY when pushing a version tag (e.g., git push origin v1.0.4)
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 jobs:
-  release:
+  prepare-release:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [ubuntu-22.04, windows-latest]
-    runs-on: ${{ matrix.platform }}
-    environment: production
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.gitversion.outputs.FullSemVer }}
+      release_id: ${{ steps.create_release.outputs.id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,6 +26,33 @@ jobs:
         id: gitversion
         uses: gittools/actions/gitversion/execute@v0
 
+      - name: create GitHub release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.gitversion.outputs.FullSemVer }}
+          release_name: "firv v${{ steps.gitversion.outputs.FullSemVer }}"
+          body: ''
+          draft: false
+          prerelease: false
+
+  release:
+    needs: prepare-release
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: setup node
         uses: actions/setup-node@v4
         with:
@@ -36,7 +60,7 @@ jobs:
           cache: 'npm'
 
       - name: bump package version
-        run: npm version ${{ steps.gitversion.outputs.FullSemVer }} --no-git-tag-version
+        run: npm version ${{ needs.prepare-release.outputs.version }} --no-git-tag-version
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -66,6 +90,7 @@ jobs:
         working-directory: src-tauri
 
       - name: Build, Sign, and Deploy Tauri App
+        id: tauri_build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -74,12 +99,13 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: "firv v__VERSION__"
+          releaseId: ${{ needs.prepare-release.outputs.release_id }}
 
       - name: upload standalone exe (windows only)
         if: matrix.platform == 'windows-latest'
         uses: softprops/action-gh-release@v2
         with:
           files: src-tauri/target/release/firv.exe
-          tag_name: v${{ steps.tauri_build.outputs.appVersion }}
+          tag_name: v${{ needs.prepare-release.outputs.version }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
