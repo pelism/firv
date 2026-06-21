@@ -325,7 +325,7 @@ function App() {
               </PanelGroup>
             </div>
             
-            <footer className="h-4 border-t border-border bg-background flex items-center px-4 text-[11px] font-medium text-muted-foreground">
+            <footer className="h-11 border-t border-border bg-background flex items-center px-4 text-[11px] font-medium text-muted-foreground">
               <div className="flex items-center gap-4 italic opacity-60">
                 <span></span>
               </div>

@@ -256,6 +256,7 @@ export const Sidebar: React.FC = () => {
   const { 
     fetchSidebar, 
     addItem, 
+    addItemOptimistic,
     setWorkspaceSettingsOpen, 
     moveItem, 
     workspaceName, 
@@ -277,8 +278,10 @@ export const Sidebar: React.FC = () => {
   const importTriggerRef = useRef<HTMLDivElement>(null);
   const [importFlyoutPosition, setImportFlyoutPosition] = useState({ top: 0, left: 0 });
   const openTab = useAppStore(state => state.openTab);
+  const setRequestOrigin = useAppStore(state => state.setRequestOrigin);
 
   const [activeItem, setActiveItem] = useState<HydratedSidebarItem | null>(null);
+  const [activeTab, setActiveTab] = useState<'workspace' | 'scratchpad'>(() => (projectPath ? 'workspace' : 'scratchpad'));
 
   const workspaceKey = projectPath || SCRATCHPAD_WORKSPACE_KEY;
   const expandedFolderIds = useMemo(() => new Set(expandedFolderIdsByWorkspace[workspaceKey] ?? []), [expandedFolderIdsByWorkspace, workspaceKey]);
@@ -301,6 +304,12 @@ export const Sidebar: React.FC = () => {
   useEffect(() => {
     syncExpandedFoldersWithTree(workspaceKey, tree);
   }, [syncExpandedFoldersWithTree, workspaceKey, tree]);
+
+  useEffect(() => {
+    if (!projectPath) {
+      setActiveTab('scratchpad');
+    }
+  }, [projectPath]);
 
   useLayoutEffect(() => {
     if (!isImportFlyoutOpen) return;
@@ -383,7 +392,7 @@ export const Sidebar: React.FC = () => {
         id: crypto.randomUUID(),
         kind: { type: 'request', id: requestId, name: 'New Request', method: 'GET' }
       };
-      useSidebarStore.getState().addItemOptimistic(newItem);
+      addItemOptimistic(newItem);
       openTab(requestId);
     } catch (err) {
       console.error("Failed to add request", err);
@@ -409,6 +418,20 @@ export const Sidebar: React.FC = () => {
     }
   };
 
+  const handleAddScratchpadRequest = useCallback(() => {
+    const requestId = crypto.randomUUID();
+    const newItem: HydratedSidebarItem = {
+      id: crypto.randomUUID(),
+      kind: { type: 'request', id: requestId, name: 'New Request', method: 'GET' }
+    };
+    addItemOptimistic(newItem, undefined, true);
+    setRequestOrigin(requestId, 'scratchpad');
+    openTab(requestId);
+  }, [addItemOptimistic, openTab, setRequestOrigin]);
+
+  const isWorkspaceTab = activeTab === 'workspace';
+  const isScratchpadTab = activeTab === 'scratchpad';
+
   return (
     <DndContext 
       sensors={sensors}
@@ -419,148 +442,161 @@ export const Sidebar: React.FC = () => {
       <div className="h-full bg-muted/20 flex flex-col overflow-visible border-r border-border">
         <div className="p-4 flex items-center justify-between">
           <div className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">
-            {projectPath ? 'Workspace' : 'Scratchpad'}
+            {isWorkspaceTab ? 'Workspace' : 'Scratchpad'}
           </div>
           <div className="flex items-center gap-1 relative">
-            <button onClick={handleAddRequest} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground/80 hover:text-foreground transition-colors" title={projectPath ? "New Workspace Request" : "New Scratchpad Request"}>
+            <button
+              onClick={() => {
+                if (isWorkspaceTab) {
+                  if (!projectPath) return;
+                  void handleAddRequest();
+                } else {
+                  handleAddScratchpadRequest();
+                }
+              }}
+              disabled={isWorkspaceTab && !projectPath}
+              className={twMerge(
+                "p-1.5 rounded-md text-muted-foreground/80 transition-colors",
+                isWorkspaceTab && !projectPath
+                  ? 'cursor-not-allowed opacity-40 bg-muted/60'
+                  : 'hover:bg-muted hover:text-foreground'
+              )}
+              title={isWorkspaceTab ? (projectPath ? "New Workspace Request" : "Open a workspace to add requests") : "New Scratchpad Request"}
+            >
               <Plus size={16} />
             </button>
-            {projectPath && (
-              <button onClick={handleAddFolder} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground/80 hover:text-foreground transition-colors" title="New Workspace Folder">
-                <FolderPlus size={16} />
-              </button>
-            )}
-            {projectPath && (
-              <button onClick={() => setWorkspaceSettingsOpen(true)} className="p-1.5 hover:bg-muted rounded-md text-muted-foreground/80 hover:text-foreground transition-colors" title="Workspace Settings">
-                <Settings2 size={16} />
-              </button>
-            )}
-            <div className="relative">
-              <button 
-                onClick={() => setIsMenuOpen(!isMenuOpen)} 
-                className={twMerge(
-                  "p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors",
-                  isMenuOpen && "bg-muted text-foreground"
-                )}
-                title="Workspace Actions"
-              >
-                <MoreVertical size={16} />
-              </button>
-              
-              {isMenuOpen && (
-                <>
-                  <div 
-                    className="fixed inset-0 z-40" 
-                    onClick={() => setIsMenuOpen(false)}
-                  />
-                  <div className="absolute right-0 mt-1 w-36 bg-popover border border-border rounded-xl shadow-2xl py-1.5 z-50 animate-in fade-in zoom-in duration-100 origin-top-right">
-                    <button
-                      onClick={() => {
-                        expandAllFolders();
-                        setIsMenuOpen(false);
-                      }}
-                      disabled={!workspaceHasFolders}
-                      className={twMerge(
-                        "w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider",
-                        !workspaceHasFolders 
-                          ? "text-muted-foreground/40 cursor-not-allowed" 
-                          : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-                      )}
-                    >
-                      <ChevronsDown size={14} className="opacity-70" />
-                      Expand all
-                    </button>
-                    <button
-                      onClick={() => {
-                        collapseAllFolders();
-                        setIsMenuOpen(false);
-                      }}
-                      disabled={!workspaceHasFolders}
-                      className={twMerge(
-                        "w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider",
-                        !workspaceHasFolders 
-                          ? "text-muted-foreground/40 cursor-not-allowed" 
-                          : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-                      )}
-                    >
-                      <ChevronsUp size={14} className="opacity-70" />
-                      Collapse all
-                    </button>
-                    <div className="my-1 h-px bg-border/70" />
-                    <div
-                      ref={importTriggerRef}
-                      className="relative"
-                      onMouseEnter={() => setIsImportFlyoutOpen(true)}
-                      onMouseLeave={() => setIsImportFlyoutOpen(false)}
-                    >
-                      <button
-                        onClick={() => setIsImportFlyoutOpen(prev => !prev)}
-                        disabled={!projectPath}
-                        className={twMerge(
-                          "w-full flex items-center justify-between gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider",
-                          !projectPath
-                            ? "text-muted-foreground/40 cursor-not-allowed"
-                            : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-                        )}
-                      >
-                        <span className="flex items-center gap-2.5">
-                          <Download size={14} className={twMerge("opacity-70", !projectPath && "opacity-30")} />
-                          Import
-                        </span>
-                        <ChevronRight size={12} className={twMerge("opacity-60", !projectPath && "opacity-30")} />
-                      </button>
-
-                      {isImportFlyoutOpen && projectPath && createPortal(
+            {isWorkspaceTab && projectPath && (
+              <>
+                <button
+                  onClick={handleAddFolder}
+                  className="p-1.5 hover:bg-muted rounded-md text-muted-foreground/80 hover:text-foreground transition-colors"
+                  title="New Workspace Folder"
+                >
+                  <FolderPlus size={16} />
+                </button>
+                <button
+                  onClick={() => setWorkspaceSettingsOpen(true)}
+                  className="p-1.5 hover:bg-muted rounded-md text-muted-foreground/80 hover:text-foreground transition-colors"
+                  title="Workspace Settings"
+                >
+                  <Settings2 size={16} />
+                </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => setIsMenuOpen(!isMenuOpen)} 
+                    className={twMerge(
+                      "p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors",
+                      isMenuOpen && "bg-muted text-foreground"
+                    )}
+                    title="Workspace Actions"
+                  >
+                    <MoreVertical size={16} />
+                  </button>
+                  
+                  {isMenuOpen && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-40" 
+                        onClick={() => setIsMenuOpen(false)}
+                      />
+                      <div className="absolute right-0 mt-1 w-36 bg-popover border border-border rounded-xl shadow-2xl py-1.5 z-50 animate-in fade-in zoom-in duration-100 origin-top-right">
+                        <button
+                          onClick={() => {
+                            expandAllFolders();
+                            setIsMenuOpen(false);
+                          }}
+                          disabled={!workspaceHasFolders}
+                          className={twMerge(
+                            "w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider",
+                            !workspaceHasFolders 
+                              ? "text-muted-foreground/40 cursor-not-allowed" 
+                              : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                          )}
+                        >
+                          <ChevronsDown size={14} className="opacity-70" />
+                          Expand all
+                        </button>
+                        <button
+                          onClick={() => {
+                            collapseAllFolders();
+                            setIsMenuOpen(false);
+                          }}
+                          disabled={!workspaceHasFolders}
+                          className={twMerge(
+                            "w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider",
+                            !workspaceHasFolders 
+                              ? "text-muted-foreground/40 cursor-not-allowed" 
+                              : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                          )}
+                        >
+                          <ChevronsUp size={14} className="opacity-70" />
+                          Collapse all
+                        </button>
+                        <div className="my-1 h-px bg-border/70" />
                         <div
-                          className="fixed w-40 bg-popover border border-border rounded-xl shadow-2xl py-1.5 z-[9999] animate-in fade-in zoom-in duration-100 origin-top-left"
-                          style={{ top: importFlyoutPosition.top, left: importFlyoutPosition.left }}
+                          ref={importTriggerRef}
+                          className="relative"
                           onMouseEnter={() => setIsImportFlyoutOpen(true)}
                           onMouseLeave={() => setIsImportFlyoutOpen(false)}
                         >
                           <button
-                            onClick={() => {
-                              void importPostmanCollection();
-                              setIsImportFlyoutOpen(false);
-                              setIsMenuOpen(false);
-                            }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider text-muted-foreground hover:text-primary hover:bg-primary/10"
+                            onClick={() => setIsImportFlyoutOpen(prev => !prev)}
+                            className="w-full flex items-center justify-between gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider text-muted-foreground hover:text-primary hover:bg-primary/10"
                           >
-                            Postman
+                            <span className="flex items-center gap-2.5">
+                              <Download size={14} className="opacity-70" />
+                              Import
+                            </span>
+                            <ChevronRight size={12} className="opacity-60" />
                           </button>
-                          <button
-                            onClick={() => {
-                              void importFirvExport();
-                              setIsImportFlyoutOpen(false);
-                              setIsMenuOpen(false);
-                            }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider text-muted-foreground hover:text-primary hover:bg-primary/10"
-                          >
-                            FIRV
-                          </button>
-                        </div>,
-                        document.body
-                      )}
-                    </div>
-                    <button
-                      onClick={() => {
-                        void exportWorkspace();
-                        setIsMenuOpen(false);
-                      }}
-                      disabled={!projectPath}
-                      className={twMerge(
-                        "w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider",
-                        !projectPath 
-                          ? "text-muted-foreground/40 cursor-not-allowed" 
-                          : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-                      )}
-                    >
-                      <Upload size={14} className={twMerge("opacity-70", !projectPath && "opacity-30")} />
-                      Export
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+
+                          {isImportFlyoutOpen && createPortal(
+                            <div
+                              className="fixed w-40 bg-popover border border-border rounded-xl shadow-2xl py-1.5 z-[9999] animate-in fade-in zoom-in duration-100 origin-top-left"
+                              style={{ top: importFlyoutPosition.top, left: importFlyoutPosition.left }}
+                              onMouseEnter={() => setIsImportFlyoutOpen(true)}
+                              onMouseLeave={() => setIsImportFlyoutOpen(false)}
+                            >
+                              <button
+                                onClick={() => {
+                                  void importPostmanCollection();
+                                  setIsImportFlyoutOpen(false);
+                                  setIsMenuOpen(false);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider text-muted-foreground hover:text-primary hover:bg-primary/10"
+                              >
+                                Postman
+                              </button>
+                              <button
+                                onClick={() => {
+                                  void importFirvExport();
+                                  setIsImportFlyoutOpen(false);
+                                  setIsMenuOpen(false);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider text-muted-foreground hover:text-primary hover:bg-primary/10"
+                              >
+                                FIRV
+                              </button>
+                            </div>,
+                            document.body
+                          )}
+                        </div>
+                        <button
+                          onClick={() => {
+                            void exportWorkspace();
+                            setIsMenuOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider text-muted-foreground hover:text-primary hover:bg-primary/10"
+                        >
+                          <Upload size={14} className="opacity-70" />
+                          Export
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
         
@@ -579,7 +615,7 @@ export const Sidebar: React.FC = () => {
             </div>
           </div>
 
-          {workspaceName && (
+          {isWorkspaceTab && workspaceName && (
             <div className="flex items-center justify-between px-3 py-2 bg-primary/5 border border-primary/20 rounded-xl group/workspace-pill transition-all">
               <div className="flex items-center gap-2 overflow-hidden">
                 <span className="text-[11px] font-bold text-primary truncate uppercase tracking-wider">
@@ -600,12 +636,44 @@ export const Sidebar: React.FC = () => {
           )}
         </div>
 
-        <SidebarContent
-          searchQuery={searchQuery}
-          activeItem={activeItem}
-          expandedFolderIds={expandedFolderIds}
-          toggleFolder={toggleFolder}
-        />
+        <div className="flex-1 min-h-0 flex flex-col">
+          <SidebarContent
+            searchQuery={searchQuery}
+            activeItem={activeItem}
+            expandedFolderIds={expandedFolderIds}
+            toggleFolder={toggleFolder}
+            activeTab={activeTab}
+            onAddScratchpadRequest={handleAddScratchpadRequest}
+          />
+          <div className="mt-auto h-11 border-t border-border bg-background/90 backdrop-blur flex items-center gap-1 px-3">
+            <button
+              className={twMerge(
+                "flex-1 h-full flex items-center justify-center text-[11px] font-semibold uppercase tracking-[0.2em] px-3 transition-colors border-b-2",
+                isWorkspaceTab
+                  ? 'text-primary border-primary'
+                  : 'text-muted-foreground border-transparent hover:text-foreground hover:border-border',
+                !projectPath && 'opacity-50 cursor-not-allowed hover:border-transparent'
+              )}
+              onClick={() => {
+                if (!projectPath) return;
+                setActiveTab('workspace');
+              }}
+            >
+              Workspace
+            </button>
+            <button
+              className={twMerge(
+                "flex-1 h-full flex items-center justify-center text-[11px] font-semibold uppercase tracking-[0.2em] px-3 transition-colors border-b-2",
+                isScratchpadTab
+                  ? 'text-primary border-primary'
+                  : 'text-muted-foreground border-transparent hover:text-foreground hover:border-border'
+              )}
+              onClick={() => setActiveTab('scratchpad')}
+            >
+              Scratchpad
+            </button>
+          </div>
+        </div>
       </div>
     </DndContext>
   );
@@ -616,58 +684,53 @@ const SidebarContent: React.FC<{
   activeItem: HydratedSidebarItem | null;
   expandedFolderIds: Set<string>;
   toggleFolder: (folderId: string) => void;
-}> = ({ searchQuery, activeItem, expandedFolderIds, toggleFolder }) => {
-  const { tree, scratchpadTree, projectPath, addItemOptimistic } = useSidebarStore();
-  const openTab = useAppStore(state => state.openTab);
-  const setRequestOrigin = useAppStore(state => state.setRequestOrigin);
+  activeTab: 'workspace' | 'scratchpad';
+  onAddScratchpadRequest: () => void;
+}> = ({ searchQuery, activeItem, expandedFolderIds, toggleFolder, activeTab, onAddScratchpadRequest }) => {
+  const { tree, scratchpadTree, projectPath } = useSidebarStore();
   const { setNodeRef } = useDroppable({
     id: 'sidebar-root',
   });
 
-  const handleAddScratchpadRequest = () => {
-    const requestId = crypto.randomUUID();
-    const newItem: HydratedSidebarItem = {
-      id: crypto.randomUUID(),
-      kind: { type: 'request', id: requestId, name: 'New Request', method: 'GET' }
-    };
-    addItemOptimistic(newItem, undefined, true);
-    setRequestOrigin(requestId, 'scratchpad');
-    openTab(requestId);
-  };
-
   return (
-    <div ref={setNodeRef} className="flex-1 overflow-y-auto pb-4 custom-scrollbar min-h-25">
-      {projectPath && tree.length > 0 && (
-        <SortableContext items={tree.map(i => i.id)} strategy={verticalListSortingStrategy}>
-          {tree.map((item, idx) => (
-            <SidebarNode key={item.id || idx} item={item} depth={0} searchQuery={searchQuery} path={[item.kind.type !== 'error' ? item.kind.name : '']} expandedFolderIds={expandedFolderIds} toggleFolder={toggleFolder} />
-          ))}
-        </SortableContext>
-      )}
-
-      {(projectPath || scratchpadTree.length > 0) && (
-        <div className="mt-6">
-          <div className="px-4 py-2 flex items-center justify-between group/scratchpad-header border-t border-border/50">
-            <span className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">
-              Scratchpad
-            </span>
-            <button 
-              onClick={handleAddScratchpadRequest}
-              className="p-1 hover:bg-muted rounded-md text-muted-foreground/60 hover:text-foreground opacity-80 group-hover/scratchpad-header:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 transition-all"
-              title="New Scratchpad Request"
-            >
-              <Plus size={12} />
-            </button>
+    <div ref={setNodeRef} className="flex-1 overflow-y-auto pb-4 custom-scrollbar min-h-0">
+      {activeTab === 'workspace' ? (
+        projectPath ? (
+          tree.length > 0 ? (
+            <SortableContext items={tree.map(i => i.id)} strategy={verticalListSortingStrategy}>
+              {tree.map((item, idx) => (
+                <SidebarNode
+                  key={item.id || idx}
+                  item={item}
+                  depth={0}
+                  searchQuery={searchQuery}
+                  path={[item.kind.type !== 'error' ? item.kind.name : '']}
+                  expandedFolderIds={expandedFolderIds}
+                  toggleFolder={toggleFolder}
+                />
+              ))}
+            </SortableContext>
+          ) : (
+            <div className="px-6 py-6 text-center text-sm text-muted-foreground/60">
+              No workspace requests yet.
+            </div>
+          )
+        ) : (
+          <div className="px-6 py-6 text-center text-sm text-muted-foreground/60">
+            Open a workspace to start organizing requests.
           </div>
+        )
+      ) : (
+        <>
           {scratchpadTree.length > 0 ? (
             <SortableContext items={scratchpadTree.map(i => i.id)} strategy={verticalListSortingStrategy}>
               {scratchpadTree.map((item, idx) => (
-                <SidebarNode 
-                  key={item.id || idx} 
-                  item={item} 
-                  depth={0} 
-                  searchQuery={searchQuery} 
-                  path={[item.kind.type !== 'error' ? item.kind.name : '']} 
+                <SidebarNode
+                  key={item.id || idx}
+                  item={item}
+                  depth={0}
+                  searchQuery={searchQuery}
+                  path={[item.kind.type !== 'error' ? item.kind.name : '']}
                   isScratchpad={true}
                   expandedFolderIds={expandedFolderIds}
                   toggleFolder={toggleFolder}
@@ -675,11 +738,18 @@ const SidebarContent: React.FC<{
               ))}
             </SortableContext>
           ) : (
-            <div className="px-6 py-3 text-[11px] text-muted-foreground/40 italic">
-              No scratchpad requests
+            <div className="px-6 py-8 text-center space-y-3 text-sm text-muted-foreground/70">
+              <p>No scratchpad requests yet.</p>
+              <button
+                onClick={onAddScratchpadRequest}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-semibold uppercase tracking-wider hover:bg-primary/20 transition-colors"
+              >
+                <Plus size={12} />
+                New Scratchpad Request
+              </button>
             </div>
           )}
-        </div>
+        </>
       )}
 
       <DragOverlay adjustScale={true}>
@@ -701,15 +771,6 @@ const SidebarContent: React.FC<{
           </div>
         ) : null}
       </DragOverlay>
-      {tree.length === 0 && scratchpadTree.length === 0 && (
-        <div className="p-8 text-center">
-          <div className="inline-flex p-3 rounded-full bg-muted text-muted-foreground/60 mb-3">
-            <Search size={20} />
-          </div>
-          <p className="text-sm text-muted-foreground font-medium">No requests yet</p>
-          <p className="text-xs text-muted-foreground/60 mt-1">Create a request or open a workspace.</p>
-        </div>
-      )}
     </div>
   );
 };
