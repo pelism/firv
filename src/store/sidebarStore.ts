@@ -967,11 +967,18 @@ export const useSidebarStore = create<SidebarState>()(
         if (error) {
           console.error('Failed to rehydrate sidebar store:', error);
         }
-        useSidebarStore.setState({ expandedStateHydrated: true });
       }
     }
   )
 );
+
+useSidebarStore.persist?.onFinishHydration?.(() => {
+  useSidebarStore.setState({ expandedStateHydrated: true });
+});
+
+if (useSidebarStore.persist?.hasHydrated?.()) {
+  useSidebarStore.setState({ expandedStateHydrated: true });
+}
 
 // Set up file watcher
 void listen('firv://file-changed', (event) => {

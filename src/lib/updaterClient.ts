@@ -55,9 +55,9 @@ export async function runUpdateFlow(options: { installOnAvailable?: boolean } = 
   return { available: false };
 }
 
-export async function runDailyUpdateCheck(): Promise<void> {
+export async function runDailyUpdateCheck(): Promise<UpdateFlowResult | null> {
   if (!isTauriEnvironment() || typeof window === 'undefined') {
-    return;
+    return null;
   }
 
   const now = Date.now();
@@ -66,14 +66,16 @@ export async function runDailyUpdateCheck(): Promise<void> {
   if (lastCheckRaw) {
     const lastCheck = Number(lastCheckRaw);
     if (!Number.isNaN(lastCheck) && now - lastCheck < DAY_IN_MS) {
-      return;
+      return null;
     }
   }
 
   try {
-    await runUpdateFlow();
+    const result = await runUpdateFlow({ installOnAvailable: false });
+    return result;
   } catch (error) {
     console.error('Automatic update check failed', error);
+    return null;
   } finally {
     window.localStorage.setItem(LAST_AUTO_CHECK_STORAGE_KEY, `${now}`);
   }

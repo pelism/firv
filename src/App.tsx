@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
+import { Group as PanelGroup, Layout, Panel, Separator as PanelResizeHandle, useDefaultLayout } from "react-resizable-panels";
 import { Sidebar } from "./components/Sidebar";
 import { MenuSidebar } from "./components/MenuSidebar";
 import { RequestEditor } from "./components/RequestEditor";
 import { ResponseViewer } from "./components/ResponseViewer";
 import { useAppStore } from "./store/appStore";
 import { useSidebarStore } from "./store/sidebarStore";
+import { useUpdateStore } from "./store/updateStore";
 import { HydratedSidebarItem } from "./types/hydratedSidebarItem";
 import { WorkspaceSettings } from "./components/WorkspaceSettings";
 import { AppSettings } from "./components/AppSettings";
@@ -15,7 +16,8 @@ import { twMerge } from "tailwind-merge";
 import { InputModal } from "./components/InputModal";
 import { WindowControls } from "./components/WindowControls";
 import { useNativeContextMenu } from "./hooks/useNativeContextMenu";
-import { runDailyUpdateCheck } from "./lib/updaterClient";
+import { runDailyUpdateCheck, runUpdateFlow } from "./lib/updaterClient";
+import { UpdatePrompt } from "./components/UpdatePrompt";
 import "./App.css";
 
 function App() {
@@ -38,8 +40,25 @@ function App() {
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const {
+    pendingUpdate,
+    isInstalling: isInstallingUpdate,
+    error: updateError,
+    setPendingUpdate,
+    setIsInstalling: setIsInstallingUpdate,
+    setError: setUpdateError,
+  } = useUpdateStore();
   const editInputRef = useRef<HTMLInputElement>(null);
   const triggerNativeContextMenu = useNativeContextMenu();
+  const {
+    defaultLayout: storedMainLayout,
+    onLayoutChanged: handleMainLayoutChanged
+  } = useDefaultLayout({
+    id: "firv-main-panels",
+    panelIds: ["workspace", "requestEditor"]
+  });
+  const defaultMainLayout: Layout = { workspace: 30, requestEditor: 70 };
+  const mainLayout = storedMainLayout ?? defaultMainLayout;
 
   useEffect(() => {
     if (editingTabId && editInputRef.current) {
@@ -49,8 +68,51 @@ function App() {
   }, [editingTabId]);
 
   useEffect(() => {
-    runDailyUpdateCheck();
-  }, []);
+    let isMounted = true;
+
+    runDailyUpdateCheck().then(result => {
+      if (!isMounted || !result?.available) {
+        return;
+      }
+
+      setPendingUpdate(result);
+      setIsInstallingUpdate(false);
+      setUpdateError(null);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [setPendingUpdate, setIsInstallingUpdate, setUpdateError]);
+
+  const handleInstallPendingUpdate = async () => {
+    if (!pendingUpdate?.available || isInstallingUpdate) {
+      return;
+    }
+
+    setIsInstallingUpdate(true);
+    setUpdateError(null);
+
+    try {
+      await runUpdateFlow();
+      setPendingUpdate(null);
+      setIsInstallingUpdate(false);
+    } catch (error) {
+      console.error("Update installation failed", error);
+      const message = error instanceof Error && error.message ? error.message : "Unable to install update. Please try again later.";
+      setUpdateError(message);
+      setIsInstallingUpdate(false);
+    }
+  };
+
+  const handleDismissPendingUpdate = () => {
+    if (isInstallingUpdate) {
+      return;
+    }
+
+    setPendingUpdate(null);
+    setUpdateError(null);
+  };
 
 
 
@@ -127,11 +189,24 @@ function App() {
 
       <div className="flex-1 overflow-hidden relative flex">
         <InputModal />
+        {pendingUpdate?.available && (
+          <UpdatePrompt
+            version={pendingUpdate.version}
+            isInstalling={isInstallingUpdate}
+            error={updateError}
+            onInstall={handleInstallPendingUpdate}
+            onDismiss={handleDismissPendingUpdate}
+          />
+        )}
         {isWorkspaceSettingsOpen && <WorkspaceSettings />}
         {isAppSettingsOpen && <AppSettings />}
         <MenuSidebar />
-        <PanelGroup orientation="horizontal">
-          <Panel defaultSize={225} minSize={225} maxSize={750} className="relative z-20 border-r border-border">
+        <PanelGroup
+          orientation="horizontal"
+          defaultLayout={mainLayout}
+          onLayoutChanged={handleMainLayoutChanged}
+        >
+          <Panel id="workspace" defaultSize="35%" minSize="18%" maxSize="45%" className="relative z-20 border-r border-border">
             <Sidebar />
           </Panel>
           
@@ -139,7 +214,7 @@ function App() {
             <div className="w-px h-8 bg-border group-hover:bg-white/50 rounded-full" />
           </PanelResizeHandle>
           
-          <Panel defaultSize={80} minSize={60} className="flex flex-col bg-muted/50">
+          <Panel id="requestEditor" defaultSize="65%" minSize="55%" className="flex flex-col bg-muted/50">
             <div className="flex-1 overflow-hidden relative z-0 flex flex-col" style={{ isolation: 'isolate' }}>
               {/* Capsule Tabs */}
               {openTabs.length > 0 && (
@@ -207,7 +282,7 @@ function App() {
               )}
 
               <PanelGroup orientation="vertical">
-                <Panel defaultSize={60} minSize={30} className="flex flex-col">
+                <Panel defaultSize="60%" minSize="30%" className="flex flex-col">
                   <div className="flex-1 overflow-hidden min-h-0 min-w-0 flex flex-col bg-background">
                     {activeRequestId ? (
                       openTabs.map(tabId => (
@@ -244,7 +319,7 @@ function App() {
                   <div className="h-px w-8 bg-border group-hover:bg-white/50 rounded-full" />
                 </PanelResizeHandle>
                 
-                <Panel defaultSize={40} minSize={20} className="flex flex-col bg-background">
+                <Panel defaultSize="40%" minSize="20%" className="flex flex-col bg-background">
                   <ResponseViewer key={activeRequestId || 'none'} response={activeRequestId ? responses[activeRequestId] : null} />
                 </Panel>
               </PanelGroup>

@@ -5,6 +5,7 @@ import { useThemeStore, Theme } from '../store/themeStore';
 import { twMerge } from 'tailwind-merge';
 import { APP_VERSION } from '../version';
 import { isTauriEnvironment, runUpdateFlow } from '../lib/updaterClient';
+import { useUpdateStore } from '../store/updateStore';
 
 export function AppSettings() {
   const { setAppSettingsOpen, setActiveMenu } = useSidebarStore();
@@ -12,6 +13,7 @@ export function AppSettings() {
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   const [supportsUpdater] = useState(() => isTauriEnvironment());
+  const { setPendingUpdate, setIsInstalling, setError } = useUpdateStore();
 
   const handleClose = () => {
     setAppSettingsOpen(false);
@@ -28,13 +30,16 @@ export function AppSettings() {
     setUpdateMessage(null);
 
     try {
-      const result = await runUpdateFlow();
+      const result = await runUpdateFlow({ installOnAvailable: false });
 
       if (result.available) {
+        setPendingUpdate(result);
+        setIsInstalling(false);
+        setError(null);
         setUpdateMessage(
           result.version
-            ? `Installing update ${result.version}. The app will relaunch automatically.`
-            : 'Installing the latest update. The app will relaunch automatically.'
+            ? `Update ${result.version} is ready. Choose Update now when you're ready.`
+            : 'An update is ready. Choose Update now when you are ready.'
         );
       } else {
         setUpdateMessage('You are already running the latest version.');

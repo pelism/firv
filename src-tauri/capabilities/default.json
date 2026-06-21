@@ -10,6 +10,7 @@
     "core:window:allow-unmaximize",
     "core:window:allow-is-maximized",
     "core:window:allow-close",
+    "core:window:allow-start-dragging",
     "core:window:allow-set-title",
     "opener:default",
     "dialog:default",
@@ -19,6 +20,8 @@
     "core:menu:allow-set-as-app-menu",
     "clipboard-manager:default",
     "clipboard-manager:allow-write-text",
-    "clipboard-manager:allow-read-text"
+    "clipboard-manager:allow-read-text",
+    "process:allow-restart",
+    "updater:default"
   ]
 }
