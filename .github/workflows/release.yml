@@ -11,10 +11,11 @@ jobs:
       contents: write
     runs-on: ubuntu-22.04
     outputs:
-      version: ${{ steps.gitversion.outputs.FullSemVer }}
+      version: ${{ steps.gitversion.outputs.MajorMinorPatch }}
       release_id: ${{ steps.create_release.outputs.id }}
     steps:
-      - uses: actions/checkout@v4
+      - name: checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -33,8 +34,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{ steps.gitversion.outputs.FullSemVer }}
-          release_name: "firv v${{ steps.gitversion.outputs.FullSemVer }}"
+          tag_name: v${{ steps.gitversion.outputs.MajorMinorPatch }}
+          release_name: "firv v${{ steps.gitversion.outputs.MajorMinorPatch }}"
           body: ''
           draft: false
           prerelease: false
@@ -90,7 +91,7 @@ jobs:
         run: cargo test
         working-directory: src-tauri
 
-      - name: Build, Sign, and Deploy Tauri App
+      - name: build, sign, and deploy app
         id: tauri_build
         uses: tauri-apps/tauri-action@v0
         env:
