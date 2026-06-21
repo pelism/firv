@@ -146,19 +146,19 @@ const SidebarNode: React.FC<{
             <FolderIcon size={14} className="mr-2 text-amber-500/80" />
             <span className="truncate font-medium">{item.kind.name}</span>
           </div>
-          <div className="flex items-center gap-0.5 transition-opacity">
+          <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
             {!isScratchpad && (
               <>
                 <button 
                   onClick={handleAddRequest}
-                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-opacity"
                   title="Add Request"
                 >
                   <Plus size={14} />
                 </button>
                 <button 
                   onClick={handleAddFolder}
-                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-opacity"
                   title="Add Subfolder"
                 >
                   <FolderPlus size={14} />
@@ -167,7 +167,7 @@ const SidebarNode: React.FC<{
             )}
             <button 
               onClick={handleDelete}
-              className="p-1 hover:bg-destructive/10 rounded text-muted-foreground/80 hover:text-destructive opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/40 transition-all"
+              className="p-1 hover:bg-destructive/10 rounded text-muted-foreground/80 hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/40 transition-all"
               title="Delete Folder"
             >
               <Trash2 size={14} />
@@ -210,7 +210,7 @@ const SidebarNode: React.FC<{
       <div 
         ref={setNodeRef}
         className={twMerge(
-          "flex items-center py-2 px-3 mx-2 my-0.5 rounded-lg cursor-pointer text-sm group transition-all",
+          "flex items-center py-2 pl-3 pr-2 my-0.5 rounded-lg cursor-pointer text-sm group transition-all",
           isActive 
             ? "bg-primary/10 text-primary shadow-sm ring-1 ring-primary/20" 
             : "text-muted-foreground hover:bg-muted/50"
@@ -222,14 +222,16 @@ const SidebarNode: React.FC<{
           }
         }}
       >
-        <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-muted-foreground/60">
-          <GripVertical size={12} />
+        <div className="flex items-center flex-1 min-w-0">
+          <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-muted-foreground/60">
+            <GripVertical size={12} />
+          </div>
+          <span className={twMerge("text-[10px] font-bold px-1.5 py-0.5 rounded-md mr-3 min-w-8 text-center", getMethodStyles(item.kind.method))}>
+            {item.kind.method}
+          </span>
+          <span className="truncate flex-1">{item.kind.name}</span>
         </div>
-        <span className={twMerge("text-[10px] font-bold px-1.5 py-0.5 rounded-md mr-3 min-w-8 text-center", getMethodStyles(item.kind.method))}>
-          {item.kind.method}
-        </span>
-        <span className="truncate flex-1">{item.kind.name}</span>
-        <div className="flex items-center ml-2 transition-opacity">
+        <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
           <button 
             onClick={handleDelete}
             className="p-1 hover:bg-destructive/10 rounded text-muted-foreground/80 hover:text-destructive opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/40 transition-all"
