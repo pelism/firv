@@ -296,7 +296,6 @@ export const useSidebarStore = create<SidebarState>()(
         try {
           // Get existing manifest to preserve globals/scripts
           const manifest: any = await invoke('get_manifest', { projectPath });
-          console.log("[sidebarStore] Syncing tree. Current manifest globals:", manifest.workspace.globals);
           
           await invoke('update_manifest_structure', {
             projectRoot: projectPath,
@@ -305,8 +304,6 @@ export const useSidebarStore = create<SidebarState>()(
               order 
             }
           });
-          console.log("[sidebarStore] Successfully synced tree to backend");
-          // Optionally refetch here if needed
         } catch (e) {
           console.error('Failed to sync tree:', e);
           await get().fetchSidebar(); // Rollback on fail
@@ -828,13 +825,11 @@ export const useSidebarStore = create<SidebarState>()(
           }
 
           // 1. Save all requests
-          console.log(`Saving ${requestsToSave.length} requests...`);
           for (const req of requestsToSave) {
             await invoke('update_request', { projectRoot, request: req });
           }
 
           // 2. Fetch current manifest to append to it
-          console.log('Fetching current manifest...');
           const currentManifest: any = await invoke('get_manifest', { projectPath });
           if (!currentManifest || !currentManifest.workspace) {
             console.error("Invalid manifest structure during Postman import");
@@ -852,7 +847,6 @@ export const useSidebarStore = create<SidebarState>()(
           ];
 
           // 3. Update manifest with new order and globals
-          console.log('Updating manifest structure...');
 
           await invoke('update_manifest_structure', {
             projectRoot,
@@ -864,7 +858,6 @@ export const useSidebarStore = create<SidebarState>()(
             name: currentWorkspaceName || undefined
           });
 
-          console.log('Import successful, refreshing sidebar...');
           await get().fetchSidebar();
           await get().loadOrphans();
 
@@ -982,6 +975,5 @@ if (useSidebarStore.persist?.hasHydrated?.()) {
 
 // Set up file watcher
 void listen('firv://file-changed', (event) => {
-  console.log('File changed:', event.payload);
   void useSidebarStore.getState().fetchSidebar();
 });
