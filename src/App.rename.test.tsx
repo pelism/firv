@@ -9,6 +9,10 @@ vi.mock('react-resizable-panels', () => ({
   Group: ({ children }: { children: ReactNode }) => <div data-testid="panel-group">{children}</div>,
   Panel: ({ children }: { children: ReactNode }) => <div data-testid="panel">{children}</div>,
   Separator: () => <div data-testid="panel-separator" />,
+  useDefaultLayout: () => ({
+    defaultLayout: undefined,
+    onLayoutChanged: vi.fn(),
+  }),
 }));
 
 vi.mock('./components/Sidebar', () => ({
