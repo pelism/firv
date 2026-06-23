@@ -23,6 +23,7 @@ pub struct HydratedRequestInfo {
 async fn run_request_step_by_id(
     project_root: &str,
     workspace_vars: &[crate::models::request::KeyValue],
+    environment_vars: &[crate::models::request::KeyValue],
     request_id: &str,
     current_resolver: &mut VariableResolver,
     depth: usize,
@@ -36,7 +37,14 @@ async fn run_request_step_by_id(
         None => return Ok(None),
     };
 
-    let next_result = execute_chain(project_root.to_string(), next_request, workspace_vars.to_vec(), depth).await?;
+    let next_result = execute_chain(
+        project_root.to_string(),
+        next_request,
+        workspace_vars.to_vec(),
+        environment_vars.to_vec(),
+        depth,
+    )
+    .await?;
 
     // Merge downstream request vars into the current resolver so the main request can see them.
     for (k, v) in next_result.variables {
@@ -55,6 +63,7 @@ async fn run_request_step_by_id(
 async fn run_before_run_step(
     project_root: &str,
     workspace_vars: &[crate::models::request::KeyValue],
+    environment_vars: &[crate::models::request::KeyValue],
     step: &BeforeRunStep,
     current_resolver: &mut VariableResolver,
     depth: usize,
@@ -62,6 +71,7 @@ async fn run_before_run_step(
     run_request_step_by_id(
         project_root,
         workspace_vars,
+        environment_vars,
         &step.request_id,
         current_resolver,
         depth,
@@ -73,6 +83,7 @@ async fn run_before_run_step(
 async fn run_chain_step(
     project_root: &str,
     workspace_vars: &[crate::models::request::KeyValue],
+    environment_vars: &[crate::models::request::KeyValue],
     step: &RequestChainStep,
     current_resolver: &mut VariableResolver,
     depth: usize,
@@ -80,6 +91,7 @@ async fn run_chain_step(
     run_request_step_by_id(
         project_root,
         workspace_vars,
+        environment_vars,
         &step.next_request_id,
         current_resolver,
         depth,
@@ -114,6 +126,7 @@ pub async fn run_firv_request(
     project_root: String,
     request: FirvRequest,
     workspace_vars: Vec<crate::models::request::KeyValue>,
+    environment_vars: Vec<crate::models::request::KeyValue>,
 ) -> Result<LifecycleResult, String> {
     let (cancel_tx, cancel_rx) = oneshot::channel();
     {
@@ -123,7 +136,7 @@ pub async fn run_firv_request(
     }
 
     let result = tokio::select! {
-        result = execute_chain(project_root, request, workspace_vars, 0) => result,
+        result = execute_chain(project_root, request, workspace_vars, environment_vars, 0) => result,
         _ = cancel_rx => Err("Request canceled".to_string()),
     };
 
@@ -140,6 +153,7 @@ async fn execute_chain(
     project_root: String,
     request: FirvRequest,
     workspace_vars: Vec<crate::models::request::KeyValue>,
+    environment_vars: Vec<crate::models::request::KeyValue>,
     depth: usize,
 ) -> Result<LifecycleResult, String> {
     const MAX_CHAIN_DEPTH: usize = 8;
@@ -151,20 +165,25 @@ async fn execute_chain(
     let logs = Vec::new();
     let mut script_errors = Vec::new();
     let workspace_vars_for_chain = workspace_vars.clone();
+    let environment_vars_for_chain = environment_vars.clone();
 
     // Setup variable resolver
-    let mut resolver = VariableResolver::new();
-    resolver.globals = workspace_vars
-        .into_iter()
-        .filter(|kv| kv.enabled)
-        .map(|kv| (kv.key, kv.value))
-        .collect();
+    let mut resolver = VariableResolver::from_scopes(&workspace_vars, &environment_vars);
 
     let mut before_run_results = Vec::new();
 
     // --- Before-run chain ---
     for step in &request.transforms.before_run {
-        if let Some(summary) = run_before_run_step(&project_root, &workspace_vars_for_chain, step, &mut resolver, depth + 1).await? {
+        if let Some(summary) = run_before_run_step(
+            &project_root,
+            &workspace_vars_for_chain,
+            &environment_vars_for_chain,
+            step,
+            &mut resolver,
+            depth + 1,
+        )
+        .await?
+        {
             before_run_results.push(summary);
         }
     }
@@ -231,7 +250,16 @@ async fn execute_chain(
             };
 
             if should_run {
-                if let Some(summary) = run_chain_step(&project_root, &workspace_vars_for_chain, step, &mut resolver, depth + 1).await? {
+                if let Some(summary) = run_chain_step(
+                    &project_root,
+                    &workspace_vars_for_chain,
+                    &environment_vars_for_chain,
+                    step,
+                    &mut resolver,
+                    depth + 1,
+                )
+                .await?
+                {
                     chained_results.push(summary);
                 }
             }
@@ -298,7 +326,7 @@ mod tests {
             transforms: RequestTransforms::default(),
         };
 
-        let result = execute_chain("C:/Repos/firv".to_string(), request, vec![], 9).await;
+        let result = execute_chain("C:/Repos/firv".to_string(), request, vec![], vec![], 9).await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("exceeded max depth"));
@@ -338,11 +366,59 @@ mod tests {
             enabled: true,
         }];
 
-        let result = execute_chain(".".to_string(), request, workspace_vars, 0)
+        let result = execute_chain(".".to_string(), request, workspace_vars, vec![], 0)
             .await
             .expect("chain should succeed");
 
         mock.assert();
         assert_eq!(result.final_request.body.as_deref(), Some(expected_body));
+    }
+
+    #[tokio::test]
+    async fn active_environment_variables_override_globals_in_request_preparation() {
+        let server = MockServer::start();
+
+        let mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/env/dev");
+            then.status(200)
+                .header("Content-Type", "text/plain")
+                .body("ok");
+        });
+
+        let request = FirvRequest {
+            id: "id".to_string(),
+            name: "environment override".to_string(),
+            method: HttpMethod::POST,
+            url: format!("{}/{{{{base_path}}}}/{{{{environment}}}}", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        };
+
+        let workspace_vars = vec![KeyValue {
+            key: "base_path".to_string(),
+            value: "global".to_string(),
+            enabled: true,
+        }];
+
+        let environment_vars = vec![KeyValue {
+            key: "base_path".to_string(),
+            value: "env".to_string(),
+            enabled: true,
+        }, KeyValue {
+            key: "environment".to_string(),
+            value: "dev".to_string(),
+            enabled: true,
+        }];
+
+        let result = execute_chain(".".to_string(), request, workspace_vars, environment_vars, 0)
+            .await
+            .expect("chain should succeed");
+
+        mock.assert();
+        assert_eq!(result.final_request.url, format!("{}/env/dev", server.base_url()));
+        assert_eq!(result.variable_trace.iter().find(|entry| entry.key == "base_path").unwrap().scope, "environment");
     }
 }

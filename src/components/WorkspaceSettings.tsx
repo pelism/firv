@@ -1,19 +1,66 @@
 import { useState, useEffect } from 'react';
-import { Save, Settings2, X } from 'lucide-react';
+import { Plus, Save, Settings2, Trash2, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useSidebarStore } from '../store/sidebarStore';
 import { Button } from './ui/button';
 import { KVEditor, KeyValue } from './editors/KVEditor';
 
+type EnvironmentDraft = {
+  id: string;
+  name: string;
+  variables: KeyValue[];
+};
+
+const hydrateRows = (rows: Array<{ id?: string; key: string; value: string; enabled?: boolean }>): KeyValue[] => {
+  return rows.map((row) => ({
+    id: row.id || crypto.randomUUID(),
+    key: row.key ?? '',
+    value: row.value ?? '',
+    enabled: row.enabled ?? true,
+  }));
+};
+
+const serializeRows = (rows: KeyValue[]) => {
+  return rows
+    .filter(row => row.key.trim() !== '' || row.value.trim() !== '')
+    .map(({ id: _id, ...row }) => row);
+};
+
+const serializeEnvironment = (environment: EnvironmentDraft) => ({
+  id: environment.id,
+  name: environment.name.trim() || 'Environment',
+  variables: serializeRows(environment.variables),
+});
+
 export function WorkspaceSettings() {
   const [name, setName] = useState('');
   const [variables, setVariables] = useState<KeyValue[]>([]);
+  const [environments, setEnvironments] = useState<EnvironmentDraft[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const { projectPath, setWorkspaceName: setStoreWorkspaceName, setWorkspaceSettingsOpen, ensureWorkspace, setActiveMenu, setWorkspaceGlobals } = useSidebarStore();
+  const { projectPath, setWorkspaceName: setStoreWorkspaceName, setWorkspaceSettingsOpen, ensureWorkspace, setActiveMenu } = useSidebarStore();
 
   const handleClose = () => {
     setWorkspaceSettingsOpen(false);
     setActiveMenu('workspace');
+  };
+
+  const addEnvironment = () => {
+    setEnvironments(current => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        name: 'Environment',
+        variables: [],
+      },
+    ]);
+  };
+
+  const updateEnvironment = (id: string, patch: Partial<EnvironmentDraft>) => {
+    setEnvironments(current => current.map(environment => (environment.id === id ? { ...environment, ...patch } : environment)));
+  };
+
+  const deleteEnvironment = (id: string) => {
+    setEnvironments(current => current.filter(environment => environment.id !== id));
   };
 
   useEffect(() => {
@@ -30,8 +77,16 @@ export function WorkspaceSettings() {
       const manifest: any = await invoke('get_manifest', { projectPath: currentPath });
       setName(manifest.name || '');
       if (manifest.workspace.globals) {
-        setVariables(manifest.workspace.globals);
+        setVariables(hydrateRows(manifest.workspace.globals));
       }
+      const loadedEnvironments = Array.isArray(manifest.workspace.environments)
+        ? manifest.workspace.environments.map((environment: any) => ({
+            id: environment.id || crypto.randomUUID(),
+            name: environment.name || 'Environment',
+            variables: hydrateRows(environment.variables || []),
+          }))
+        : [];
+      setEnvironments(loadedEnvironments);
     } catch (err) {
       console.error("Failed to load workspace settings", err);
     }
@@ -49,11 +104,20 @@ export function WorkspaceSettings() {
       manifest.name = name || projectPath.split(/[/\\]/).filter(Boolean).pop() || 'Workspace';
       
       // Filter out only completely empty rows for saving, keep disabled ones
-      const globals = variables.filter(v => v.key.trim() !== "" || v.value.trim() !== "");
+      const globals = serializeRows(variables);
+      const savedEnvironments = environments
+        .map(serializeEnvironment)
+        .filter((environment) => environment.name.trim() !== '' || environment.variables.length > 0);
+      const activeEnvironmentId = manifest.workspace?.active_environment;
+      const activeEnvironment = activeEnvironmentId && savedEnvironments.some(environment => environment.id === activeEnvironmentId)
+        ? activeEnvironmentId
+        : null;
       
       const updatedWorkspace = {
         ...manifest.workspace,
         globals,
+        environments: savedEnvironments,
+        active_environment: activeEnvironment,
       };
 
       await invoke('update_manifest_structure', {
@@ -62,10 +126,9 @@ export function WorkspaceSettings() {
         name: name.trim() || null
       });
 
-      setWorkspaceGlobals(globals);
+      await useSidebarStore.getState().fetchSidebar();
       
       setStoreWorkspaceName(name.trim() || currentPath.split(/[/\\]/).filter(Boolean).pop() || 'Workspace');
-      console.log("Successfully saved workspace settings");
       handleClose();
     } catch (err) {
       console.error("Failed to save workspace settings", err);
@@ -135,8 +198,8 @@ export function WorkspaceSettings() {
           {/* Variables Section */}
           <section className="space-y-4">
             <div>
-              <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Variables</h2>
-              <p className="text-sm text-zinc-500">Global environment variables accessible to all requests in this workspace.</p>
+              <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Globals</h2>
+              <p className="text-sm text-zinc-500">Variables available to every environment and request in this workspace.</p>
             </div>
             <div className="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm">
               <KVEditor 
@@ -146,6 +209,68 @@ export function WorkspaceSettings() {
                 placeholderValue="Value" 
                 uniqueEnabledKeys={true}
               />
+            </div>
+          </section>
+
+          {/* Environments Section */}
+          <section className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Environments</h2>
+                <p className="text-sm text-zinc-500">Create named variable sets such as development or production.</p>
+              </div>
+              <Button type="button" onClick={addEnvironment} className="rounded-xl flex items-center gap-2">
+                <Plus size={16} />
+                Add Environment
+              </Button>
+            </div>
+
+            <div className="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
+              {environments.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800 px-4 py-5 text-sm text-zinc-500 bg-zinc-50/60 dark:bg-zinc-950/40">
+                  No environments yet. Add one to define development, production, or any other scoped variable set.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {environments.map((environment) => {
+                    return (
+                      <div
+                        key={environment.id}
+                        className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-4 space-y-4"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 space-y-2">
+                            <input
+                              type="text"
+                              value={environment.name}
+                              onChange={(e) => updateEnvironment(environment.id, { name: e.target.value })}
+                              placeholder="Environment name"
+                              className="w-full px-4 py-2.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500/50 text-zinc-900 dark:text-zinc-100 transition-all"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => deleteEnvironment(environment.id)}
+                            className="inline-flex self-start items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold text-zinc-500 hover:text-red-600 hover:bg-red-500/10 transition-colors"
+                            aria-label="Delete environment"
+                          >
+                            <Trash2 size={16} />
+                            Delete
+                          </button>
+                        </div>
+
+                        <KVEditor
+                          data={environment.variables}
+                          onChange={(updatedVariables) => updateEnvironment(environment.id, { variables: updatedVariables })}
+                          placeholderKey="Variable Name"
+                          placeholderValue="Value"
+                          uniqueEnabledKeys={true}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </section>
 

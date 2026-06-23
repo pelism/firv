@@ -311,6 +311,12 @@ export const Sidebar: React.FC = () => {
     }
   }, [projectPath]);
 
+  useEffect(() => {
+    if (projectPath) {
+      setActiveTab('workspace');
+    }
+  }, [projectPath]);
+
   useLayoutEffect(() => {
     if (!isImportFlyoutOpen) return;
 

@@ -7,11 +7,42 @@ import { useAppStore } from './appStore';
 import { HydratedSidebarItem } from "../types/hydratedSidebarItem.ts";
 import { HydratedTree } from "../types/hydratedTree.ts";
 import {KeyValue} from "../types/keyValue.ts";
+import { WorkspaceEnvironment } from "../types/environment.ts";
 import { normalizeVariableLookup } from '../lib/variableHover';
 
 export const SCRATCHPAD_WORKSPACE_KEY = '__scratchpad__';
 
 const getWorkspaceKey = (projectPath?: string) => projectPath || SCRATCHPAD_WORKSPACE_KEY;
+
+const buildWorkspaceVariableLookup = (manifest: any): Record<string, string> => {
+  const globals = normalizeVariableLookup(manifest?.workspace?.globals);
+  const activeEnvironmentId = manifest?.workspace?.active_environment;
+  const environments = Array.isArray(manifest?.workspace?.environments) ? manifest.workspace.environments : [];
+  const activeEnvironment = environments.find((environment: any) => environment?.id === activeEnvironmentId);
+
+  if (!activeEnvironment) {
+    return globals;
+  }
+
+  return {
+    ...globals,
+    ...normalizeVariableLookup(activeEnvironment.variables),
+  };
+};
+
+const buildWorkspaceEnvironments = (manifest: any): WorkspaceEnvironment[] => {
+  if (!manifest?.workspace || !Array.isArray(manifest.workspace.environments)) {
+    return [];
+  }
+
+  return manifest.workspace.environments
+    .filter((environment: any) => environment && typeof environment.id === 'string' && environment.id.trim() !== '')
+    .map((environment: any) => ({
+      id: environment.id,
+      name: typeof environment.name === 'string' && environment.name.trim() !== '' ? environment.name : 'Environment',
+      variables: Array.isArray(environment.variables) ? environment.variables : [],
+    }));
+};
 
 const collectFolderIdsFromTree = (items: HydratedSidebarItem[], acc: Set<string> = new Set()): Set<string> => {
   for (const item of items) {
@@ -89,7 +120,10 @@ interface SidebarState {
   syncExpandedFoldersWithTree: (workspaceKey: string, tree: HydratedSidebarItem[]) => void;
   expandedStateHydrated: boolean;
   workspaceGlobals: Record<string, string>;
+  workspaceEnvironments: WorkspaceEnvironment[];
+  activeWorkspaceEnvironmentId: string;
   setWorkspaceGlobals: (globals: KeyValue[] | Record<string, string>) => void;
+  setWorkspaceActiveEnvironment: (environmentId: string | null) => Promise<void>;
   clearWorkspaceGlobals: () => void;
 }
 
@@ -118,6 +152,8 @@ export const useSidebarStore = create<SidebarState>()(
       scratchpadTree: [],
       pendingNames: {},
       workspaceGlobals: {},
+      workspaceEnvironments: [],
+      activeWorkspaceEnvironmentId: '',
       projectPath: '', // Default or replace with dynamic project path
       workspaceName: '',
       activeMenu: 'workspace',
@@ -127,7 +163,7 @@ export const useSidebarStore = create<SidebarState>()(
       setAppSettingsOpen: (open) => set({ isAppSettingsOpen: open }),
       setActiveMenu: (activeMenu) => set({ activeMenu }),
       setProjectPath: (path) => {
-        set({ projectPath: path, workspaceGlobals: {} });
+        set({ projectPath: path, workspaceGlobals: {}, workspaceEnvironments: [], activeWorkspaceEnvironmentId: '' });
         void get().fetchSidebar();
       },
       setWorkspaceName: (workspaceName) => set({ workspaceName }),
@@ -140,24 +176,30 @@ export const useSidebarStore = create<SidebarState>()(
           // Also fetch manifest to get the workspace name
           try {
             const manifest: any = await invoke('get_manifest', { projectPath });
+            const workspaceEnvironments = buildWorkspaceEnvironments(manifest);
+            const activeWorkspaceEnvironmentId = manifest?.workspace?.active_environment || '';
             if (manifest && manifest.name) {
               set({
                 workspaceName: manifest.name,
-                workspaceGlobals: normalizeVariableLookup(manifest.workspace?.globals),
+                workspaceGlobals: buildWorkspaceVariableLookup(manifest),
+                workspaceEnvironments,
+                activeWorkspaceEnvironmentId,
               });
             } else {
               // Fallback to directory name if name is missing in manifest
               const dirName = projectPath.split(/[/\\]/).filter(Boolean).pop() || '';
               set({
                 workspaceName: dirName,
-                workspaceGlobals: normalizeVariableLookup(manifest?.workspace?.globals),
+                workspaceGlobals: buildWorkspaceVariableLookup(manifest),
+                workspaceEnvironments,
+                activeWorkspaceEnvironmentId,
               });
             }
           } catch (me) {
             console.error('Failed to fetch manifest for name:', me);
             // Fallback to directory name if manifest fetch fails
             const dirName = projectPath.split(/[/\\]/).filter(Boolean).pop() || '';
-            set({ workspaceName: dirName, workspaceGlobals: {} });
+            set({ workspaceName: dirName, workspaceGlobals: {}, workspaceEnvironments: [], activeWorkspaceEnvironmentId: '' });
           }
           
           set({ tree: tree.items });
@@ -414,6 +456,31 @@ export const useSidebarStore = create<SidebarState>()(
       expandedFolderIdsByWorkspace: {},
       expandedStateHydrated: false,
       setWorkspaceGlobals: (globals) => set({ workspaceGlobals: normalizeVariableLookup(globals) }),
+      setWorkspaceActiveEnvironment: async (environmentId) => {
+        const { projectPath } = get();
+        if (!projectPath) return;
+
+        try {
+          const manifest: any = await invoke('get_manifest', { projectPath });
+          const updatedWorkspace = {
+            ...manifest.workspace,
+            active_environment: environmentId || null,
+          };
+
+          set({ activeWorkspaceEnvironmentId: environmentId || '' });
+
+          await invoke('update_manifest_structure', {
+            projectRoot: projectPath,
+            workspace: updatedWorkspace,
+            name: manifest.name || null,
+          });
+
+          await get().fetchSidebar();
+        } catch (error) {
+          console.error('Failed to update active environment:', error);
+          await get().fetchSidebar();
+        }
+      },
       clearWorkspaceGlobals: () => set({ workspaceGlobals: {} }),
       toggleFolderExpansion: (workspaceKey, folderId) => {
         const key = getWorkspaceKey(workspaceKey);
@@ -944,6 +1011,8 @@ export const useSidebarStore = create<SidebarState>()(
           workspaceName: '',
           isWorkspaceSettingsOpen: false,
           workspaceGlobals: {},
+          workspaceEnvironments: [],
+          activeWorkspaceEnvironmentId: '',
         });
         reset();
       }
@@ -954,6 +1023,8 @@ export const useSidebarStore = create<SidebarState>()(
         scratchpadTree: state.scratchpadTree,
         projectPath: state.projectPath,
         workspaceName: state.workspaceName,
+        workspaceEnvironments: state.workspaceEnvironments,
+        activeWorkspaceEnvironmentId: state.activeWorkspaceEnvironmentId,
         expandedFolderIdsByWorkspace: state.expandedFolderIdsByWorkspace,
       }),
       onRehydrateStorage: () => (_state, error) => {
@@ -974,6 +1045,6 @@ if (useSidebarStore.persist?.hasHydrated?.()) {
 }
 
 // Set up file watcher
-void listen('firv://file-changed', (event) => {
+void listen('firv://file-changed', () => {
   void useSidebarStore.getState().fetchSidebar();
 });

@@ -103,11 +103,3 @@ jobs:
           releaseName: "firv v__VERSION__"
           releaseId: ${{ needs.prepare-release.outputs.release_id }}
 
-      - name: upload standalone exe (windows only)
-        if: matrix.platform == 'windows-latest'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: src-tauri/target/release/firv.exe
-          tag_name: v${{ needs.prepare-release.outputs.version }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

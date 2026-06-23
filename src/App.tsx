@@ -30,6 +30,10 @@ function App() {
   const setRequestOrigin = useAppStore(state => state.setRequestOrigin);
   const requestOrigins = useAppStore(state => state.requestOrigins);
   const responses = useAppStore(state => state.responses);
+  const projectPath = useSidebarStore(state => state.projectPath);
+  const workspaceEnvironments = useSidebarStore(state => state.workspaceEnvironments);
+  const activeWorkspaceEnvironmentId = useSidebarStore(state => state.activeWorkspaceEnvironmentId);
+  const setWorkspaceActiveEnvironment = useSidebarStore(state => state.setWorkspaceActiveEnvironment);
   const { tree } = useSidebarStore();
   const updateRequestName = useSidebarStore(state => state.updateRequestName);
   const renameRequest = useSidebarStore(state => state.renameRequest);
@@ -40,6 +44,7 @@ function App() {
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [isUpdatingEnvironment, setIsUpdatingEnvironment] = useState(false);
   const {
     pendingUpdate,
     isInstalling: isInstallingUpdate,
@@ -59,6 +64,7 @@ function App() {
   });
   const defaultMainLayout: Layout = { workspace: 30, requestEditor: 70 };
   const mainLayout = storedMainLayout ?? defaultMainLayout;
+  const showWorkspaceEnvironmentFooter = Boolean(projectPath);
 
   useEffect(() => {
     if (editingTabId && editInputRef.current) {
@@ -112,6 +118,17 @@ function App() {
 
     setPendingUpdate(null);
     setUpdateError(null);
+  };
+
+  const handleEnvironmentChange = async (environmentId: string) => {
+    if (!projectPath) return;
+
+    setIsUpdatingEnvironment(true);
+    try {
+      await setWorkspaceActiveEnvironment(environmentId || null);
+    } finally {
+      setIsUpdatingEnvironment(false);
+    }
   };
 
 
@@ -326,9 +343,27 @@ function App() {
             </div>
             
             <footer className="h-11 border-t border-border bg-background flex items-center px-4 text-[11px] font-medium text-muted-foreground">
-              <div className="flex items-center gap-4 italic opacity-60">
-                <span></span>
-              </div>
+              {showWorkspaceEnvironmentFooter ? (
+                <div className="flex w-full items-center justify-end gap-2">
+                  <select
+                    value={activeWorkspaceEnvironmentId}
+                    onChange={(e) => void handleEnvironmentChange(e.target.value)}
+                    disabled={isUpdatingEnvironment}
+                    className="h-8 min-w-[220px] rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground outline-none transition-all focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+                  >
+                    <option value="">No active environment</option>
+                    {workspaceEnvironments.map((environment) => (
+                      <option key={environment.id} value={environment.id}>
+                        {environment.name || 'Environment'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="flex items-center gap-4 italic opacity-60">
+                  <span></span>
+                </div>
+              )}
             </footer>
           </Panel>
         </PanelGroup>

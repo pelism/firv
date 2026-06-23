@@ -17,6 +17,19 @@ pub struct Workspace {
     pub order: Vec<SidebarItem>,
     #[serde(default)]
     pub globals: Vec<KeyValue>,
+    #[serde(default)]
+    pub environments: Vec<WorkspaceEnvironment>,
+    #[serde(default)]
+    pub active_environment: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "environment.ts")]
+pub struct WorkspaceEnvironment {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub variables: Vec<KeyValue>,
 }
 
 #[derive(Debug, Serialize, Deserialize, TS)]
@@ -82,6 +95,8 @@ workspace:
 
         let manifest: FirvManifest = serde_yaml::from_str(yaml).unwrap();
         assert!(manifest.workspace.globals.is_empty());
+        assert!(manifest.workspace.environments.is_empty());
+        assert!(manifest.workspace.active_environment.is_none());
     }
 
     #[test]
@@ -96,6 +111,12 @@ workspace:
                     method: crate::models::request::HttpMethod::GET,
                 }],
                 globals: vec![],
+                environments: vec![WorkspaceEnvironment {
+                    id: "dev".to_string(),
+                    name: "Development".to_string(),
+                    variables: vec![],
+                }],
+                active_environment: Some("dev".to_string()),
             },
         };
 
@@ -104,5 +125,7 @@ workspace:
 
         assert_eq!(decoded.name, manifest.name);
         assert_eq!(decoded.workspace.order.len(), 1);
+        assert_eq!(decoded.workspace.environments.len(), 1);
+        assert_eq!(decoded.workspace.active_environment.as_deref(), Some("dev"));
     }
 }

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
-use crate::models::request::{ExtractionSource, RequestExtractionRule};
+use crate::models::request::{ExtractionSource, KeyValue, RequestExtractionRule};
 
 mod uuid_filter;
 
@@ -91,8 +91,34 @@ impl VariableResolver {
         Self::default()
     }
 
+    pub fn from_scopes(globals: &[KeyValue], environment: &[KeyValue]) -> Self {
+        let mut resolver = Self::new();
+        resolver.globals = Self::collect_enabled_variables(globals);
+        resolver.environment = Self::collect_enabled_variables(environment);
+        resolver
+    }
+
     fn normalize_key(key: &str) -> String {
         key.to_ascii_lowercase()
+    }
+
+    fn collect_enabled_variables(variables: &[KeyValue]) -> HashMap<String, String> {
+        let mut result = HashMap::new();
+
+        for variable in variables {
+            if !variable.enabled {
+                continue;
+            }
+
+            let key = variable.key.trim();
+            if key.is_empty() {
+                continue;
+            }
+
+            result.insert(Self::normalize_key(key), variable.value.clone());
+        }
+
+        result
     }
 
     fn record_used_keys_from_input(&mut self, input: &str) {
@@ -127,13 +153,23 @@ impl VariableResolver {
 
     pub fn trace(&self) -> Vec<VariableTraceEntry> {
         let mut entries = Vec::new();
+        let mut entry_indexes: HashMap<String, usize> = HashMap::new();
         let should_include = |key: &str| self.used_variable_keys.contains(&Self::normalize_key(key));
+        let mut push_or_replace = |entry: VariableTraceEntry| {
+            let normalized_key = Self::normalize_key(&entry.key);
+            if let Some(index) = entry_indexes.get(&normalized_key).copied() {
+                entries[index] = entry;
+            } else {
+                entry_indexes.insert(normalized_key, entries.len());
+                entries.push(entry);
+            }
+        };
 
         for (key, value) in &self.globals {
             if !should_include(key) {
                 continue;
             }
-            entries.push(VariableTraceEntry {
+            push_or_replace(VariableTraceEntry {
                 key: key.clone(),
                 value: value.clone(),
                 scope: "workspace".to_string(),
@@ -144,7 +180,7 @@ impl VariableResolver {
             if !should_include(key) {
                 continue;
             }
-            entries.push(VariableTraceEntry {
+            push_or_replace(VariableTraceEntry {
                 key: key.clone(),
                 value: value.clone(),
                 scope: "environment".to_string(),
@@ -156,7 +192,7 @@ impl VariableResolver {
                 if !should_include(key) {
                     continue;
                 }
-                entries.push(VariableTraceEntry {
+                push_or_replace(VariableTraceEntry {
                     key: key.clone(),
                     value: value.clone(),
                     scope: format!("folder[{}]", index),
@@ -168,7 +204,7 @@ impl VariableResolver {
             if !should_include(key) {
                 continue;
             }
-            entries.push(VariableTraceEntry {
+            push_or_replace(VariableTraceEntry {
                 key: key.clone(),
                 value: value.clone(),
                 scope: "request".to_string(),
@@ -277,6 +313,49 @@ mod tests {
         assert_eq!(merged.get("env").unwrap(), "e");
         assert_eq!(merged.get("folder").unwrap(), "f");
         assert_eq!(merged.get("request").unwrap(), "r");
+    }
+
+    #[test]
+    fn environment_values_override_globals() {
+        let resolver = VariableResolver::from_scopes(
+            &[KeyValue {
+                key: "base_url".to_string(),
+                value: "https://global.example".to_string(),
+                enabled: true,
+            }],
+            &[KeyValue {
+                key: "base_url".to_string(),
+                value: "https://dev.example".to_string(),
+                enabled: true,
+            }],
+        );
+
+        let merged = resolver.merge();
+        assert_eq!(merged.get("base_url").unwrap(), "https://dev.example");
+    }
+
+    #[test]
+    fn trace_keeps_only_effective_scope_for_duplicate_keys() {
+        let mut resolver = VariableResolver::from_scopes(
+            &[KeyValue {
+                key: "base_url".to_string(),
+                value: "https://global.example".to_string(),
+                enabled: true,
+            }],
+            &[KeyValue {
+                key: "base_url".to_string(),
+                value: "https://dev.example".to_string(),
+                enabled: true,
+            }],
+        );
+
+        let rendered = resolver.resolve_string("{{base_url}}/items");
+        assert_eq!(rendered, "https://dev.example/items");
+
+        let trace = resolver.trace();
+        assert_eq!(trace.len(), 1);
+        assert_eq!(trace[0].scope, "environment");
+        assert_eq!(trace[0].value, "https://dev.example");
     }
 
     #[test]

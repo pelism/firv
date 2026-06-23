@@ -181,6 +181,8 @@ pub fn create_workspace(project_root: String, name: String) -> Result<(), String
         workspace: Workspace {
             order: vec![],
             globals: vec![],
+            environments: vec![],
+            active_environment: None,
         },
     };
 
