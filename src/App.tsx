@@ -137,7 +137,7 @@ function App() {
     for (const item of items) {
       if (item.kind.type === 'error') continue;
       const path = currentPath ? `${currentPath} / ${item.kind.name}` : item.kind.name;
-      if (item.kind.type === 'request' && item.kind.id === id) {
+      if ((item.kind.type === 'request' || item.kind.type === 'ws') && item.kind.id === id) {
         return path;
       }
       if (item.kind.type === 'folder' && item.kind.items) {

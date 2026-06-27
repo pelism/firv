@@ -2,8 +2,9 @@
 mod hydration;
 mod lifecycle;
 mod models;
-mod runner;
+mod http_client;
 mod storage;
+mod ws_client;
 
 pub mod variables;
 mod watcher;
@@ -18,6 +19,9 @@ use storage::create_workspace;
 use storage::check_workspace_exists;
 use storage::export_workspace;
 use storage::import_firv_export;
+use storage::get_ws_request;
+use storage::update_ws_request;
+use ws_client::{ws_connect, ws_disconnect, ws_send, WsConnectionRegistry};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
@@ -91,10 +95,10 @@ fn load_project(path: String) -> Result<FirvManifest, String> {
 async fn execute_request(
     request: models::FirvRequest,
     resolver: Option<variables::VariableResolver>,
-) -> Result<runner::FirvResponse, String> {
+) -> Result<http_client::FirvResponse, String> {
     let mut resolver = resolver.unwrap_or_default();
-    let prepared = runner::prepare_request(&request, &mut resolver);
-    runner::run_request(prepared).await
+    let prepared = http_client::prepare_request(&request, &mut resolver);
+    http_client::run_request(prepared).await
 }
 
 #[tauri::command]
@@ -122,6 +126,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(watcher::WatcherHandle(Mutex::new(None)))
         .manage(RequestCancellationState(Mutex::new(None)))
+        .manage(WsConnectionRegistry::new())
         .setup(|app| {
             let edit_menu = SubmenuBuilder::new(app, "Edit")
                 .undo()
@@ -200,7 +205,12 @@ pub fn run() {
             create_workspace,
             check_workspace_exists,
             export_workspace,
-            import_firv_export
+            import_firv_export,
+            get_ws_request,
+            update_ws_request,
+            ws_connect,
+            ws_send,
+            ws_disconnect
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

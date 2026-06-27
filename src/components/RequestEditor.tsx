@@ -17,9 +17,10 @@ import {
   normalizeBodyMode,
   type RequestAuthorizationState,
 } from './requestEditorUtils';
-import { RequestEditorCommandBar } from './RequestEditorCommandBar';
+import { RequestEditorCommandBar, type EditorProtocol } from './RequestEditorCommandBar';
 import { RequestEditorBodySection } from './RequestEditorBodySection';
 import { RequestEditorTransformsSection } from './RequestEditorTransformsSection';
+import { WsEditor } from './WsEditor';
 
 interface RequestEditorProps {
   requestId: string;
@@ -53,6 +54,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const clearScratchpadRequestData = useAppStore(state => state.clearScratchpadRequestData);
   const setRequestOrigin = useAppStore(state => state.setRequestOrigin);
   const clearRequestOrigin = useAppStore(state => state.clearRequestOrigin);
+  const protocol: EditorProtocol = useAppStore(state => state.requestProtocols[requestId] ?? 'http');
+  const setRequestProtocol = useAppStore(state => state.setRequestProtocol);
   const isDirty = dirtyRequests.has(requestId);
   const scratchpadRequest = scratchpadRequestData[requestId];
   const requestOrigin = requestOrigins[requestId] ?? (scratchpadRequest ? 'scratchpad' : 'workspace');
@@ -88,12 +91,35 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     return !!findRequestInItems(sidebarScratchpadTree, requestId) || requestOrigin === 'scratchpad';
   }, [requestId, requestOrigin, sidebarScratchpadTree]);
 
+  const handleProtocolChange = (p: EditorProtocol) => {
+    setRequestProtocol(requestId, p);
+    if (p === 'http') setDirty(requestId, false);
+  };
+
   // Hydration
   useEffect(() => {
     async function loadRequest() {
       if (projectPath) {
         try {
           isHydratingRef.current = true;
+
+          const { tree: currentTree, scratchpadTree: currentScratchpad } = useSidebarStore.getState();
+          const findKind = (items: HydratedSidebarItem[]): string | null => {
+            for (const item of items) {
+              if ((item.kind.type === 'request' || item.kind.type === 'ws') && item.kind.id === requestId)
+                return item.kind.type;
+              if (item.kind.type === 'folder') { const found = findKind(item.kind.items); if (found) return found; }
+            }
+            return null;
+          };
+          const sidebarKind = findKind(currentTree) ?? findKind(currentScratchpad);
+          if (sidebarKind === 'ws') {
+            setRequestProtocol(requestId, 'ws');
+            isHydratingRef.current = false;
+            hasHydratedRef.current = true;
+            return;
+          }
+
           const req: any = await invoke('get_request', {
             projectRoot: projectPath,
             id: requestId,
@@ -310,6 +336,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   useEffect(() => {
     if (!hasHydratedRef.current) return;
     if (isHydratingRef.current) return;
+    if (method === 'WS') return;
 
     const isScratchpad = requestOrigin === 'scratchpad' || !!scratchpadRequest;
 
@@ -410,10 +437,12 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
     try {
       const pendingName = pendingNames[requestId];
-      
+      const isWs = protocol === 'ws';
+      const requestName = pendingName || getRequestName(requestId) || 'New Request';
+
       const findItemInTree = (items: HydratedSidebarItem[]): HydratedSidebarItem | null => {
         for (const item of items) {
-          if (item.kind.type === 'request' && item.kind.id === requestId) return item;
+          if ((item.kind.type === 'request' || item.kind.type === 'ws') && item.kind.id === requestId) return item;
           if (item.kind.type === 'folder') {
             const found = findItemInTree(item.kind.items);
             if (found) return found;
@@ -423,40 +452,41 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       };
 
       const existingItem = findItemInTree(currentTree);
-      const methodChanged = existingItem && existingItem.kind.type === 'request' && existingItem.kind.method !== method;
+      const kindChanged = existingItem && (
+        (existingItem.kind.type === 'request' && isWs) ||
+        (existingItem.kind.type === 'ws' && !isWs)
+      );
+      const methodChanged = existingItem && existingItem.kind.type === 'request' && !isWs && existingItem.kind.method !== method;
 
       let updatedTree = currentTree;
-      
+
       if (!existingItem) {
-        const newItem: HydratedSidebarItem = {
-          id: crypto.randomUUID(),
-          kind: { type: 'request', id: requestId, name: pendingName || getRequestName(requestId) || 'New Request', method: method as any }
-        };
+        const newItem: HydratedSidebarItem = isWs
+          ? { id: crypto.randomUUID(), kind: { type: 'ws', id: requestId, name: requestName } }
+          : { id: crypto.randomUUID(), kind: { type: 'request', id: requestId, name: requestName, method: method as any } };
         updatedTree = [...currentTree, newItem];
         useSidebarStore.getState().updateTreeOptimistic(updatedTree);
         await syncTreeToBackend(updatedTree);
         if (pendingName) clearPendingName(requestId);
-      } else if (pendingName || methodChanged) {
+      } else if (pendingName || methodChanged || kindChanged) {
         const updateInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
           return items.map(item => {
-            if (item.kind.type === 'request' && item.kind.id === requestId) {
+            if ((item.kind.type === 'request' || item.kind.type === 'ws') && item.kind.id === requestId) {
+              if (isWs) {
+                return { ...item, kind: { type: 'ws' as const, id: requestId, name: pendingName || item.kind.name } };
+              }
               return { 
                 ...item, 
                 kind: { 
-                  ...item.kind, 
+                  type: 'request' as const,
+                  id: requestId,
                   name: pendingName || item.kind.name,
                   method: method as any
                 } 
               };
             }
             if (item.kind.type === 'folder' && item.kind.items) {
-              return {
-                ...item,
-                kind: {
-                  ...item.kind,
-                  items: updateInItems(item.kind.items)
-                }
-              };
+              return { ...item, kind: { ...item.kind, items: updateInItems(item.kind.items) } };
             }
             return item;
           });
@@ -467,10 +497,17 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         clearPendingName(requestId);
       }
 
-      await invoke('update_request', {
-        projectRoot: currentPath || '.',
-        request: buildFormattedRequest()
-      });
+      if (isWs) {
+        await invoke('update_ws_request', {
+          projectRoot: currentPath || '.',
+          request: { id: requestId, name: requestName, url, headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })) }
+        });
+      } else {
+        await invoke('update_request', {
+          projectRoot: currentPath || '.',
+          request: buildFormattedRequest()
+        });
+      }
 
       if (requestOrigin === 'scratchpad') {
         const findRequestInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem | null => {
@@ -587,9 +624,21 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     }
   };
 
+  if (protocol === 'ws') {
+    return (
+      <WsEditor
+        requestId={requestId}
+        initialUrl={url}
+        onProtocolChange={handleProtocolChange}
+      />
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-background w-full">
       <RequestEditorCommandBar
+        protocol={protocol}
+        onProtocolChange={handleProtocolChange}
         method={method}
         url={url}
         onMethodChange={setMethod}

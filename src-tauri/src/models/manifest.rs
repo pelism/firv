@@ -45,6 +45,10 @@ pub enum SidebarItem {
         name: String,
         method: crate::models::request::HttpMethod,
     },
+    Ws {
+        id: String, // Links to requests/id.yaml
+        name: String,
+    },
 }
 
 #[cfg(test)]
@@ -97,6 +101,38 @@ workspace:
         assert!(manifest.workspace.globals.is_empty());
         assert!(manifest.workspace.environments.is_empty());
         assert!(manifest.workspace.active_environment.is_none());
+    }
+
+    #[test]
+    fn ws_variant_round_trips_and_existing_request_unaffected() {
+        let yaml = r#"
+version: "1.0"
+name: Example
+workspace:
+  order:
+    - type: request
+      id: req_1
+      name: Get Items
+      method: GET
+    - type: ws
+      id: ws_1
+      name: My Socket
+"#;
+        let manifest: FirvManifest = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(manifest.workspace.order.len(), 2);
+        match &manifest.workspace.order[1] {
+            SidebarItem::Ws { id, name } => {
+                assert_eq!(id, "ws_1");
+                assert_eq!(name, "My Socket");
+            }
+            _ => panic!("expected ws item"),
+        }
+        match &manifest.workspace.order[0] {
+            SidebarItem::Request { method, .. } => {
+                assert_eq!(*method, crate::models::request::HttpMethod::GET);
+            }
+            _ => panic!("expected request item"),
+        }
     }
 
     #[test]

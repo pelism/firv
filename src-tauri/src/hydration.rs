@@ -29,6 +29,10 @@ pub enum SidebarKind {
         name: String,
         method: HttpMethod,
     },
+    Ws {
+        id: String,
+        name: String,
+    },
     Error {
         id: String,
         name: String,
@@ -119,6 +123,14 @@ async fn hydrate_item(
                     name,
                     method,
                 },
+            }
+        }
+        SidebarItem::Ws { id, name } => {
+            found_ids.insert(id.clone());
+
+            HydratedSidebarItem {
+                id: internal_id,
+                kind: SidebarKind::Ws { id, name },
             }
         }
     }

@@ -141,6 +141,12 @@ const transformToManifestItem = (item: HydratedSidebarItem): any => {
       name: item.kind.name,
       method: item.kind.method,
     };
+  } else if (item.kind.type === 'ws') {
+    return {
+      type: 'ws',
+      id: item.kind.id,
+      name: item.kind.name,
+    };
   }
   return null;
 };
@@ -361,7 +367,7 @@ export const useSidebarStore = create<SidebarState>()(
 
         const renameInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
           return items.map(item => {
-            if (item.kind.type === 'request' && item.kind.id === id) {
+            if ((item.kind.type === 'request' || item.kind.type === 'ws') && item.kind.id === id) {
               return {
                 ...item,
                 kind: {
@@ -630,7 +636,7 @@ export const useSidebarStore = create<SidebarState>()(
         };
 
         const getRequestIds = (item: HydratedSidebarItem): string[] => {
-          if (item.kind.type === 'request') {
+          if (item.kind.type === 'request' || item.kind.type === 'ws') {
             return [item.kind.id];
           }
           if (item.kind.type === 'folder') {
@@ -973,7 +979,7 @@ export const useSidebarStore = create<SidebarState>()(
 
         const findName = (items: HydratedSidebarItem[]): string | null => {
           for (const item of items) {
-            if (item.kind.type === 'request' && item.kind.id === id) {
+            if ((item.kind.type === 'request' || item.kind.type === 'ws') && item.kind.id === id) {
               return item.kind.name;
             }
             if (item.kind.type === 'folder') {

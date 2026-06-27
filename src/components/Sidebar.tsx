@@ -71,7 +71,7 @@ const SidebarNode: React.FC<{
   };
 
   const getRequestIds = (item: HydratedSidebarItem): string[] => {
-    if (item.kind.type === 'request') {
+    if (item.kind.type === 'request' || item.kind.type === 'ws') {
       return [item.kind.id];
     }
     if (item.kind.type === 'folder') {
@@ -236,6 +236,44 @@ const SidebarNode: React.FC<{
             onClick={handleDelete}
             className="p-1 hover:bg-destructive/10 rounded text-muted-foreground/80 hover:text-destructive opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/40 transition-all"
             title="Delete Request"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (item.kind.type === 'ws') {
+    const wsId = item.kind.id;
+    const wsName = item.kind.name;
+    const isActive = activeRequestId === wsId;
+    return (
+      <div
+        ref={setNodeRef}
+        className={twMerge(
+          "flex items-center py-2 pl-3 pr-2 my-0.5 rounded-lg cursor-pointer text-sm group transition-all",
+          isActive
+            ? "bg-primary/10 text-primary shadow-sm ring-1 ring-primary/20"
+            : "text-muted-foreground hover:bg-muted/50"
+        )}
+        style={{ ...style, paddingLeft: depth > 0 ? paddingLeft + 20 : 12 }}
+        onClick={() => openTab(wsId)}
+      >
+        <div className="flex items-center flex-1 min-w-0">
+          <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-muted-foreground/60">
+            <GripVertical size={12} />
+          </div>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md mr-3 min-w-8 text-center bg-violet-500/15 text-violet-500">
+            WS
+          </span>
+          <span className="truncate flex-1">{wsName}</span>
+        </div>
+        <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={handleDelete}
+            className="p-1 hover:bg-destructive/10 rounded text-muted-foreground/80 hover:text-destructive opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/40 transition-all"
+            title="Delete WS Request"
           >
             <Trash2 size={14} />
           </button>

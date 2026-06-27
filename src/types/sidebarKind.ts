@@ -2,4 +2,4 @@
 import type { HttpMethod } from "./httpMethod";
 import type { HydratedSidebarItem } from "./hydratedSidebarItem";
 
-export type SidebarKind = { "type": "folder", name: string, items: Array<HydratedSidebarItem>, } | { "type": "request", id: string, name: string, method: HttpMethod, } | { "type": "error", id: string, name: string, message: string, };
+export type SidebarKind = { "type": "folder", name: string, items: Array<HydratedSidebarItem>, } | { "type": "request", id: string, name: string, method: HttpMethod, } | { "type": "ws", id: string, name: string, } | { "type": "error", id: string, name: string, message: string, };

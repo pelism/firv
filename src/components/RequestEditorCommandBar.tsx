@@ -1,9 +1,13 @@
 import { useState } from 'react';
-import { Send, Save, FolderPlus } from 'lucide-react';
+import { Send, Save, FolderPlus, Plug, Unplug } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { getVariableHoverTitleAtPoint, type VariableLookup } from '../lib/variableHover';
 
+export type EditorProtocol = 'http' | 'ws';
+
 interface RequestEditorCommandBarProps {
+  protocol: EditorProtocol;
+  onProtocolChange: (protocol: EditorProtocol) => void;
   method: string;
   url: string;
   onMethodChange: (method: string) => void;
@@ -16,9 +20,12 @@ interface RequestEditorCommandBarProps {
   validationError: string | null;
   isScratchpadRequest: boolean;
   workspaceGlobals: VariableLookup;
+  isWsConnected?: boolean;
 }
 
 export function RequestEditorCommandBar({
+  protocol,
+  onProtocolChange,
   method,
   url,
   onMethodChange,
@@ -31,6 +38,7 @@ export function RequestEditorCommandBar({
   validationError,
   isScratchpadRequest,
   workspaceGlobals,
+  isWsConnected = false,
 }: RequestEditorCommandBarProps) {
   const showMoveToWorkspace = isScratchpadRequest;
   const [urlHover, setUrlHover] = useState<{ title: string; left: number } | null>(null);
@@ -53,23 +61,34 @@ export function RequestEditorCommandBar({
     <div className="p-4 border-b border-border">
       <div className="flex items-stretch gap-2 bg-muted p-1 rounded-xl ring-1 ring-border shadow-sm">
         <select
-          value={method}
-          onChange={e => onMethodChange(e.target.value)}
-          className="px-4 bg-transparent font-bold text-xs uppercase tracking-wider text-primary outline-none border-r border-border"
+          value={protocol}
+          onChange={e => onProtocolChange(e.target.value as EditorProtocol)}
+          className="px-3 bg-transparent font-bold text-xs uppercase tracking-wider text-violet-500 outline-none border-r border-border"
         >
-          <option>GET</option>
-          <option>POST</option>
-          <option>PUT</option>
-          <option>DELETE</option>
-          <option>PATCH</option>
+          <option value="http">HTTP</option>
+          <option value="ws">WS</option>
         </select>
+
+        {protocol === 'http' && (
+          <select
+            value={method}
+            onChange={e => onMethodChange(e.target.value)}
+            className="px-3 bg-transparent font-bold text-xs uppercase tracking-wider text-primary outline-none border-r border-border"
+          >
+            <option>GET</option>
+            <option>POST</option>
+            <option>PUT</option>
+            <option>DELETE</option>
+            <option>PATCH</option>
+          </select>
+        )}
 
         <div className="relative flex-1 min-w-0">
           <input
             type="text"
             value={url}
             onChange={e => onUrlChange(e.target.value)}
-            placeholder="Enter URL or paste request..."
+            placeholder={protocol === 'ws' ? 'wss://example.com/socket' : 'Enter URL or paste request...'}
             className="w-full px-3 py-2 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground"
             onMouseMove={handleUrlMouseMove}
             onMouseLeave={() => setUrlHover(null)}
@@ -118,17 +137,33 @@ export function RequestEditorCommandBar({
               </>
             )}
           </button>
-          <button
-            onClick={onRun}
-            className={twMerge(
-              'flex items-center gap-2 px-4 py-1.5 rounded-lg text-primary-foreground font-bold text-sm transition-all shadow-md active:scale-95',
-              isRunning ? 'bg-destructive hover:bg-destructive/90 shadow-destructive/30' : 'bg-primary hover:bg-primary/90 shadow-primary/30'
-            )}
-            title={isRunning ? 'Cancel request' : 'Send request (Ctrl+Enter)'}
-          >
-            <Send size={16} className={isRunning ? 'animate-pulse' : ''} />
-            {isRunning ? 'Cancel' : 'Send'}
-          </button>
+          {protocol === 'http' && (
+            <button
+              onClick={onRun}
+              className={twMerge(
+                'flex items-center gap-2 px-4 py-1.5 rounded-lg text-primary-foreground font-bold text-sm transition-all shadow-md active:scale-95',
+                isRunning ? 'bg-destructive hover:bg-destructive/90 shadow-destructive/30' : 'bg-primary hover:bg-primary/90 shadow-primary/30'
+              )}
+              title={isRunning ? 'Cancel request' : 'Send request (Ctrl+Enter)'}
+            >
+              <Send size={16} className={isRunning ? 'animate-pulse' : ''} />
+              {isRunning ? 'Cancel' : 'Send'}
+            </button>
+          )}
+          {protocol === 'ws' && (
+            <button
+              onClick={onRun}
+              disabled={isRunning}
+              className={twMerge(
+                'flex items-center gap-2 px-4 py-1.5 rounded-lg text-primary-foreground font-bold text-sm transition-all shadow-md active:scale-95 disabled:opacity-60',
+                isWsConnected ? 'bg-destructive hover:bg-destructive/90 shadow-destructive/30' : 'bg-primary hover:bg-primary/90 shadow-primary/30'
+              )}
+              title={isWsConnected ? 'Disconnect' : 'Connect'}
+            >
+              {isWsConnected ? <Unplug size={16} /> : <Plug size={16} className={isRunning ? 'animate-pulse' : ''} />}
+              {isRunning ? 'Connecting…' : isWsConnected ? 'Disconnect' : 'Connect'}
+            </button>
+          )}
         </div>
       </div>
       {validationError && (

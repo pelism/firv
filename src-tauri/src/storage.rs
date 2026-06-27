@@ -1,4 +1,4 @@
-use crate::models::{manifest::{FirvManifest, SidebarItem, Workspace}, FirvRequest};
+use crate::models::{manifest::{FirvManifest, SidebarItem, Workspace}, FirvRequest, WsRequest};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -104,6 +104,7 @@ fn collect_request_ids(items: &[SidebarItem], request_ids: &mut Vec<String>) {
         match item {
             SidebarItem::Folder { items, .. } => collect_request_ids(items, request_ids),
             SidebarItem::Request { id, .. } => request_ids.push(id.clone()),
+            SidebarItem::Ws { .. } => {}
         }
     }
 }
@@ -154,6 +155,33 @@ pub fn import_firv_export(project_root: String, input_path: String) -> Result<()
 
     let manifest_path = Path::new(&project_root).join("firv.yaml");
     save_atomic(manifest_path, &manifest)
+}
+
+#[tauri::command]
+pub fn get_ws_request(project_root: String, id: String) -> Result<WsRequest, String> {
+    let target_path = Path::new(&project_root).join("requests").join(format!("{}.yaml", id));
+    let content = std::fs::read_to_string(&target_path)
+        .map_err(|e| format!("Failed to read ws request {}: {}", id, e))?;
+    serde_yaml::from_str(&content)
+        .map_err(|e| format!("Failed to parse ws request {}: {}", id, e))
+}
+
+#[tauri::command]
+pub fn update_ws_request(project_root: String, request: WsRequest) -> Result<(), String> {
+    if request.id.is_empty() {
+        return Err("Validation failed: WsRequest is missing an ID".to_string());
+    }
+
+    let root_path = Path::new(&project_root);
+    let requests_dir = root_path.join("requests");
+
+    if !requests_dir.exists() {
+        std::fs::create_dir_all(&requests_dir)
+            .map_err(|e| format!("Failed to create requests directory: {}", e))?;
+    }
+
+    let target_path = requests_dir.join(format!("{}.yaml", request.id));
+    save_atomic(target_path, &request)
 }
 
 #[tauri::command]
