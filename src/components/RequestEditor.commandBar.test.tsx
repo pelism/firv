@@ -73,16 +73,18 @@ describe('RequestEditor command bar', () => {
   it('renders method selector and url input', async () => {
     render(<RequestEditor requestId="req-1" />);
 
-    expect(await screen.findByDisplayValue('GET')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'GET' })).toBeInTheDocument();
     expect(screen.getByDisplayValue('https://example.test')).toBeInTheDocument();
   });
 
   it('allows changing the method and URL', async () => {
     render(<RequestEditor requestId="req-1" />);
 
-    const methodSelect = await screen.findByDisplayValue('GET');
-    fireEvent.change(methodSelect, { target: { value: 'POST' } });
-    expect((methodSelect as HTMLSelectElement).value).toBe('POST');
+    const methodButton = await screen.findByRole('button', { name: 'GET' });
+    fireEvent.click(methodButton);
+    const postOption = await screen.findByRole('button', { name: 'POST' });
+    fireEvent.click(postOption);
+    expect(await screen.findByRole('button', { name: 'POST' })).toBeInTheDocument();
 
     const urlInput = screen.getByDisplayValue('https://example.test');
     fireEvent.change(urlInput, { target: { value: 'https://changed.test' } });
@@ -97,7 +99,7 @@ describe('RequestEditor command bar', () => {
     });
 
     render(<RequestEditor requestId="req-1" />);
-    await screen.findByDisplayValue('GET');
+    await screen.findByRole('button', { name: 'GET' });
 
     fireEvent.click(screen.getByRole('button', { name: /send/i }));
     await waitFor(() => expect(screen.getByText(/invalid json body/i)).toBeInTheDocument());

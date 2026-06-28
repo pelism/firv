@@ -31,7 +31,7 @@ describe('RequestEditor body section', () => {
 
   it('switches between body modes', async () => {
     render(<RequestEditor requestId="req-1" />);
-    await screen.findByDisplayValue('GET');
+    await screen.findByRole('button', { name: 'GET' });
 
     fireEvent.click(screen.getByRole('button', { name: 'body' }));
     expect(screen.getByText(/JSON Body/i)).toBeInTheDocument();
@@ -45,7 +45,7 @@ describe('RequestEditor body section', () => {
 
   it('shows preview for valid JSON', async () => {
     render(<RequestEditor requestId="req-1" />);
-    await screen.findByDisplayValue('GET');
+    await screen.findByRole('button', { name: 'GET' });
 
     fireEvent.click(screen.getByRole('button', { name: 'body' }));
     const jsonViewSelect = screen.getByRole('combobox', { name: /json view mode/i });
@@ -70,7 +70,7 @@ describe('RequestEditor body section', () => {
     });
 
     render(<RequestEditor requestId="req-1" />);
-    await screen.findByDisplayValue('GET');
+    await screen.findByRole('button', { name: 'GET' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(await screen.findByRole('button', { name: 'Cancel' })).toBeInTheDocument();

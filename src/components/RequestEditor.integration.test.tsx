@@ -39,7 +39,7 @@ describe('RequestEditor integration', () => {
 
   it('hydrates, marks dirty, saves, and runs', async () => {
     render(<RequestEditor requestId="req-1" />);
-    await screen.findByDisplayValue('POST');
+    await screen.findByRole('button', { name: 'POST' });
 
     fireEvent.change(screen.getByDisplayValue('https://example.test/api'), { target: { value: 'https://example.test/api/v2' } });
     fireEvent.click(screen.getByRole('button', { name: /save/i }));

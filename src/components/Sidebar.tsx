@@ -25,15 +25,9 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-const getMethodStyles = (method: string) => {
-  switch (method.toUpperCase()) {
-    case 'GET': return 'text-method-get bg-method-get/10';
-    case 'POST': return 'text-method-post bg-method-post/10';
-    case 'PUT': return 'text-method-put bg-method-put/10';
-    case 'PATCH': return 'text-method-patch bg-method-patch/10';
-    case 'DELETE': return 'text-method-delete bg-method-delete/10';
-    default: return 'text-muted-foreground bg-muted';
-  }
+const getMethodStyles = (_method: string) => {
+  // All HTTP methods use the same green/teal treatment for a cleaner look
+  return 'text-method-post bg-method-post/10';
 };
 
 const SidebarNode: React.FC<{ 
