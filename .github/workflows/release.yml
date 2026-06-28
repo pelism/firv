@@ -85,7 +85,7 @@ jobs:
         run: npm run sync:version
 
       - name: run frontend tests
-        run: npm ts:test
+        run: npm run ts:test
 
       - name: run rust tests
         run: cargo test
