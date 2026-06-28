@@ -170,9 +170,9 @@ const SidebarNode: React.FC<{
         </div>
         {(isOpen || searchQuery) && (
           <div className="relative">
-            <div className="absolute left-4.5 top-0 bottom-0 w-px bg-border ml-[depth * 12]" style={{ left: paddingLeft + 6 }} />
+            <div className="absolute left-4.5 top-0 bottom-0 w-px bg-muted-foreground/30 ml-[depth * 12]" style={{ left: paddingLeft + 6 }} />
             {item.kind.items.length === 0 ? (
-              <div style={{ paddingLeft: paddingLeft + 28 }} className="text-[11px] text-muted-foreground/60 py-2 italic">
+              <div style={{ paddingLeft: paddingLeft + 28 }} className="text-[11px] text-muted-foreground py-2 italic">
               </div>
             ) : (
               <SortableContext items={item.kind.items.map(i => i.id)} strategy={verticalListSortingStrategy}>
@@ -479,7 +479,7 @@ export const Sidebar: React.FC = () => {
     >
       <div className="h-full bg-muted/20 flex flex-col overflow-visible border-r border-border">
         <div className="p-4 flex items-center justify-between">
-          <div className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">
+          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">
             {isWorkspaceTab ? 'Workspace' : 'Scratchpad'}
           </div>
           <div className="flex items-center gap-1 relative">
@@ -640,11 +640,11 @@ export const Sidebar: React.FC = () => {
         
         <div className="px-3 mb-4">
           <div className="relative group mb-3">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 group-focus-within:text-primary transition-colors" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
             <input 
               type="text" 
               placeholder="Search..." 
-              className="w-full pl-9 pr-3 py-2 text-sm bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 text-foreground placeholder:text-muted-foreground/60 transition-all shadow-sm"
+              className="w-full pl-9 pr-3 py-2 text-sm bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 text-foreground placeholder:text-muted-foreground transition-all shadow-sm"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />

@@ -654,14 +654,14 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       />
 
       <div className="px-4 py-2 border-b border-border bg-muted/30">
-        <div className="flex bg-muted p-1 rounded-lg w-fit">
+        <div className="flex w-fit">
           {['params', 'headers', 'body', 'transforms'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
               className={twMerge(
-                'px-4 py-1.5 text-xs font-semibold rounded-md transition-all uppercase tracking-tight',
-                activeTab === tab ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                'px-4 py-1.5 text-xs font-semibold transition-all uppercase tracking-tight border-b-2',
+                activeTab === tab ? 'text-foreground border-primary' : 'text-muted-foreground hover:text-foreground border-transparent'
               )}
             >
               {tab}

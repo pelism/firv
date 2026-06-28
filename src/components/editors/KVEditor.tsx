@@ -32,9 +32,9 @@ const HighlightedInput = ({ value, onChange, onKeyDown, placeholder, inputRef, o
   };
 
   return (
-    <div className="relative flex-1 flex items-center overflow-hidden border border-gray-300 rounded focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 bg-white">
+    <div className="relative flex-1 flex items-center overflow-hidden border border-border rounded focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 bg-transparent">
       {/* Background layer for highlighting */}
-      <div 
+      <div
         ref={bgRef}
         className="absolute inset-0 pointer-events-none whitespace-pre overflow-hidden flex items-center px-3"
         aria-hidden="true"
@@ -42,7 +42,7 @@ const HighlightedInput = ({ value, onChange, onKeyDown, placeholder, inputRef, o
         <span className="font-mono text-sm">
           {value ? value.split(/(\{\{.*?\}\})/).map((part: string, i: number) =>
             part.startsWith('{{') && part.endsWith('}}') ? (
-              <span key={i} className="bg-blue-100 rounded text-transparent">{part}</span>
+              <span key={i} className="bg-primary/30 rounded text-transparent">{part}</span>
             ) : (
               <span key={i} className="text-transparent">{part}</span>
             )
@@ -62,7 +62,7 @@ const HighlightedInput = ({ value, onChange, onKeyDown, placeholder, inputRef, o
         onMouseLeave={onMouseLeave}
         onScroll={handleScroll}
         placeholder={placeholder}
-        className="w-full bg-transparent font-mono text-sm px-3 py-1.5 focus:outline-none relative z-10 text-gray-900"
+        className="w-full bg-transparent font-mono text-sm px-3 py-1.5 focus:outline-none relative z-10 text-foreground placeholder:text-muted-foreground/60"
       />
       {tooltip && (
         <div
@@ -241,7 +241,7 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
                 onChange={(e) => updateRow(index, { key: e.target.value })}
                 onKeyDown={(e) => handleKeyDown(e, index, 'key')}
                 placeholder={placeholderKey}
-                className="flex-1 border border-gray-300 rounded px-3 py-1.5 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="flex-1 bg-transparent border border-border rounded px-3 py-1.5 font-mono text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
               />
               <HighlightedInput
                 inputRef={(el: HTMLInputElement | null) => { valueInputRefs.current[index] = el; }}
