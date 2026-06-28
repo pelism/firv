@@ -30,6 +30,7 @@ export interface AppState {
   wsConnections: Record<string, { status: WsConnectionStatus; messages: WsMessage[] }>;
   setWsStatus: (id: string, status: WsConnectionStatus) => void;
   appendWsMessage: (id: string, msg: WsMessage) => void;
+  clearWsMessages: (id: string) => void;
   clearWsConnection: (id: string) => void;
   reset: () => void;
 }
@@ -138,6 +139,16 @@ export const useAppStore = create<AppState>()(
           wsConnections: {
             ...state.wsConnections,
             [id]: { ...existing, messages: [...existing.messages, msg] },
+          },
+        };
+      }),
+      clearWsMessages: (id) => set((state) => {
+        const existing = state.wsConnections[id];
+        if (!existing) return state;
+        return {
+          wsConnections: {
+            ...state.wsConnections,
+            [id]: { ...existing, messages: [] },
           },
         };
       }),

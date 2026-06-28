@@ -21,7 +21,7 @@ export function WsEditor({ requestId, initialUrl, onProtocolChange }: WsEditorPr
   const savedStateRef = useRef<{ url: string; headers: string } | null>(null);
   const unlistenRefs = useRef<Array<() => void>>([]);
 
-  const { setWsStatus, appendWsMessage, wsConnections, setDirty } = useAppStore();
+  const { setWsStatus, appendWsMessage, clearWsMessages, wsConnections, setDirty } = useAppStore();
   const isDirty = useAppStore(state => state.dirtyRequests.has(requestId));
   const connection = wsConnections[requestId] ?? { status: 'disconnected' as const, messages: [] };
   const { projectPath, getRequestName, pendingNames } = useSidebarStore();
@@ -105,9 +105,9 @@ export function WsEditor({ requestId, initialUrl, onProtocolChange }: WsEditorPr
   };
 
   const handleSend = async (message: string) => {
+    appendWsMessage(requestId, { direction: 'out', data: message, timestamp_ms: Date.now() });
     try {
       await wsClient.send(requestId, message);
-      appendWsMessage(requestId, { direction: 'out', data: message, timestamp_ms: Date.now() });
     } catch (e: any) {
       appendWsMessage(requestId, {
         direction: 'in',
@@ -199,6 +199,7 @@ export function WsEditor({ requestId, initialUrl, onProtocolChange }: WsEditorPr
         messages={connection.messages}
         status={connection.status}
         onSend={handleSend}
+        onClear={() => clearWsMessages(requestId)}
       />
     </div>
   );

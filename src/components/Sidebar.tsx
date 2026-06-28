@@ -136,7 +136,7 @@ const SidebarNode: React.FC<{
             <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-muted-foreground/60">
               <GripVertical size={12} />
             </div>
-            {isOpen || searchQuery ? <ChevronDown size={14} className="mr-2 opacity-60" /> : <ChevronRight size={14} className="mr-2 opacity-60" />}
+            {isOpen || searchQuery ? <ChevronDown size={14} className="mr-2" /> : <ChevronRight size={14} className="mr-2" />}
             <FolderIcon size={14} className="mr-2 text-amber-500/80" />
             <span className="truncate font-medium">{item.kind.name}</span>
           </div>
@@ -161,7 +161,7 @@ const SidebarNode: React.FC<{
             )}
             <button 
               onClick={handleDelete}
-              className="p-1 hover:bg-destructive/10 rounded text-muted-foreground/80 hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/40 transition-all"
+              className="p-1.5 rounded text-gray-500 hover:text-red-500 hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
               title="Delete Folder"
             >
               <Trash2 size={14} />
@@ -206,7 +206,7 @@ const SidebarNode: React.FC<{
         className={twMerge(
           "flex items-center py-2 pl-3 pr-2 my-0.5 rounded-lg cursor-pointer text-sm group transition-all",
           isActive 
-            ? "text-primary ring-2 ring-primary/20 border border-primary/50" 
+            ? "text-foreground ring-2 ring-primary/20 border border-primary/50" 
             : "text-muted-foreground hover:bg-muted/50 border border-transparent"
         )}
         style={{ ...style, paddingLeft: depth > 0 ? paddingLeft + 20 : 12 }}
@@ -228,7 +228,7 @@ const SidebarNode: React.FC<{
         <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
           <button 
             onClick={handleDelete}
-            className="p-1 hover:bg-destructive/10 rounded text-muted-foreground/80 hover:text-destructive opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/40 transition-all"
+            className="p-1.5 rounded text-gray-500 hover:text-red-500 hover:bg-muted opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
             title="Delete Request"
           >
             <Trash2 size={14} />
@@ -248,7 +248,7 @@ const SidebarNode: React.FC<{
         className={twMerge(
           "flex items-center py-2 pl-3 pr-2 my-0.5 rounded-lg cursor-pointer text-sm group transition-all",
           isActive
-            ? "text-primary ring-2 ring-primary/20 border border-primary/50"
+            ? "text-foreground ring-2 ring-primary/20 border border-primary/50"
             : "text-muted-foreground hover:bg-muted/50 border border-transparent"
         )}
         style={{ ...style, paddingLeft: depth > 0 ? paddingLeft + 20 : 12 }}
@@ -266,7 +266,7 @@ const SidebarNode: React.FC<{
         <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={handleDelete}
-            className="p-1 hover:bg-destructive/10 rounded text-muted-foreground/80 hover:text-destructive opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/40 transition-all"
+            className="p-1.5 rounded text-gray-500 hover:text-red-500 hover:bg-muted opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
             title="Delete WS Request"
           >
             <Trash2 size={14} />

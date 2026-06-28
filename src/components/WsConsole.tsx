@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { twMerge } from 'tailwind-merge';
-import { ArrowDown, ArrowUp, Send } from 'lucide-react';
+import { ArrowDown, ArrowUp, Send, Trash2, MessageSquare } from 'lucide-react';
 import type { WsMessage, WsConnectionStatus } from '../lib/wsClient';
 
 interface WsConsoleProps {
@@ -8,6 +8,7 @@ interface WsConsoleProps {
   messages: WsMessage[];
   status: WsConnectionStatus;
   onSend: (message: string) => void;
+  onClear: () => void;
 }
 
 function formatTime(timestamp_ms: number): string {
@@ -15,7 +16,7 @@ function formatTime(timestamp_ms: number): string {
   return d.toLocaleTimeString(undefined, { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-export function WsConsole({ messages, status, onSend }: WsConsoleProps) {
+export function WsConsole({ messages, status, onSend, onClear }: WsConsoleProps) {
   const [draft, setDraft] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const isConnected = status === 'connected';
@@ -50,12 +51,48 @@ export function WsConsole({ messages, status, onSend }: WsConsoleProps) {
         )}>
           {status}
         </span>
+        <button
+          onClick={onClear}
+          disabled={messages.length === 0}
+          title="Clear messages"
+          className="ml-auto p-1.5 rounded text-gray-500 hover:text-red-500 hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        >
+          <Trash2 size={15} />
+        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-2 font-mono text-xs">
+      <div className="p-3 border-b border-border">
+        <div className="flex items-center gap-2">
+          <textarea
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={!isConnected}
+            placeholder={isConnected ? 'Type a message… (Enter to send, Shift+Enter for newline)' : 'Connect to send messages'}
+            rows={2}
+            className="flex-1 resize-none rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-muted-foreground/50"
+          />
+          <button
+            onClick={handleSend}
+            disabled={!isConnected || !draft.trim()}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary/90 active:scale-95 transition-all"
+          >
+            <Send size={14} />
+            Send
+          </button>
+        </div>
+      </div>
+
+      <div className={twMerge("flex-1", messages.length === 0 ? "flex flex-col items-center justify-center bg-muted/30 text-muted-foreground" : "overflow-y-auto custom-scrollbar px-3 py-2 font-mono text-xs")}>
         {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground/50 italic">
-            No messages yet
+          <div className="flex flex-col items-center justify-center space-y-4">
+            <div className="p-6 rounded-full bg-muted shadow-inner relative">
+              <MessageSquare size={48} className="relative z-10 text-foreground/60" />
+            </div>
+            <div className="text-center">
+              <p className="font-semibold text-foreground/60">No messages yet</p>
+              <p className="text-xs text-foreground/60">Connect and send a message to see it here.</p>
+            </div>
           </div>
         ) : (
           messages.map((msg, i) => (
@@ -73,28 +110,6 @@ export function WsConsole({ messages, status, onSend }: WsConsoleProps) {
           ))
         )}
         <div ref={bottomRef} />
-      </div>
-
-      <div className="p-3 border-t border-border">
-        <div className="flex items-end gap-2">
-          <textarea
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={!isConnected}
-            placeholder={isConnected ? 'Type a message… (Enter to send, Shift+Enter for newline)' : 'Connect to send messages'}
-            rows={2}
-            className="flex-1 resize-none rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-muted-foreground/50"
-          />
-          <button
-            onClick={handleSend}
-            disabled={!isConnected || !draft.trim()}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary/90 active:scale-95 transition-all"
-          >
-            <Send size={14} />
-            Send
-          </button>
-        </div>
       </div>
     </div>
   );
