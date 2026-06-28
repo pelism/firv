@@ -47,9 +47,9 @@
   --card-foreground: #0F172A;
   --popover: #FFFFFF;
   --popover-foreground: #0F172A;
-  --primary: #0284C7; /* Azure Blue */
+  --primary: #F59E0B; /* Amber-500 */
   --primary-foreground: #FFFFFF;
-  --secondary: #06B6D4; /* Bright Cyan */
+  --secondary: #D97706; /* Amber-600 */
   --secondary-foreground: #FFFFFF;
   --muted: #F1F5F9; /* Very light slate for subtle backgrounds */
   --muted-foreground: #A1ACB3; /* Soft Blue-Grey */
@@ -57,7 +57,7 @@
   --accent-foreground: #0F172A;
   --border: #E2E8F0; /* Clean slate border */
   --input: #E2E8F0;
-  --ring: #0284C7;
+  --ring: #F59E0B;
   --radius: 0.75rem;
 
   /* HTTP Methods - Aligned with Crystal Clear vibe */
@@ -82,10 +82,10 @@
   --card-foreground: #F8FAFC;
   --popover: #1E293B;
   --popover-foreground: #F8FAFC;
-  --primary: #14B8A6; /* Electric Teal */
-  --primary-foreground: #F8FAFC;
-  --secondary: #3B82F6; /* Bright Azure */
-  --secondary-foreground: #F8FAFC;
+  --primary: #F59E0B; /* Amber-400 */
+  --primary-foreground: #0F172A;
+  --secondary: #FBBF24; /* Amber-300 */
+  --secondary-foreground: #0F172A;
   --muted: #1E293B;
   --muted-foreground: #64748B; /* Slate Grey */
   --accent: #1E293B;
@@ -94,7 +94,7 @@
   --destructive-foreground: #fafafa;
   --border: #334155; /* Slate-700 for subtle separation */
   --input: #334155;
-  --ring: #14B8A6;
+  --ring: #F59E0B;
 
   /* HTTP Methods - Adjusted for new palette */
   --method-get: #3B82F6; /* Bright Azure */

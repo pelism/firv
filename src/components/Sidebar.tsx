@@ -206,8 +206,8 @@ const SidebarNode: React.FC<{
         className={twMerge(
           "flex items-center py-2 pl-3 pr-2 my-0.5 rounded-lg cursor-pointer text-sm group transition-all",
           isActive 
-            ? "bg-primary/10 text-primary shadow-sm ring-1 ring-primary/20" 
-            : "text-muted-foreground hover:bg-muted/50"
+            ? "text-primary ring-2 ring-primary/20 border border-primary/50" 
+            : "text-muted-foreground hover:bg-muted/50 border border-transparent"
         )}
         style={{ ...style, paddingLeft: depth > 0 ? paddingLeft + 20 : 12 }}
         onClick={() => {
@@ -248,8 +248,8 @@ const SidebarNode: React.FC<{
         className={twMerge(
           "flex items-center py-2 pl-3 pr-2 my-0.5 rounded-lg cursor-pointer text-sm group transition-all",
           isActive
-            ? "bg-primary/10 text-primary shadow-sm ring-1 ring-primary/20"
-            : "text-muted-foreground hover:bg-muted/50"
+            ? "text-primary ring-2 ring-primary/20 border border-primary/50"
+            : "text-muted-foreground hover:bg-muted/50 border border-transparent"
         )}
         style={{ ...style, paddingLeft: depth > 0 ? paddingLeft + 20 : 12 }}
         onClick={() => openTab(wsId)}
@@ -648,13 +648,10 @@ export const Sidebar: React.FC = () => {
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono text-muted-foreground/60 border border-border px-1.5 py-0.5 rounded bg-muted/50 pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity">
-              ⌘K
-            </div>
           </div>
 
           {isWorkspaceTab && workspaceName && (
-            <div className="flex items-center justify-between px-3 py-2 bg-primary/5 border border-primary/20 rounded-xl group/workspace-pill transition-all">
+            <div className="flex items-center justify-between px-3 py-2 border border-primary/20 rounded-xl group/workspace-pill transition-all">
               <div className="flex items-center gap-2 overflow-hidden">
                 <span className="text-[11px] font-bold text-primary truncate uppercase tracking-wider">
                   {workspaceName}
@@ -731,7 +728,7 @@ const SidebarContent: React.FC<{
   });
 
   return (
-    <div ref={setNodeRef} className="flex-1 overflow-y-auto pb-4 custom-scrollbar min-h-0">
+    <div ref={setNodeRef} className="flex-1 overflow-y-auto pb-4 custom-scrollbar min-h-0 px-3">
       {activeTab === 'workspace' ? (
         projectPath ? (
           tree.length > 0 ? (
