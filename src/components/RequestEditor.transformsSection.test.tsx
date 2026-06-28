@@ -38,7 +38,7 @@ describe('RequestEditor transforms section', () => {
     await act(async () => {
       render(<RequestEditor requestId="req-1" />);
     });
-    await screen.findByDisplayValue('GET');
+    await screen.findByRole('button', { name: 'GET' });
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'transforms' }));

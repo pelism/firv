@@ -30,6 +30,7 @@ function App() {
   const setRequestOrigin = useAppStore(state => state.setRequestOrigin);
   const requestOrigins = useAppStore(state => state.requestOrigins);
   const responses = useAppStore(state => state.responses);
+  const requestProtocols = useAppStore(state => state.requestProtocols);
   const projectPath = useSidebarStore(state => state.projectPath);
   const workspaceEnvironments = useSidebarStore(state => state.workspaceEnvironments);
   const activeWorkspaceEnvironmentId = useSidebarStore(state => state.activeWorkspaceEnvironmentId);
@@ -137,7 +138,7 @@ function App() {
     for (const item of items) {
       if (item.kind.type === 'error') continue;
       const path = currentPath ? `${currentPath} / ${item.kind.name}` : item.kind.name;
-      if (item.kind.type === 'request' && item.kind.id === id) {
+      if ((item.kind.type === 'request' || item.kind.type === 'ws') && item.kind.id === id) {
         return path;
       }
       if (item.kind.type === 'folder' && item.kind.items) {
@@ -298,8 +299,9 @@ function App() {
                 </div>
               )}
 
-              <PanelGroup orientation="vertical">
-                <Panel defaultSize="60%" minSize="30%" className="flex flex-col">
+              {(() => {
+                const isWsActive = activeRequestId ? requestProtocols[activeRequestId] === 'ws' : false;
+                const editorContent = (
                   <div className="flex-1 overflow-hidden min-h-0 min-w-0 flex flex-col bg-background">
                     {activeRequestId ? (
                       openTabs.map(tabId => (
@@ -330,16 +332,24 @@ function App() {
                       </div>
                     )}
                   </div>
-                </Panel>
-                
-                <PanelResizeHandle className="h-1 group flex items-center justify-center bg-muted hover:bg-primary/50 cursor-row-resize transition-all dark:bg-zinc-900">
-                  <div className="h-px w-8 bg-border group-hover:bg-white/50 rounded-full" />
-                </PanelResizeHandle>
-                
-                <Panel defaultSize="40%" minSize="20%" className="flex flex-col bg-background">
-                  <ResponseViewer key={activeRequestId || 'none'} response={activeRequestId ? responses[activeRequestId] : null} />
-                </Panel>
-              </PanelGroup>
+                );
+                if (isWsActive) {
+                  return <div className="flex-1 min-h-0 flex flex-col">{editorContent}</div>;
+                }
+                return (
+                  <PanelGroup orientation="vertical">
+                    <Panel defaultSize="60%" minSize="30%" className="flex flex-col">
+                      {editorContent}
+                    </Panel>
+                    <PanelResizeHandle className="h-1 group flex items-center justify-center bg-muted hover:bg-primary/50 cursor-row-resize transition-all dark:bg-zinc-900">
+                      <div className="h-px w-8 bg-border group-hover:bg-white/50 rounded-full" />
+                    </PanelResizeHandle>
+                    <Panel defaultSize="40%" minSize="20%" className="flex flex-col bg-background">
+                      <ResponseViewer key={activeRequestId || 'none'} response={activeRequestId ? responses[activeRequestId] : null} />
+                    </Panel>
+                  </PanelGroup>
+                );
+              })()}
             </div>
             
             <footer className="h-11 border-t border-border bg-background flex items-center px-4 text-[11px] font-medium text-muted-foreground">

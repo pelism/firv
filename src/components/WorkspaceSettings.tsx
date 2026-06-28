@@ -32,11 +32,18 @@ const serializeEnvironment = (environment: EnvironmentDraft) => ({
   variables: serializeRows(environment.variables),
 });
 
+type InitialState = {
+  name: string;
+  variables: KeyValue[];
+  environments: EnvironmentDraft[];
+};
+
 export function WorkspaceSettings() {
   const [name, setName] = useState('');
   const [variables, setVariables] = useState<KeyValue[]>([]);
   const [environments, setEnvironments] = useState<EnvironmentDraft[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [initialState, setInitialState] = useState<InitialState | null>(null);
   const { projectPath, setWorkspaceName: setStoreWorkspaceName, setWorkspaceSettingsOpen, ensureWorkspace, setActiveMenu } = useSidebarStore();
 
   const handleClose = () => {
@@ -75,10 +82,8 @@ export function WorkspaceSettings() {
 
     try {
       const manifest: any = await invoke('get_manifest', { projectPath: currentPath });
-      setName(manifest.name || '');
-      if (manifest.workspace.globals) {
-        setVariables(hydrateRows(manifest.workspace.globals));
-      }
+      const loadedName = manifest.name || '';
+      const loadedVariables = manifest.workspace.globals ? hydrateRows(manifest.workspace.globals) : [];
       const loadedEnvironments = Array.isArray(manifest.workspace.environments)
         ? manifest.workspace.environments.map((environment: any) => ({
             id: environment.id || crypto.randomUUID(),
@@ -86,11 +91,20 @@ export function WorkspaceSettings() {
             variables: hydrateRows(environment.variables || []),
           }))
         : [];
+      setName(loadedName);
+      setVariables(loadedVariables);
       setEnvironments(loadedEnvironments);
+      setInitialState({ name: loadedName, variables: loadedVariables, environments: loadedEnvironments });
     } catch (err) {
       console.error("Failed to load workspace settings", err);
     }
   };
+
+  const isDirty = initialState !== null && (
+    name !== initialState.name ||
+    JSON.stringify(variables) !== JSON.stringify(initialState.variables) ||
+    JSON.stringify(environments) !== JSON.stringify(initialState.environments)
+  );
 
   const handleSave = async () => {
     const ok = await ensureWorkspace();
@@ -154,7 +168,7 @@ export function WorkspaceSettings() {
         <div className="flex items-center gap-3">
           <Button
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || !isDirty}
             className="flex items-center gap-2 rounded-xl text-sm font-bold shadow-lg shadow-zinc-900/20 dark:shadow-zinc-100/20 active:scale-95"
           >
             <Save size={16} />

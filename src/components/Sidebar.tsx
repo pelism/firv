@@ -25,15 +25,9 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-const getMethodStyles = (method: string) => {
-  switch (method.toUpperCase()) {
-    case 'GET': return 'text-method-get bg-method-get/10';
-    case 'POST': return 'text-method-post bg-method-post/10';
-    case 'PUT': return 'text-method-put bg-method-put/10';
-    case 'PATCH': return 'text-method-patch bg-method-patch/10';
-    case 'DELETE': return 'text-method-delete bg-method-delete/10';
-    default: return 'text-muted-foreground bg-muted';
-  }
+const getMethodStyles = (_method: string) => {
+  // All HTTP methods use the same green/teal treatment for a cleaner look
+  return 'text-method-post bg-method-post/10';
 };
 
 const SidebarNode: React.FC<{ 
@@ -71,7 +65,7 @@ const SidebarNode: React.FC<{
   };
 
   const getRequestIds = (item: HydratedSidebarItem): string[] => {
-    if (item.kind.type === 'request') {
+    if (item.kind.type === 'request' || item.kind.type === 'ws') {
       return [item.kind.id];
     }
     if (item.kind.type === 'folder') {
@@ -142,7 +136,7 @@ const SidebarNode: React.FC<{
             <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-muted-foreground/60">
               <GripVertical size={12} />
             </div>
-            {isOpen || searchQuery ? <ChevronDown size={14} className="mr-2 opacity-60" /> : <ChevronRight size={14} className="mr-2 opacity-60" />}
+            {isOpen || searchQuery ? <ChevronDown size={14} className="mr-2" /> : <ChevronRight size={14} className="mr-2" />}
             <FolderIcon size={14} className="mr-2 text-amber-500/80" />
             <span className="truncate font-medium">{item.kind.name}</span>
           </div>
@@ -167,7 +161,7 @@ const SidebarNode: React.FC<{
             )}
             <button 
               onClick={handleDelete}
-              className="p-1 hover:bg-destructive/10 rounded text-muted-foreground/80 hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/40 transition-all"
+              className="p-1.5 rounded text-gray-500 hover:text-red-500 hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
               title="Delete Folder"
             >
               <Trash2 size={14} />
@@ -176,9 +170,9 @@ const SidebarNode: React.FC<{
         </div>
         {(isOpen || searchQuery) && (
           <div className="relative">
-            <div className="absolute left-4.5 top-0 bottom-0 w-px bg-border ml-[depth * 12]" style={{ left: paddingLeft + 6 }} />
+            <div className="absolute left-4.5 top-0 bottom-0 w-px bg-muted-foreground/30 ml-[depth * 12]" style={{ left: paddingLeft + 6 }} />
             {item.kind.items.length === 0 ? (
-              <div style={{ paddingLeft: paddingLeft + 28 }} className="text-[11px] text-muted-foreground/60 py-2 italic">
+              <div style={{ paddingLeft: paddingLeft + 28 }} className="text-[11px] text-muted-foreground py-2 italic">
               </div>
             ) : (
               <SortableContext items={item.kind.items.map(i => i.id)} strategy={verticalListSortingStrategy}>
@@ -212,8 +206,8 @@ const SidebarNode: React.FC<{
         className={twMerge(
           "flex items-center py-2 pl-3 pr-2 my-0.5 rounded-lg cursor-pointer text-sm group transition-all",
           isActive 
-            ? "bg-primary/10 text-primary shadow-sm ring-1 ring-primary/20" 
-            : "text-muted-foreground hover:bg-muted/50"
+            ? "text-foreground ring-2 ring-primary/20 border border-primary/50" 
+            : "text-muted-foreground hover:bg-muted/50 border border-transparent"
         )}
         style={{ ...style, paddingLeft: depth > 0 ? paddingLeft + 20 : 12 }}
         onClick={() => {
@@ -234,8 +228,46 @@ const SidebarNode: React.FC<{
         <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
           <button 
             onClick={handleDelete}
-            className="p-1 hover:bg-destructive/10 rounded text-muted-foreground/80 hover:text-destructive opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/40 transition-all"
+            className="p-1.5 rounded text-gray-500 hover:text-red-500 hover:bg-muted opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
             title="Delete Request"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (item.kind.type === 'ws') {
+    const wsId = item.kind.id;
+    const wsName = item.kind.name;
+    const isActive = activeRequestId === wsId;
+    return (
+      <div
+        ref={setNodeRef}
+        className={twMerge(
+          "flex items-center py-2 pl-3 pr-2 my-0.5 rounded-lg cursor-pointer text-sm group transition-all",
+          isActive
+            ? "text-foreground ring-2 ring-primary/20 border border-primary/50"
+            : "text-muted-foreground hover:bg-muted/50 border border-transparent"
+        )}
+        style={{ ...style, paddingLeft: depth > 0 ? paddingLeft + 20 : 12 }}
+        onClick={() => openTab(wsId)}
+      >
+        <div className="flex items-center flex-1 min-w-0">
+          <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-muted-foreground/60">
+            <GripVertical size={12} />
+          </div>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md mr-3 min-w-8 text-center bg-violet-500/15 text-violet-500">
+            WS
+          </span>
+          <span className="truncate flex-1">{wsName}</span>
+        </div>
+        <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={handleDelete}
+            className="p-1.5 rounded text-gray-500 hover:text-red-500 hover:bg-muted opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
+            title="Delete WS Request"
           >
             <Trash2 size={14} />
           </button>
@@ -447,7 +479,7 @@ export const Sidebar: React.FC = () => {
     >
       <div className="h-full bg-muted/20 flex flex-col overflow-visible border-r border-border">
         <div className="p-4 flex items-center justify-between">
-          <div className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">
+          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">
             {isWorkspaceTab ? 'Workspace' : 'Scratchpad'}
           </div>
           <div className="flex items-center gap-1 relative">
@@ -608,21 +640,18 @@ export const Sidebar: React.FC = () => {
         
         <div className="px-3 mb-4">
           <div className="relative group mb-3">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 group-focus-within:text-primary transition-colors" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" />
             <input 
               type="text" 
               placeholder="Search..." 
-              className="w-full pl-9 pr-3 py-2 text-sm bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 text-foreground placeholder:text-muted-foreground/60 transition-all shadow-sm"
+              className="w-full pl-9 pr-3 py-2 text-sm bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 text-foreground placeholder:text-muted-foreground transition-all shadow-sm"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono text-muted-foreground/60 border border-border px-1.5 py-0.5 rounded bg-muted/50 pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity">
-              ⌘K
-            </div>
           </div>
 
           {isWorkspaceTab && workspaceName && (
-            <div className="flex items-center justify-between px-3 py-2 bg-primary/5 border border-primary/20 rounded-xl group/workspace-pill transition-all">
+            <div className="flex items-center justify-between px-3 py-2 border border-primary/20 rounded-xl group/workspace-pill transition-all">
               <div className="flex items-center gap-2 overflow-hidden">
                 <span className="text-[11px] font-bold text-primary truncate uppercase tracking-wider">
                   {workspaceName}
@@ -699,7 +728,7 @@ const SidebarContent: React.FC<{
   });
 
   return (
-    <div ref={setNodeRef} className="flex-1 overflow-y-auto pb-4 custom-scrollbar min-h-0">
+    <div ref={setNodeRef} className="flex-1 overflow-y-auto pb-4 custom-scrollbar min-h-0 px-3">
       {activeTab === 'workspace' ? (
         projectPath ? (
           tree.length > 0 ? (

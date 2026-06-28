@@ -7,7 +7,7 @@ use tauri::Manager;
 
 use crate::models::{request::{BeforeRunStep, ChainCondition, FirvRequest, RequestChainStep}};
 use crate::models::request::HttpMethod;
-use crate::runner::{FirvResponse, PreparedBody, prepare_request, run_request};
+use crate::http_client::{FirvResponse, PreparedBody, prepare_request, run_request};
 use crate::variables::{VariableResolver, VariableTraceEntry};
 use crate::RequestCancellationState;
 
@@ -195,9 +195,9 @@ async fn execute_chain(
         method: prepared_request.method.clone(),
         headers: prepared_request.headers.clone(),
         body: match &prepared_request.body {
-            crate::runner::PreparedBody::None => None,
-            crate::runner::PreparedBody::Text(body) => Some(body.clone()),
-            crate::runner::PreparedBody::Form(_) => None,
+            crate::http_client::PreparedBody::None => None,
+            crate::http_client::PreparedBody::Text(body) => Some(body.clone()),
+            crate::http_client::PreparedBody::Form(_) => None,
         },
     };
 

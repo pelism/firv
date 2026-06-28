@@ -248,13 +248,12 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
   if (!response) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center space-y-4 bg-muted/30 text-muted-foreground">
-        <div className="p-6 rounded-full bg-muted shadow-inner relative group/icon">
-          <div className="absolute inset-0 bg-primary/20 blur-2xl rounded-full opacity-0 group-hover/icon:opacity-100 transition-opacity duration-500" />
-          <Activity size={48} className="relative z-10 opacity-20 group-hover:opacity-40 text-primary transition-all duration-500" />
+        <div className="p-6 rounded-full bg-muted shadow-inner relative">
+          <Activity size={48} className="relative z-10 text-foreground/60" />
         </div>
         <div className="text-center">
           <p className="font-semibold text-foreground/60">Ready for Request</p>
-          <p className="text-xs">Send a request to see the response here.</p>
+          <p className="text-xs text-foreground/60">Send a request to see the response here.</p>
         </div>
       </div>
     );
@@ -466,7 +465,7 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
                 <div className="space-y-2 font-mono text-xs">
                   {Object.entries(trace).map(([key, value]) => (
                     <div key={key} className="grid grid-cols-[160px_1fr] gap-3 items-start">
-                      <div className="text-primary font-semibold break-all">{key}</div>
+                      <div className="text-foreground/80 font-semibold break-all">{key}</div>
                       <div className="break-all text-foreground/80">{value}</div>
                     </div>
                   ))}
@@ -507,7 +506,7 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
                   {variableTrace.map((entry, idx) => (
                     <div key={`${entry.key}-${idx}`} className="rounded-lg border border-border bg-background/60 p-3 text-xs font-mono space-y-1">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-primary font-semibold break-all">{entry.key}</span>
+                        <span className="text-foreground/80 font-semibold break-all">{entry.key}</span>
                         <span className="text-muted-foreground">{entry.scope}</span>
                       </div>
                       <div className="text-foreground/80 break-all">{entry.value}</div>
@@ -556,7 +555,7 @@ export function ResponseViewer({ response }: ResponseViewerProps) {
                     <div className="space-y-1 font-mono text-xs text-foreground/80">
                       {Object.entries(requestInfo.headers).map(([key, value]) => (
                         <div key={key} className="grid grid-cols-[180px_1fr] gap-3">
-                          <div className="text-primary font-semibold break-all">{key}</div>
+                          <div className="text-foreground/80 font-semibold break-all">{key}</div>
                           <div className="break-all">{String(value)}</div>
                         </div>
                       ))}
