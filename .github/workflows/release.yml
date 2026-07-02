@@ -37,7 +37,7 @@ jobs:
           tag_name: v${{ steps.gitversion.outputs.MajorMinorPatch }}
           release_name: "firv v${{ steps.gitversion.outputs.MajorMinorPatch }}"
           body: ''
-          draft: false
+          draft: true
           prerelease: false
 
   release:
@@ -102,4 +102,17 @@ jobs:
           tagName: v__VERSION__
           releaseName: "firv v__VERSION__"
           releaseId: ${{ needs.prepare-release.outputs.release_id }}
+
+  publish-release:
+    needs: [prepare-release, release]
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    steps:
+      - name: publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }}/releases/${{ needs.prepare-release.outputs.release_id }} \
+            -X PATCH -f draft=false
 

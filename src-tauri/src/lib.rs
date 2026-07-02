@@ -5,6 +5,7 @@ mod models;
 mod http_client;
 mod storage;
 mod ws_client;
+mod grpc_client;
 
 pub mod variables;
 mod watcher;
@@ -21,7 +22,10 @@ use storage::export_workspace;
 use storage::import_firv_export;
 use storage::get_ws_request;
 use storage::update_ws_request;
+use storage::get_grpc_request;
+use storage::update_grpc_request;
 use ws_client::{ws_connect, ws_disconnect, ws_send, WsConnectionRegistry};
+use grpc_client::{grpc_call, grpc_connect, grpc_send, grpc_disconnect, GrpcConnectionRegistry};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
@@ -127,6 +131,7 @@ pub fn run() {
         .manage(watcher::WatcherHandle(Mutex::new(None)))
         .manage(RequestCancellationState(Mutex::new(None)))
         .manage(WsConnectionRegistry::new())
+        .manage(GrpcConnectionRegistry::new())
         .setup(|app| {
             let edit_menu = SubmenuBuilder::new(app, "Edit")
                 .undo()
@@ -210,7 +215,13 @@ pub fn run() {
             update_ws_request,
             ws_connect,
             ws_send,
-            ws_disconnect
+            ws_disconnect,
+            get_grpc_request,
+            update_grpc_request,
+            grpc_call,
+            grpc_connect,
+            grpc_send,
+            grpc_disconnect
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

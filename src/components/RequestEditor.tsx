@@ -21,6 +21,7 @@ import { RequestEditorCommandBar, type EditorProtocol } from './RequestEditorCom
 import { RequestEditorBodySection } from './RequestEditorBodySection';
 import { RequestEditorTransformsSection } from './RequestEditorTransformsSection';
 import { WsEditor } from './WsEditor';
+import { GrpcEditor } from './GrpcEditor';
 
 interface RequestEditorProps {
   requestId: string;
@@ -94,6 +95,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const handleProtocolChange = (p: EditorProtocol) => {
     setRequestProtocol(requestId, p);
     if (p === 'http') setDirty(requestId, false);
+    if (p === 'grpc') setDirty(requestId, false);
   };
 
   // Hydration
@@ -106,7 +108,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           const { tree: currentTree, scratchpadTree: currentScratchpad } = useSidebarStore.getState();
           const findKind = (items: HydratedSidebarItem[]): string | null => {
             for (const item of items) {
-              if ((item.kind.type === 'request' || item.kind.type === 'ws') && item.kind.id === requestId)
+              if ((item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'grpc') && item.kind.id === requestId)
                 return item.kind.type;
               if (item.kind.type === 'folder') { const found = findKind(item.kind.items); if (found) return found; }
             }
@@ -115,6 +117,12 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           const sidebarKind = findKind(currentTree) ?? findKind(currentScratchpad);
           if (sidebarKind === 'ws') {
             setRequestProtocol(requestId, 'ws');
+            isHydratingRef.current = false;
+            hasHydratedRef.current = true;
+            return;
+          }
+          if (sidebarKind === 'grpc') {
+            setRequestProtocol(requestId, 'grpc');
             isHydratingRef.current = false;
             hasHydratedRef.current = true;
             return;
@@ -627,6 +635,16 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   if (protocol === 'ws') {
     return (
       <WsEditor
+        requestId={requestId}
+        initialUrl={url}
+        onProtocolChange={handleProtocolChange}
+      />
+    );
+  }
+
+  if (protocol === 'grpc') {
+    return (
+      <GrpcEditor
         requestId={requestId}
         initialUrl={url}
         onProtocolChange={handleProtocolChange}

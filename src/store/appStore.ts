@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { WsConnectionStatus, WsMessage } from '../lib/wsClient';
+import type { GrpcConnectionStatus, GrpcMessage } from '../lib/grpcClient';
 
 export type RequestOrigin = 'workspace' | 'scratchpad';
-export type RequestProtocol = 'http' | 'ws';
+export type RequestProtocol = 'http' | 'ws' | 'grpc';
 
 export interface AppState {
   activeRequestId: string | null;
@@ -32,6 +33,11 @@ export interface AppState {
   appendWsMessage: (id: string, msg: WsMessage) => void;
   clearWsMessages: (id: string) => void;
   clearWsConnection: (id: string) => void;
+  grpcConnections: Record<string, { status: GrpcConnectionStatus; messages: GrpcMessage[] }>;
+  setGrpcStatus: (id: string, status: GrpcConnectionStatus) => void;
+  appendGrpcMessage: (id: string, msg: GrpcMessage) => void;
+  clearGrpcMessages: (id: string) => void;
+  clearGrpcConnection: (id: string) => void;
   reset: () => void;
 }
 
@@ -62,13 +68,15 @@ export const useAppStore = create<AppState>()(
           newDirty.delete(id);
           const newWsConnections = { ...state.wsConnections };
           delete newWsConnections[id];
+          const newGrpcConnections = { ...state.grpcConnections };
+          delete newGrpcConnections[id];
           const newProtocols = { ...state.requestProtocols };
           delete newProtocols[id];
           let newActiveId = state.activeRequestId;
           if (state.activeRequestId === id) {
             newActiveId = newTabs.length > 0 ? newTabs[newTabs.length - 1] : null;
           }
-          return { openTabs: newTabs, activeRequestId: newActiveId, responses: newResponses, runningRequests: newRunningRequests, dirtyRequests: newDirty, wsConnections: newWsConnections, requestProtocols: newProtocols };
+          return { openTabs: newTabs, activeRequestId: newActiveId, responses: newResponses, runningRequests: newRunningRequests, dirtyRequests: newDirty, wsConnections: newWsConnections, grpcConnections: newGrpcConnections, requestProtocols: newProtocols };
         });
       },
       runningRequests: {},
@@ -157,6 +165,37 @@ export const useAppStore = create<AppState>()(
         delete next[id];
         return { wsConnections: next };
       }),
+      grpcConnections: {},
+      setGrpcStatus: (id, status) => set((state) => ({
+        grpcConnections: {
+          ...state.grpcConnections,
+          [id]: { ...(state.grpcConnections[id] ?? { messages: [] }), status },
+        },
+      })),
+      appendGrpcMessage: (id, msg) => set((state) => {
+        const existing = state.grpcConnections[id] ?? { status: 'disconnected' as GrpcConnectionStatus, messages: [] };
+        return {
+          grpcConnections: {
+            ...state.grpcConnections,
+            [id]: { ...existing, messages: [...existing.messages, msg] },
+          },
+        };
+      }),
+      clearGrpcMessages: (id) => set((state) => {
+        const existing = state.grpcConnections[id];
+        if (!existing) return state;
+        return {
+          grpcConnections: {
+            ...state.grpcConnections,
+            [id]: { ...existing, messages: [] },
+          },
+        };
+      }),
+      clearGrpcConnection: (id) => set((state) => {
+        const next = { ...state.grpcConnections };
+        delete next[id];
+        return { grpcConnections: next };
+      }),
       reset: () => set({
         activeRequestId: null,
         openTabs: [],
@@ -167,6 +206,7 @@ export const useAppStore = create<AppState>()(
         requestProtocols: {},
         scratchpadRequestData: {},
         wsConnections: {},
+        grpcConnections: {},
       }),
     }),
     {

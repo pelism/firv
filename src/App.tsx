@@ -138,7 +138,7 @@ function App() {
     for (const item of items) {
       if (item.kind.type === 'error') continue;
       const path = currentPath ? `${currentPath} / ${item.kind.name}` : item.kind.name;
-      if ((item.kind.type === 'request' || item.kind.type === 'ws') && item.kind.id === id) {
+      if ((item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'grpc') && item.kind.id === id) {
         return path;
       }
       if (item.kind.type === 'folder' && item.kind.items) {
@@ -301,6 +301,7 @@ function App() {
 
               {(() => {
                 const isWsActive = activeRequestId ? requestProtocols[activeRequestId] === 'ws' : false;
+                const isGrpcActive = activeRequestId ? requestProtocols[activeRequestId] === 'grpc' : false;
                 const editorContent = (
                   <div className="flex-1 overflow-hidden min-h-0 min-w-0 flex flex-col bg-background">
                     {activeRequestId ? (
@@ -333,7 +334,7 @@ function App() {
                     )}
                   </div>
                 );
-                if (isWsActive) {
+                if (isWsActive || isGrpcActive) {
                   return <div className="flex-1 min-h-0 flex flex-col">{editorContent}</div>;
                 }
                 return (

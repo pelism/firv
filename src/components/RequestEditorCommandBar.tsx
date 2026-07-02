@@ -3,7 +3,7 @@ import { Send, Save, FolderPlus, Plug, Unplug, ChevronDown } from 'lucide-react'
 import { twMerge } from 'tailwind-merge';
 import { getVariableHoverTitleAtPoint, type VariableLookup } from '../lib/variableHover';
 
-export type EditorProtocol = 'http' | 'ws';
+export type EditorProtocol = 'http' | 'ws' | 'grpc';
 
 interface RequestEditorCommandBarProps {
   protocol: EditorProtocol;
@@ -77,7 +77,7 @@ export function RequestEditorCommandBar({
   const protocolOptions: { value: EditorProtocol; label: string; helper: string; color: string }[] = [
     { value: 'http', label: 'HTTP', helper: 'REST, GraphQL, Webhooks', color: 'text-method-post' },
     { value: 'ws', label: 'WS', helper: 'Persistent bidirectional streaming', color: 'text-violet-500' },
-    // { value: 'grpc', label: 'gRPC', helper: 'Protocol Buffers/RPC', color: 'text-orange-500' },
+    { value: 'grpc', label: 'gRPC', helper: 'Protocol Buffers / RPC', color: 'text-blue-500' },
   ];
 
   return (
@@ -88,7 +88,7 @@ export function RequestEditorCommandBar({
             onClick={() => setProtocolOpen(v => !v)}
             className={twMerge(
               'flex items-center gap-1 px-3 bg-transparent font-bold text-xs uppercase tracking-wider outline-none',
-              protocol === 'http' ? 'text-method-post' : 'text-violet-500'
+              protocol === 'http' ? 'text-method-post' : protocol === 'ws' ? 'text-violet-500' : 'text-blue-500'
             )}
           >
             {protocol.toUpperCase()}
@@ -103,7 +103,7 @@ export function RequestEditorCommandBar({
                   className={twMerge(
                     'flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors hover:bg-primary/15 hover:text-primary border-l-2 border-transparent',
                     opt.value === protocol ? 'bg-primary/10' : '',
-                    opt.value === protocol ? (opt.value === 'http' ? 'border-method-post' : 'border-violet-500') : ''
+                    opt.value === protocol ? (opt.value === 'http' ? 'border-method-post' : opt.value === 'ws' ? 'border-violet-500' : 'border-blue-500') : ''
                   )}
                 >
                   <span className={twMerge('font-bold uppercase tracking-wider', opt.color)}>{opt.label}</span>
@@ -147,7 +147,7 @@ export function RequestEditorCommandBar({
             type="text"
             value={url}
             onChange={e => onUrlChange(e.target.value)}
-            placeholder={protocol === 'ws' ? 'wss://example.com/socket' : 'Enter URL or paste request...'}
+            placeholder={protocol === 'ws' ? 'wss://example.com/socket' : protocol === 'grpc' ? 'localhost:50051' : 'Enter URL or paste request...'}
             className="w-full px-3 py-2 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground"
             onMouseMove={handleUrlMouseMove}
             onMouseLeave={() => setUrlHover(null)}
@@ -221,6 +221,20 @@ export function RequestEditorCommandBar({
             >
               {isWsConnected ? <Unplug size={16} /> : <Plug size={16} className={isRunning ? 'animate-pulse' : ''} />}
               {isRunning ? 'Connecting…' : isWsConnected ? 'Disconnect' : 'Connect'}
+            </button>
+          )}
+          {protocol === 'grpc' && (
+            <button
+              onClick={onRun}
+              disabled={isRunning}
+              className={twMerge(
+                'flex items-center gap-2 px-4 py-1.5 rounded-lg text-primary-foreground font-bold text-sm transition-all shadow-md active:scale-95 disabled:opacity-60',
+                'bg-primary hover:bg-primary/90 shadow-primary/30'
+              )}
+              title={isWsConnected ? 'Disconnect' : 'Send / Connect'}
+            >
+              {isWsConnected ? <Unplug size={16} /> : <Plug size={16} className={isRunning ? 'animate-pulse' : ''} />}
+              {isRunning ? 'Running…' : isWsConnected ? 'Disconnect' : 'Invoke'}
             </button>
           )}
         </div>
