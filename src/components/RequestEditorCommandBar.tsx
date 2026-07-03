@@ -125,7 +125,7 @@ export function RequestEditorCommandBar({
             </button>
             {methodOpen && (
               <div className="absolute left-0 top-full z-50 mt-1 min-w-[5.5rem] rounded-md border border-border bg-popover shadow-md overflow-hidden py-1">
-                {['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].map(m => (
+                {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].map(m => (
                   <button
                     key={m}
                     onClick={() => { onMethodChange(m); setMethodOpen(false); }}
