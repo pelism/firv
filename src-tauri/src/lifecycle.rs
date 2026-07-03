@@ -8,6 +8,7 @@ use tauri::Manager;
 use crate::models::{request::{BeforeRunStep, ChainCondition, FirvRequest, RequestChainStep}};
 use crate::models::request::HttpMethod;
 use crate::http_client::{FirvResponse, PreparedBody, prepare_request, run_request};
+use urlencoding::encode;
 use crate::variables::{VariableResolver, VariableTraceEntry};
 use crate::RequestCancellationState;
 
@@ -112,6 +113,14 @@ pub struct LifecycleResult {
     pub chained_results: Vec<LifecycleResultSummary>,
 }
 
+fn serialize_form_pairs(pairs: &[(String, String)]) -> String {
+    pairs
+        .iter()
+        .map(|(key, value)| format!("{}={}", encode(key), encode(value)))
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
 #[derive(Debug, Serialize)]
 pub struct LifecycleResultSummary {
     pub request_id: String,
@@ -195,9 +204,9 @@ async fn execute_chain(
         method: prepared_request.method.clone(),
         headers: prepared_request.headers.clone(),
         body: match &prepared_request.body {
-            crate::http_client::PreparedBody::None => None,
-            crate::http_client::PreparedBody::Text(body) => Some(body.clone()),
-            crate::http_client::PreparedBody::Form(_) => None,
+            PreparedBody::None => None,
+            PreparedBody::Text(body) => Some(body.clone()),
+            PreparedBody::Form(pairs) => Some(serialize_form_pairs(pairs)),
         },
     };
 

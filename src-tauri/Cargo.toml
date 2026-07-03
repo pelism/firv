@@ -39,6 +39,7 @@ tauri-plugin-fs = "2.5.0"
 tauri-plugin-clipboard-manager = "2"
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = "0.3"
+urlencoding = "2.1"
 
 [dev-dependencies]
 httpmock = "0.7"
