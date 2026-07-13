@@ -40,7 +40,7 @@ export async function runUpdateFlow(options: { installOnAvailable?: boolean } = 
 
   const update = await check();
 
-  if (update?.available) {
+  if (update !== null) {
     if (installOnAvailable) {
       await update.downloadAndInstall();
       await relaunch();
