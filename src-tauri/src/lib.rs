@@ -3,6 +3,10 @@ mod hydration;
 mod lifecycle;
 mod models;
 mod http_client;
+pub mod mcp_server;
+mod mcp_tools;
+mod request_engine;
+mod scratchpad;
 mod storage;
 mod ws_client;
 
@@ -25,7 +29,7 @@ use ws_client::{ws_connect, ws_disconnect, ws_send, WsConnectionRegistry};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
-use tauri::{Manager, PhysicalPosition, PhysicalSize, WindowEvent};
+use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent};
 use tokio::sync::oneshot;
 
 pub struct RequestCancellationState(pub Mutex<Option<oneshot::Sender<()>>>);
@@ -118,6 +122,12 @@ fn start_project_watcher(app: tauri::AppHandle, path: String) -> Result<(), Stri
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    run_with_project(None)
+}
+
+pub fn run_with_project(cli_project_path: Option<String>) {
+    let cli_project_path = cli_project_path.map(std::sync::Arc::new);
+    let cli_project_path_for_setup = cli_project_path.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -127,7 +137,16 @@ pub fn run() {
         .manage(watcher::WatcherHandle(Mutex::new(None)))
         .manage(RequestCancellationState(Mutex::new(None)))
         .manage(WsConnectionRegistry::new())
-        .setup(|app| {
+        .setup(move |app| {
+            if let Some(path) = cli_project_path_for_setup.as_ref() {
+                let path = (**path).clone();
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    let _ = app_handle.emit("cli-project-path", path);
+                });
+            }
+
             let edit_menu = SubmenuBuilder::new(app, "Edit")
                 .undo()
                 .redo()

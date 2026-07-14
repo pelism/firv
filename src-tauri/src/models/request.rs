@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
 #[ts(export, export_to = "firvRequest.ts")]
 pub struct FirvRequest {
     pub id: String,
@@ -73,10 +73,11 @@ pub struct KeyValue {
     pub enabled: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize, TS, Default, Clone)]
 #[ts(export, export_to = "requestBody.ts")]
 #[serde(tag = "mode", content = "data", rename_all = "lowercase")]
 pub enum RequestBody {
+    #[default]
     None,
     Json(String),
     Raw(String),

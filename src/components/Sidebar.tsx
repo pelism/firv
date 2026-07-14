@@ -651,7 +651,7 @@ export const Sidebar: React.FC = () => {
           </div>
 
           {isWorkspaceTab && workspaceName && (
-            <div className="flex items-center justify-between px-3 py-2 border border-primary/20 rounded-xl group/workspace-pill transition-all">
+            <div className="flex items-center justify-between px-3 py-2 border border-primary/20 rounded-xl group/workspace-pill transition-all" title={projectPath}>
               <div className="flex items-center gap-2 overflow-hidden">
                 <span className="text-[11px] font-bold text-primary truncate uppercase tracking-wider">
                   {workspaceName}

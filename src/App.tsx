@@ -18,6 +18,7 @@ import { WindowControls } from "./components/WindowControls";
 import { useNativeContextMenu } from "./hooks/useNativeContextMenu";
 import { runDailyUpdateCheck, runUpdateFlow } from "./lib/updaterClient";
 import { UpdatePrompt } from "./components/UpdatePrompt";
+import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
   const responses = useAppStore(state => state.responses);
   const requestProtocols = useAppStore(state => state.requestProtocols);
   const projectPath = useSidebarStore(state => state.projectPath);
+  const setProjectPath = useSidebarStore(state => state.setProjectPath);
   const workspaceEnvironments = useSidebarStore(state => state.workspaceEnvironments);
   const activeWorkspaceEnvironmentId = useSidebarStore(state => state.activeWorkspaceEnvironmentId);
   const setWorkspaceActiveEnvironment = useSidebarStore(state => state.setWorkspaceActiveEnvironment);
@@ -73,6 +75,24 @@ function App() {
       editInputRef.current.select();
     }
   }, [editingTabId]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    listen<string>("cli-project-path", event => {
+      if (event.payload && event.payload !== projectPath) {
+        setProjectPath(event.payload);
+      }
+    }).then(listener => {
+      unlisten = listener;
+    });
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [projectPath, setProjectPath]);
 
   useEffect(() => {
     let isMounted = true;
