@@ -269,6 +269,9 @@ fn load_project(arguments: Value, state: &mut McpServerState) -> Result<Value, S
 }
 
 fn list_requests(state: &McpServerState) -> Result<Value, String> {
+    if state.manifest.is_none() {
+        return Err("No project loaded".to_string());
+    }
     let items = state.list_request_items();
     let requests: Vec<Value> = items
         .into_iter()
@@ -361,6 +364,9 @@ fn set_active_environment(arguments: Value, state: &mut McpServerState) -> Resul
 }
 
 fn list_ws_requests(state: &McpServerState) -> Result<Value, String> {
+    if state.manifest.is_none() {
+        return Err("No project loaded".to_string());
+    }
     let items = state.list_ws_request_items();
     let requests: Vec<Value> = items
         .into_iter()

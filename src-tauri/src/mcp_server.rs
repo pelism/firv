@@ -20,6 +20,7 @@ pub struct McpServerState {
     pub active_environment_id: Option<String>,
     pub scratchpad: Scratchpad,
     pub runtime: tokio::runtime::Runtime,
+    pub startup_error: Option<String>,
 }
 
 impl McpServerState {
@@ -32,6 +33,7 @@ impl McpServerState {
             active_environment_id: None,
             scratchpad: Scratchpad::new(),
             runtime,
+            startup_error: None,
         })
     }
 
@@ -142,9 +144,18 @@ struct JsonRpcError {
     data: Option<Value>,
 }
 
-pub fn run_server(project_root: String) -> Result<(), String> {
+pub fn run_server(project_root: String, debug: bool) -> Result<(), String> {
+    if debug {
+        eprintln!("[firv-mcp] starting server workspace={}", project_root);
+    }
+
     let mut state = McpServerState::new()?;
-    state.load_project(project_root)?;
+    state.project_root = Some(project_root.clone());
+    if let Err(e) = state.load_project(project_root) {
+        return Err(e);
+    } else if debug {
+        eprintln!("[firv-mcp] project loaded successfully");
+    }
 
     let stdin = io::stdin();
     let reader = stdin.lock();
@@ -154,7 +165,9 @@ pub fn run_server(project_root: String) -> Result<(), String> {
         let line = match line {
             Ok(l) => l,
             Err(e) => {
-                eprintln!("Failed to read line from stdin: {}", e);
+                if debug {
+                    eprintln!("[firv-mcp] failed to read line from stdin: {}", e);
+                }
                 continue;
             }
         };
@@ -163,10 +176,19 @@ pub fn run_server(project_root: String) -> Result<(), String> {
             continue;
         }
 
+        if debug {
+            eprintln!("[firv-mcp] recv: {}", line);
+        }
+
         let response = handle_message(&line, &mut state);
         if let Some(resp) = response {
             let json = serde_json::to_string(&resp)
                 .unwrap_or_else(|_| r#"{"jsonrpc":"2.0","error":{"code":-32603,"message":"Internal error"}}"#.to_string());
+
+            if debug {
+                eprintln!("[firv-mcp] send: {}", json);
+            }
+
             writeln!(stdout, "{}", json).map_err(|e| e.to_string())?;
             stdout.flush().map_err(|e| e.to_string())?;
         }
@@ -186,7 +208,7 @@ fn handle_message(line: &str, state: &mut McpServerState) -> Option<JsonRpcRespo
     let is_notification = req.id.is_none();
 
     let result = match req.method.as_str() {
-        "initialize" => initialize(&req.params),
+        "initialize" => initialize(&req.params, state),
         "notifications/initialized" => {
             return None;
         }
@@ -221,13 +243,13 @@ fn error_response(id: Option<Value>, code: i32, message: String) -> JsonRpcRespo
     }
 }
 
-fn initialize(params: &Value) -> Result<Value, String> {
+fn initialize(params: &Value, state: &McpServerState) -> Result<Value, String> {
     let protocol_version = params
         .get("protocolVersion")
         .and_then(|v| v.as_str())
         .unwrap_or("2024-11-05");
 
-    Ok(json!({
+    let mut result = json!({
         "protocolVersion": protocol_version,
         "capabilities": {
             "tools": {},
@@ -237,7 +259,13 @@ fn initialize(params: &Value) -> Result<Value, String> {
             "name": "firv",
             "version": env!("CARGO_PKG_VERSION")
         }
-    }))
+    });
+
+    if let Some(err) = &state.startup_error {
+        result["startup_error"] = json!(err);
+    }
+
+    Ok(result)
 }
 
 fn tools_list() -> Result<Value, String> {
@@ -385,6 +413,24 @@ url: "{{base_url}}/hello"
         assert_eq!(response.id, Some(json!(1)));
         assert!(response.error.is_none());
         assert_eq!(response.result.as_ref().unwrap()["serverInfo"]["name"], "firv");
+    }
+
+    #[test]
+    fn initialize_reports_startup_error() {
+        let mut state = McpServerState::new().expect("state");
+        state.startup_error = Some("missing firv.yaml".to_string());
+        let response = handle_message(
+            &message("initialize", json!({"protocolVersion": "2024-11-05"})),
+            &mut state,
+        )
+        .expect("response");
+
+        assert_eq!(response.id, Some(json!(1)));
+        assert!(response.error.is_none());
+        assert_eq!(
+            response.result.as_ref().unwrap()["startup_error"],
+            "missing firv.yaml"
+        );
     }
 
     #[test]

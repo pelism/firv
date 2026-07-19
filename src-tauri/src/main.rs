@@ -12,6 +12,10 @@ struct Cli {
     #[arg(long, global = true)]
     workspace: Option<String>,
 
+    /// Enable debug logging for the MCP server.
+    #[arg(long, global = true)]
+    debug: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -31,7 +35,7 @@ fn main() {
                 eprintln!("--workspace is required for mcp mode");
                 std::process::exit(1);
             });
-            if let Err(e) = firv_lib::mcp_server::run_server(workspace) {
+            if let Err(e) = firv_lib::mcp_server::run_server(workspace, cli.debug) {
                 eprintln!("MCP server error: {}", e);
                 std::process::exit(1);
             }
