@@ -2,9 +2,12 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { SCRATCHPAD_WORKSPACE_KEY, useSidebarStore } from '../store/sidebarStore';
 import { HydratedSidebarItem } from '../types/hydratedSidebarItem.ts';
+import type { FirvRequest } from '../types/firvRequest.ts';
+import type { WsRequest } from '../types/wsRequest.ts';
 import { useAppStore } from '../store/appStore';
 import { useModalStore } from '../store/modalStore';
-import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search, Trash2, Settings2, GripVertical, X, MoreVertical, Download, Upload, ChevronsDown, ChevronsUp } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search, Trash2, Settings2, GripVertical, X, MoreVertical, Download, Upload, ChevronsDown, ChevronsUp, Copy } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { 
   DndContext, 
@@ -79,6 +82,63 @@ const SidebarNode: React.FC<{
     const idsToClose = getRequestIds(item);
     await deleteItem(path, isScratchpad);
     idsToClose.forEach(id => useAppStore.getState().closeTab(id));
+  };
+
+  const handleDuplicate = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (item.kind.type !== 'request' && item.kind.type !== 'ws') return;
+
+    const newRequestId = crypto.randomUUID();
+    const newItemId = crypto.randomUUID();
+    const { projectPath, addItem } = useSidebarStore.getState();
+    const { setRequestOrigin, setScratchpadRequestData, scratchpadRequestData, openTab } = useAppStore.getState();
+    const isWs = item.kind.type === 'ws';
+    const newName = `${item.kind.name} Copy`;
+
+    if (isScratchpad) {
+      const existingData = scratchpadRequestData[item.kind.id];
+      const copied = existingData
+        ? { ...existingData, id: newRequestId, name: newName }
+        : {
+            id: newRequestId,
+            name: newName,
+            method: isWs ? 'WS' : (item.kind as any).method,
+            url: '',
+            headers: [],
+            params: [],
+            body: { mode: 'none', data: '' },
+            transforms: { pre_request_template: '', response_extractions: [], before_run: [], chain_steps: [] },
+          };
+      setScratchpadRequestData(newRequestId, copied);
+
+      const newItem: HydratedSidebarItem = isWs
+        ? { id: newItemId, kind: { type: 'ws', id: newRequestId, name: newName } }
+        : { id: newItemId, kind: { type: 'request', id: newRequestId, name: newName, method: (item.kind as any).method } };
+
+      await addItem(newItem, path.slice(0, -1), true);
+      setRequestOrigin(newRequestId, 'scratchpad');
+      openTab(newRequestId);
+      return;
+    }
+
+    try {
+      if (isWs) {
+        const req = await invoke<WsRequest>('get_ws_request', { projectRoot: projectPath, id: item.kind.id });
+        const copied = { ...req, id: newRequestId, name: newName };
+        await invoke('update_ws_request', { projectRoot: projectPath, request: copied });
+        const newItem: HydratedSidebarItem = { id: newItemId, kind: { type: 'ws', id: newRequestId, name: newName } };
+        await addItem(newItem, path.slice(0, -1));
+      } else {
+        const req = await invoke<FirvRequest>('get_request', { projectRoot: projectPath, id: item.kind.id });
+        const copied = { ...req, id: newRequestId, name: newName };
+        await invoke('update_request', { projectRoot: projectPath, request: copied });
+        const newItem: HydratedSidebarItem = { id: newItemId, kind: { type: 'request', id: newRequestId, name: newName, method: req.method || (item.kind as any).method } };
+        await addItem(newItem, path.slice(0, -1));
+      }
+      openTab(newRequestId);
+    } catch (err) {
+      console.error('Failed to duplicate request', err);
+    }
   };
 
   const paddingLeft = depth * 12 + 12;
@@ -226,7 +286,14 @@ const SidebarNode: React.FC<{
           <span className="truncate flex-1">{item.kind.name}</span>
         </div>
         <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
-          <button 
+          <button
+            onClick={handleDuplicate}
+            className="p-1.5 rounded text-gray-500 hover:text-primary hover:bg-muted opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40 transition-colors"
+            title="Duplicate Request"
+          >
+            <Copy size={14} />
+          </button>
+          <button
             onClick={handleDelete}
             className="p-1.5 rounded text-gray-500 hover:text-red-500 hover:bg-muted opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
             title="Delete Request"
@@ -264,6 +331,13 @@ const SidebarNode: React.FC<{
           <span className="truncate flex-1">{wsName}</span>
         </div>
         <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={handleDuplicate}
+            className="p-1.5 rounded text-gray-500 hover:text-primary hover:bg-muted opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40 transition-colors"
+            title="Duplicate WS Request"
+          >
+            <Copy size={14} />
+          </button>
           <button
             onClick={handleDelete}
             className="p-1.5 rounded text-gray-500 hover:text-red-500 hover:bg-muted opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
