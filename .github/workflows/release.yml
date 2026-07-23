@@ -87,12 +87,12 @@ jobs:
       - name: run frontend tests
         run: npm run ts:test
 
+      - name: stage firv-cli sidecar
+        run: npm run stage:cli
+
       - name: run rust tests
         run: cargo test
         working-directory: src-tauri
-
-      - name: stage firv-cli sidecar
-        run: npm run stage:cli
 
       - name: build, sign, and deploy app
         id: tauri_build
