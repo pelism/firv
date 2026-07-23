@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { WsConnectionStatus, WsMessage } from '../lib/wsClient';
+import { wsClient, type WsConnectionStatus, type WsMessage } from '../lib/wsClient';
 
 export type RequestOrigin = 'workspace' | 'scratchpad';
 export type RequestProtocol = 'http' | 'ws';
@@ -50,7 +50,7 @@ export const useAppStore = create<AppState>()(
       closeTab: (id) => {
         const { wsConnections } = get();
         if (wsConnections[id]?.status === 'connected' || wsConnections[id]?.status === 'connecting') {
-          import('../lib/wsClient').then(({ wsClient }) => wsClient.disconnect(id).catch(() => {}));
+          wsClient.disconnect(id).catch(() => {});
         }
         set((state) => {
           const newTabs = state.openTabs.filter(t => t !== id);
