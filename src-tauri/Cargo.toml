@@ -1,6 +1,6 @@
 [package]
 name = "firv"
-version = "1.0.0-alpha"
+version = "2.0.0-alpha"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
