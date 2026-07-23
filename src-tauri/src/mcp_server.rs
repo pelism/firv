@@ -158,29 +158,30 @@ pub fn run_server(project_root: String, debug: bool) -> Result<(), String> {
     }
 
     let stdin = io::stdin();
-    let reader = stdin.lock();
+    let mut reader = io::BufReader::new(stdin.lock());
     let mut stdout = io::stdout();
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
+    loop {
+        let body = match read_mcp_message(&mut reader) {
+            Ok(Some(b)) => b,
+            Ok(None) => break, // EOF
             Err(e) => {
                 if debug {
-                    eprintln!("[firv-mcp] failed to read line from stdin: {}", e);
+                    eprintln!("[firv-mcp] read error: {}", e);
                 }
-                continue;
+                break;
             }
         };
 
-        if line.trim().is_empty() {
+        if body.trim().is_empty() {
             continue;
         }
 
         if debug {
-            eprintln!("[firv-mcp] recv: {}", line);
+            eprintln!("[firv-mcp] recv: {}", body);
         }
 
-        let response = handle_message(&line, &mut state);
+        let response = handle_message(&body, &mut state);
         if let Some(resp) = response {
             let json = serde_json::to_string(&resp)
                 .unwrap_or_else(|_| r#"{"jsonrpc":"2.0","error":{"code":-32603,"message":"Internal error"}}"#.to_string());
@@ -189,12 +190,65 @@ pub fn run_server(project_root: String, debug: bool) -> Result<(), String> {
                 eprintln!("[firv-mcp] send: {}", json);
             }
 
-            writeln!(stdout, "{}", json).map_err(|e| e.to_string())?;
-            stdout.flush().map_err(|e| e.to_string())?;
+            write_mcp_message(&mut stdout, &json).map_err(|e| e.to_string())?;
         }
     }
 
     Ok(())
+}
+
+fn read_mcp_message(reader: &mut impl BufRead) -> Result<Option<String>, String> {
+    loop {
+        let buf = reader.fill_buf().map_err(|e| e.to_string())?;
+        if buf.is_empty() {
+            return Ok(None); // EOF
+        }
+
+        // Skip leading whitespace/newlines between messages
+        if buf[0] == b'\n' || buf[0] == b'\r' {
+            reader.consume(1);
+            continue;
+        }
+
+        // Detect format: Content-Length header vs bare JSON
+        if buf[0] == b'{' {
+            // Newline-delimited JSON
+            let mut line = String::new();
+            let bytes_read = reader.read_line(&mut line).map_err(|e| e.to_string())?;
+            if bytes_read == 0 {
+                return Ok(None);
+            }
+            return Ok(Some(line));
+        } else {
+            // Content-Length framed
+            let mut content_length: Option<usize> = None;
+            loop {
+                let mut header_line = String::new();
+                let bytes_read = reader.read_line(&mut header_line).map_err(|e| e.to_string())?;
+                if bytes_read == 0 {
+                    return Ok(None);
+                }
+                let trimmed = header_line.trim();
+                if trimmed.is_empty() {
+                    break;
+                }
+                if let Some(value) = trimmed.strip_prefix("Content-Length:") {
+                    content_length = Some(
+                        value.trim().parse::<usize>().map_err(|e| format!("Invalid Content-Length: {}", e))?,
+                    );
+                }
+            }
+            let length = content_length.ok_or_else(|| "Missing Content-Length header".to_string())?;
+            let mut body = vec![0u8; length];
+            reader.read_exact(&mut body).map_err(|e| e.to_string())?;
+            return String::from_utf8(body).map(Some).map_err(|e| e.to_string());
+        }
+    }
+}
+
+fn write_mcp_message(writer: &mut impl Write, json: &str) -> io::Result<()> {
+    writeln!(writer, "{}", json)?;
+    writer.flush()
 }
 
 fn handle_message(line: &str, state: &mut McpServerState) -> Option<JsonRpcResponse> {
@@ -278,7 +332,24 @@ fn tools_call(params: &Value, state: &mut McpServerState) -> Result<Value, Strin
         .and_then(|v| v.as_str())
         .ok_or("Missing tool name")?;
     let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
-    handle_tool_call(name, arguments, state)
+    match handle_tool_call(name, arguments, state) {
+        Ok(value) => {
+            let text = serde_json::to_string_pretty(&value).unwrap_or_default();
+            Ok(json!({
+                "content": [
+                    { "type": "text", "text": text }
+                ]
+            }))
+        }
+        Err(e) => {
+            Ok(json!({
+                "content": [
+                    { "type": "text", "text": e }
+                ],
+                "isError": true
+            }))
+        }
+    }
 }
 
 fn resources_list(state: &McpServerState) -> Result<Value, String> {
@@ -391,6 +462,12 @@ url: "{{base_url}}/hello"
         }
     }
 
+    fn tool_result(response: &JsonRpcResponse) -> Value {
+        let result = response.result.as_ref().expect("missing result");
+        let text = result["content"][0]["text"].as_str().expect("missing content text");
+        serde_json::from_str(text).expect("content text is not valid JSON")
+    }
+
     fn message(method: &str, params: Value) -> String {
         serde_json::to_string(&json!({
             "jsonrpc": "2.0",
@@ -455,7 +532,8 @@ url: "{{base_url}}/hello"
             .expect("list response");
         assert_no_error(&list_response);
 
-        let requests = list_response.result.as_ref().unwrap()["requests"].as_array().unwrap();
+        let inner = tool_result(&list_response);
+        let requests = inner["requests"].as_array().unwrap();
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0]["id"], "hello");
     }
@@ -481,13 +559,8 @@ url: "{{base_url}}/hello"
         .expect("create response");
         assert_no_error(&create_response);
 
-        let id = create_response
-            .result
-            .as_ref()
-            .expect("create_response.result is None")
-            ["id"]
-            .as_str()
-            .unwrap();
+        let inner = tool_result(&create_response);
+        let id = inner["id"].as_str().unwrap();
         assert!(!id.is_empty());
 
         let list_response = handle_message(
@@ -499,7 +572,8 @@ url: "{{base_url}}/hello"
         )
         .expect("list response");
         assert_no_error(&list_response);
-        let requests = list_response.result.as_ref().unwrap()["requests"].as_array().unwrap();
+        let inner = tool_result(&list_response);
+        let requests = inner["requests"].as_array().unwrap();
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0]["name"], "Ping");
     }

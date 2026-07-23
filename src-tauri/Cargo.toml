@@ -4,6 +4,11 @@ version = "1.0.0-alpha"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
+default-run = "firv"
+
+[[bin]]
+name = "firv-cli"
+path = "src/bin/firv_cli.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

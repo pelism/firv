@@ -12,7 +12,8 @@
     "tauri": "tauri",
     "test": "npm run ts:test && npm run cargo:test",
     "ts:test": "vitest run",
-    "cargo:test": "cd src-tauri && cargo test"
+    "cargo:test": "cd src-tauri && cargo test",
+    "stage:cli": "node scripts/stage-cli.mjs"
   },
   "dependencies": {
     "@codemirror/lang-json": "6.0.2",
@@ -47,6 +48,7 @@
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.2",
     "@types/jmespath": "0.15.2",
+    "@types/node": "^26.1.1",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",

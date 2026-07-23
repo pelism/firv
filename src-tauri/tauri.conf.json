@@ -43,6 +43,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "externalBin": [
+      "binaries/firv-cli"
+    ],
     "createUpdaterArtifacts": true
   },
   "plugins": {

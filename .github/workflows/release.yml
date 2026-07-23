@@ -91,6 +91,9 @@ jobs:
         run: cargo test
         working-directory: src-tauri
 
+      - name: stage firv-cli sidecar
+        run: npm run stage:cli
+
       - name: build, sign, and deploy app
         id: tauri_build
         uses: tauri-apps/tauri-action@v0
