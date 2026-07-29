@@ -3,7 +3,7 @@ use ts_rs::TS;
 
 use crate::models::request::{KeyValue};
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
 #[ts(export, export_to = "firvManifest.ts")]
 pub struct FirvManifest {
     pub version: String, // e.g., "1.0"
@@ -11,7 +11,7 @@ pub struct FirvManifest {
     pub workspace: Workspace,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
 #[ts(export, export_to = "workspace.ts")]
 pub struct Workspace {
     pub order: Vec<SidebarItem>,
@@ -23,7 +23,7 @@ pub struct Workspace {
     pub active_environment: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
 #[ts(export, export_to = "environment.ts")]
 pub struct WorkspaceEnvironment {
     pub id: String,
@@ -32,7 +32,7 @@ pub struct WorkspaceEnvironment {
     pub variables: Vec<KeyValue>,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS)]
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
 #[serde(tag = "type", rename_all = "lowercase")]
 #[ts(export, export_to = "sidebarItem.ts")]
 pub enum SidebarItem {

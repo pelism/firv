@@ -5,6 +5,7 @@ mod models;
 mod http_client;
 pub mod mcp_server;
 mod mcp_tools;
+mod project;
 mod request_engine;
 mod scratchpad;
 mod storage;
@@ -13,8 +14,8 @@ mod ws_client;
 pub mod variables;
 mod watcher;
 
-use models::FirvManifest;
 use lifecycle::run_firv_request;
+use project::Project;
 use storage::get_request;
 use storage::update_request;
 use storage::delete_request;
@@ -78,31 +79,9 @@ async fn get_hydrated_sidebar(project_path: String) -> Result<hydration::Hydrate
 }
 
 #[tauri::command]
-fn get_manifest(project_path: String) -> Result<FirvManifest, String> {
-    let path = std::path::PathBuf::from(&project_path).join("firv.yaml");
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read manifest at {}: {}", path.display(), e))?;
-    serde_yaml::from_str(&content)
-        .map_err(|e| format!("Failed to parse manifest at {}: {}", path.display(), e))
-}
-
-#[tauri::command]
-fn load_project(path: String) -> Result<FirvManifest, String> {
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-
-    let manifest: FirvManifest = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
-
-    Ok(manifest)
-}
-
-#[tauri::command]
-async fn execute_request(
-    request: models::FirvRequest,
-    resolver: Option<variables::VariableResolver>,
-) -> Result<http_client::FirvResponse, String> {
-    let mut resolver = resolver.unwrap_or_default();
-    let prepared = http_client::prepare_request(&request, &mut resolver);
-    http_client::run_request(prepared).await
+fn get_manifest(project_path: String) -> Result<crate::models::FirvManifest, String> {
+    let project = Project::load(project_path)?;
+    Ok(project.manifest().clone())
 }
 
 #[tauri::command]
@@ -211,8 +190,6 @@ pub fn run_with_project(cli_project_path: Option<String>) {
         })
         .invoke_handler(tauri::generate_handler![
             get_manifest,
-            load_project,
-            execute_request,
             cancel_firv_request,
             run_firv_request,
             start_project_watcher,

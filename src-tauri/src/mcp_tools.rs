@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use crate::mcp_server::McpServerState;
 use crate::models::manifest::SidebarItem;
 use crate::models::request::{FirvRequest, HttpMethod};
+use crate::project::Project;
 use crate::request_engine::{execute_chain, run_request_by_id};
 use crate::storage;
 
@@ -269,7 +270,7 @@ fn load_project(arguments: Value, state: &mut McpServerState) -> Result<Value, S
 }
 
 fn list_requests(state: &McpServerState) -> Result<Value, String> {
-    if state.manifest.is_none() {
+    if state.project.is_none() {
         return Err("No project loaded".to_string());
     }
     let items = state.list_request_items();
@@ -298,15 +299,15 @@ fn list_requests(state: &McpServerState) -> Result<Value, String> {
 fn get_request(arguments: Value, state: &McpServerState) -> Result<Value, String> {
     let args: ExecuteRequestArgs = serde_json::from_value(arguments)
         .map_err(|e| format!("Invalid arguments: {}", e))?;
-    let project_root = state.project_root.as_ref().ok_or("No project loaded")?;
-    let request = storage::get_request(project_root.clone(), args.request_id)?;
+    let project_root = state.project_root().ok_or("No project loaded")?;
+    let request = storage::get_request(project_root.to_string(), args.request_id)?;
     Ok(json!({ "request": request }))
 }
 
 fn execute_request(arguments: Value, state: &McpServerState) -> Result<Value, String> {
     let args: ExecuteRequestArgs = serde_json::from_value(arguments)
         .map_err(|e| format!("Invalid arguments: {}", e))?;
-    let project_root = state.project_root.as_ref().ok_or("No project loaded")?;
+    let project_root = state.project_root().ok_or("No project loaded")?;
     let workspace_vars = state.workspace_vars();
     let environment_vars = state.environment_vars();
 
@@ -323,12 +324,12 @@ fn execute_request(arguments: Value, state: &McpServerState) -> Result<Value, St
 fn execute_request_by_payload(arguments: Value, state: &McpServerState) -> Result<Value, String> {
     let args: RequestPayloadArgs = serde_json::from_value(arguments)
         .map_err(|e| format!("Invalid arguments: {}", e))?;
-    let project_root = state.project_root.as_ref().ok_or("No project loaded")?;
+    let project_root = state.project_root().ok_or("No project loaded")?;
     let workspace_vars = state.workspace_vars();
     let environment_vars = state.environment_vars();
 
     let result = state.runtime.block_on(execute_chain(
-        project_root.clone(),
+        project_root.to_string(),
         args.request,
         workspace_vars,
         environment_vars,
@@ -346,7 +347,7 @@ fn list_environments(state: &McpServerState) -> Result<Value, String> {
         .collect();
     Ok(json!({
         "environments": environments,
-        "active_environment_id": state.active_environment_id
+        "active_environment_id": state.active_environment_id()
     }))
 }
 
@@ -354,17 +355,17 @@ fn set_active_environment(arguments: Value, state: &mut McpServerState) -> Resul
     let args: SetEnvironmentArgs = serde_json::from_value(arguments)
         .map_err(|e| format!("Invalid arguments: {}", e))?;
 
-    let manifest = state.manifest.as_ref().ok_or("No project loaded")?;
+    let manifest = state.project.as_ref().map(|p| p.manifest()).ok_or("No project loaded")?;
     if !manifest.workspace.environments.iter().any(|e| e.id == args.environment_id) {
         return Err(format!("Environment {} not found", args.environment_id));
     }
 
-    state.active_environment_id = Some(args.environment_id);
+    state.set_active_environment(Some(args.environment_id));
     Ok(json!({ "status": "ok" }))
 }
 
 fn list_ws_requests(state: &McpServerState) -> Result<Value, String> {
-    if state.manifest.is_none() {
+    if state.project.is_none() {
         return Err("No project loaded".to_string());
     }
     let items = state.list_ws_request_items();
@@ -439,12 +440,12 @@ fn execute_scratchpad_request(arguments: Value, state: &mut McpServerState) -> R
         .ok_or_else(|| format!("Scratchpad request {} not found", args.request_id))?
         .clone();
 
-    let project_root = state.project_root.as_ref().ok_or("No project loaded")?;
+    let project_root = state.project_root().ok_or("No project loaded")?;
     let workspace_vars = state.workspace_vars();
     let environment_vars = state.environment_vars();
 
     let result = state.runtime.block_on(execute_chain(
-        project_root.clone(),
+        project_root.to_string(),
         request,
         workspace_vars,
         environment_vars,
@@ -462,19 +463,14 @@ fn promote_scratchpad_request(arguments: Value, state: &mut McpServerState) -> R
         .take(&args.request_id)
         .ok_or_else(|| format!("Scratchpad request {} not found", args.request_id))?;
 
-    let project_root = state.project_root.as_ref().ok_or("No project loaded")?.clone();
+    let project_root = state.project_root().ok_or("No project loaded")?;
+    let mut manifest = Project::load(project_root.to_string())?.manifest().clone();
 
     if request.id.is_empty() || request.id != args.request_id {
         request.id = args.request_id.clone();
     }
 
-    storage::update_request(project_root.clone(), request.clone())?;
-
-    let manifest_path = std::path::Path::new(&project_root).join("firv.yaml");
-    let content = std::fs::read_to_string(&manifest_path)
-        .map_err(|e| format!("Failed to read manifest: {}", e))?;
-    let mut manifest: crate::models::manifest::FirvManifest = serde_yaml::from_str(&content)
-        .map_err(|e| format!("Failed to parse manifest: {}", e))?;
+    storage::update_request(project_root.to_string(), request.clone())?;
 
     let request_item = SidebarItem::Request {
         id: request.id.clone(),
@@ -489,7 +485,7 @@ fn promote_scratchpad_request(arguments: Value, state: &mut McpServerState) -> R
     }
 
     storage::update_manifest_structure(
-        project_root,
+        project_root.to_string(),
         manifest.workspace,
         Some(manifest.name),
     )?;

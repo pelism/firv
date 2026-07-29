@@ -3,8 +3,9 @@ use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 
 use crate::mcp_tools::handle_tool_call;
-use crate::models::manifest::{FirvManifest, SidebarItem, WorkspaceEnvironment};
+use crate::models::manifest::{SidebarItem, WorkspaceEnvironment};
 use crate::models::request::KeyValue;
+use crate::project::Project;
 use crate::scratchpad::Scratchpad;
 use crate::storage;
 
@@ -15,9 +16,7 @@ pub struct ServerInfo {
 }
 
 pub struct McpServerState {
-    pub project_root: Option<String>,
-    pub manifest: Option<FirvManifest>,
-    pub active_environment_id: Option<String>,
+    pub project: Option<Project>,
     pub scratchpad: Scratchpad,
     pub runtime: tokio::runtime::Runtime,
     pub startup_error: Option<String>,
@@ -28,9 +27,7 @@ impl McpServerState {
         let runtime = tokio::runtime::Runtime::new()
             .map_err(|e| format!("Failed to create Tokio runtime: {}", e))?;
         Ok(Self {
-            project_root: None,
-            manifest: None,
-            active_environment_id: None,
+            project: None,
             scratchpad: Scratchpad::new(),
             runtime,
             startup_error: None,
@@ -38,53 +35,45 @@ impl McpServerState {
     }
 
     pub fn load_project(&mut self, project_root: String) -> Result<(), String> {
-        let manifest_path = std::path::Path::new(&project_root).join("firv.yaml");
-        let content = std::fs::read_to_string(&manifest_path)
-            .map_err(|e| format!("Failed to read manifest at {}: {}", manifest_path.display(), e))?;
-        let manifest: FirvManifest = serde_yaml::from_str(&content)
-            .map_err(|e| format!("Failed to parse manifest at {}: {}", manifest_path.display(), e))?;
-        self.active_environment_id = manifest.workspace.active_environment.clone();
-        self.manifest = Some(manifest);
-        self.project_root = Some(project_root);
+        self.project = Some(Project::load(project_root)?);
         Ok(())
     }
 
+    pub fn project_root(&self) -> Option<&str> {
+        self.project.as_ref().map(|p| p.project_root())
+    }
+
     pub fn workspace_vars(&self) -> Vec<KeyValue> {
-        self.manifest
-            .as_ref()
-            .map(|m| m.workspace.globals.clone())
-            .unwrap_or_default()
+        self.project.as_ref().map(|p| p.workspace_vars()).unwrap_or_default()
     }
 
     pub fn environment_vars(&self) -> Vec<KeyValue> {
-        let active_id = self.active_environment_id.as_deref();
-        let manifest = match self.manifest.as_ref() {
-            Some(m) => m,
-            None => return Vec::new(),
-        };
+        self.project.as_ref().map(|p| p.environment_vars()).unwrap_or_default()
+    }
 
-        if let Some(id) = active_id {
-            if let Some(env) = manifest.workspace.environments.iter().find(|e| e.id == id) {
-                return env.variables.clone();
-            }
+    pub fn active_environment_id(&self) -> Option<&str> {
+        self.project.as_ref().and_then(|p| p.active_environment_id())
+    }
+
+    pub fn set_active_environment(&mut self, id: Option<String>) {
+        if let Some(project) = self.project.as_mut() {
+            project.set_active_environment(id);
         }
-
-        Vec::new()
     }
 
     pub fn list_environments(&self) -> Vec<&WorkspaceEnvironment> {
-        self.manifest
+        self.project
             .as_ref()
-            .map(|m| m.workspace.environments.iter().collect())
+            .map(|p| p.manifest().workspace.environments.iter().collect())
             .unwrap_or_default()
     }
 
     pub fn list_request_items(&self) -> Vec<(&SidebarItem, Vec<String>)> {
-        let manifest = match self.manifest.as_ref() {
-            Some(m) => m,
+        let project = match self.project.as_ref() {
+            Some(p) => p,
             None => return Vec::new(),
         };
-        collect_items(&manifest.workspace.order, Vec::new())
+        collect_items(&project.manifest().workspace.order, Vec::new())
     }
 
     pub fn list_ws_request_items(&self) -> Vec<(&SidebarItem, Vec<String>)> {
@@ -96,9 +85,9 @@ impl McpServerState {
 }
 
 fn collect_items<'a>(
-    items: &'a [SidebarItem],
+    items: &[SidebarItem],
     path: Vec<String>,
-) -> Vec<(&'a SidebarItem, Vec<String>)> {
+) -> Vec<(&SidebarItem, Vec<String>)> {
     let mut result = Vec::new();
     for item in items {
         match item {
@@ -150,7 +139,6 @@ pub fn run_server(project_root: String, debug: bool) -> Result<(), String> {
     }
 
     let mut state = McpServerState::new()?;
-    state.project_root = Some(project_root.clone());
     if let Err(e) = state.load_project(project_root) {
         return Err(e);
     } else if debug {
@@ -366,7 +354,7 @@ fn resources_list(state: &McpServerState) -> Result<Value, String> {
         }),
     ];
 
-    if let Some(project_root) = state.project_root.as_ref() {
+    if let Some(project_root) = state.project_root() {
         let requests_dir = std::path::Path::new(project_root).join("requests");
         if let Ok(entries) = std::fs::read_dir(requests_dir) {
             for entry in entries.flatten() {
@@ -392,7 +380,7 @@ fn resources_read(params: &Value, state: &McpServerState) -> Result<Value, Strin
 
     let contents = match uri {
         "manifest://firv.yaml" => {
-            let manifest = state.manifest.as_ref().ok_or("No project loaded")?;
+            let manifest = state.project.as_ref().map(|p| p.manifest()).ok_or("No project loaded")?;
             let yaml = serde_yaml::to_string(manifest).map_err(|e| e.to_string())?;
             vec![json!({ "uri": uri, "mimeType": "text/yaml", "text": yaml })]
         }
@@ -403,8 +391,8 @@ fn resources_read(params: &Value, state: &McpServerState) -> Result<Value, Strin
         }
         _ if uri.starts_with("request://") => {
             let id = uri.trim_start_matches("request://");
-            let project_root = state.project_root.as_ref().ok_or("No project loaded")?;
-            let content = storage::get_request(project_root.clone(), id.to_string())?;
+            let project_root = state.project_root().ok_or("No project loaded")?;
+            let content = storage::get_request(project_root.to_string(), id.to_string())?;
             let yaml = serde_yaml::to_string(&content).map_err(|e| e.to_string())?;
             vec![json!({ "uri": uri, "mimeType": "text/yaml", "text": yaml })]
         }

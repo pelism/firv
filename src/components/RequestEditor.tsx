@@ -585,26 +585,9 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         }
       }
       
-      let workspaceVars: Array<{ key: string; value: string; enabled: boolean }> = [];
-      let environmentVars: Array<{ key: string; value: string; enabled: boolean }> = [];
-      if (projectPath) {
-        try {
-          const manifest: any = await invoke('get_manifest', { projectPath });
-          workspaceVars = Array.isArray(manifest?.workspace?.globals) ? manifest.workspace.globals : [];
-          const activeEnvironmentId = manifest?.workspace?.active_environment;
-          const environments = Array.isArray(manifest?.workspace?.environments) ? manifest.workspace.environments : [];
-          const activeEnvironment = environments.find((environment: any) => environment?.id === activeEnvironmentId);
-          environmentVars = Array.isArray(activeEnvironment?.variables) ? activeEnvironment.variables : [];
-        } catch (err) {
-          console.error(`Warning: Could not load workspace manifest: ${err}`);
-        }
-      }
-
       const result: any = await invoke('run_firv_request', {
         projectRoot: projectPath || '.',
         request: buildFormattedRequest(),
-        workspaceVars,
-        environmentVars,
       });
 
       setResponse(requestId, {

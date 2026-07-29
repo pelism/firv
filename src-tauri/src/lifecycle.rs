@@ -1,6 +1,7 @@
 use tokio::sync::oneshot;
 use tauri::Manager;
 use crate::models::request::FirvRequest;
+use crate::project::Project;
 use crate::request_engine::{execute_chain, LifecycleResult};
 use crate::RequestCancellationState;
 
@@ -9,9 +10,11 @@ pub async fn run_firv_request(
     app: tauri::AppHandle,
     project_root: String,
     request: FirvRequest,
-    workspace_vars: Vec<crate::models::request::KeyValue>,
-    environment_vars: Vec<crate::models::request::KeyValue>,
 ) -> Result<LifecycleResult, String> {
+    let project = Project::load(project_root.clone())?;
+    let workspace_vars = project.workspace_vars();
+    let environment_vars = project.environment_vars();
+
     let (cancel_tx, cancel_rx) = oneshot::channel();
     {
         let state = app.state::<RequestCancellationState>();
