@@ -310,12 +310,14 @@ fn execute_request(arguments: Value, state: &McpServerState) -> Result<Value, St
     let project_root = state.project_root().ok_or("No project loaded")?;
     let workspace_vars = state.workspace_vars();
     let environment_vars = state.environment_vars();
+    let secrets = state.secrets();
 
     let result = state.runtime.block_on(run_request_by_id(
         project_root,
         &args.request_id,
         workspace_vars,
         environment_vars,
+        secrets,
     ));
 
     Ok(json!({ "result": result? }))
@@ -327,12 +329,14 @@ fn execute_request_by_payload(arguments: Value, state: &McpServerState) -> Resul
     let project_root = state.project_root().ok_or("No project loaded")?;
     let workspace_vars = state.workspace_vars();
     let environment_vars = state.environment_vars();
+    let secrets = state.secrets();
 
     let result = state.runtime.block_on(execute_chain(
         project_root.to_string(),
         args.request,
         workspace_vars,
         environment_vars,
+        secrets,
         0,
     ));
 
@@ -443,12 +447,14 @@ fn execute_scratchpad_request(arguments: Value, state: &mut McpServerState) -> R
     let project_root = state.project_root().ok_or("No project loaded")?;
     let workspace_vars = state.workspace_vars();
     let environment_vars = state.environment_vars();
+    let secrets = state.secrets();
 
     let result = state.runtime.block_on(execute_chain(
         project_root.to_string(),
         request,
         workspace_vars,
         environment_vars,
+        secrets,
         0,
     ));
 

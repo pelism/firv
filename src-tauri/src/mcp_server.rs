@@ -51,6 +51,10 @@ impl McpServerState {
         self.project.as_ref().map(|p| p.environment_vars()).unwrap_or_default()
     }
 
+    pub fn secrets(&self) -> std::collections::HashMap<String, String> {
+        self.project.as_ref().map(|p| p.secrets()).unwrap_or_default()
+    }
+
     pub fn active_environment_id(&self) -> Option<&str> {
         self.project.as_ref().and_then(|p| p.active_environment_id())
     }

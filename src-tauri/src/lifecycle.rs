@@ -14,6 +14,7 @@ pub async fn run_firv_request(
     let project = Project::load(project_root.clone())?;
     let workspace_vars = project.workspace_vars();
     let environment_vars = project.environment_vars();
+    let secrets = project.secrets();
 
     let (cancel_tx, cancel_rx) = oneshot::channel();
     {
@@ -23,7 +24,7 @@ pub async fn run_firv_request(
     }
 
     let result = tokio::select! {
-        result = execute_chain(project_root, request, workspace_vars, environment_vars, 0) => result,
+        result = execute_chain(project_root, request, workspace_vars, environment_vars, secrets, 0) => result,
         _ = cancel_rx => Err("Request canceled".to_string()),
     };
 

@@ -9,6 +9,11 @@ pub struct FirvManifest {
     pub version: String, // e.g., "1.0"
     pub name: String,    // Project Name
     pub workspace: Workspace,
+    /// Stable identifier for this workspace, used to namespace entries in the
+    /// global secret store (`~/.firv/secrets.yaml`) independent of the
+    /// workspace's filesystem path (which can be moved/renamed).
+    #[serde(default)]
+    pub workspace_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, TS, Clone)]
@@ -21,6 +26,20 @@ pub struct Workspace {
     pub environments: Vec<WorkspaceEnvironment>,
     #[serde(default)]
     pub active_environment: Option<String>,
+}
+
+impl FirvManifest {
+    /// Ensures `workspace_id` is populated, generating a new UUID if it is missing
+    /// (e.g. when loading a manifest created before workspace ids existed).
+    /// Returns `true` if a new id was generated so callers can decide to persist it.
+    pub fn ensure_workspace_id(&mut self) -> bool {
+        if self.workspace_id.trim().is_empty() {
+            self.workspace_id = uuid::Uuid::new_v4().to_string();
+            true
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, TS, Clone)]
@@ -154,6 +173,7 @@ workspace:
                 }],
                 active_environment: Some("dev".to_string()),
             },
+            workspace_id: "workspace-1".to_string(),
         };
 
         let yaml = serde_yaml::to_string(&manifest).unwrap();

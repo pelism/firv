@@ -1,5 +1,8 @@
 use crate::models::manifest::FirvManifest;
 use crate::models::request::KeyValue;
+use crate::secrets;
+use crate::storage::save_atomic;
+use std::collections::HashMap;
 use std::path::Path;
 
 /// Shared project state used by both the GUI Tauri commands and the MCP server.
@@ -19,8 +22,14 @@ impl Project {
         let manifest_path = Path::new(&project_root).join("firv.yaml");
         let content = std::fs::read_to_string(&manifest_path)
             .map_err(|e| format!("Failed to read manifest at {}: {}", manifest_path.display(), e))?;
-        let manifest: FirvManifest = serde_yaml::from_str(&content)
+        let mut manifest: FirvManifest = serde_yaml::from_str(&content)
             .map_err(|e| format!("Failed to parse manifest at {}: {}", manifest_path.display(), e))?;
+
+        // Backfill a stable workspace id for manifests created before secrets support
+        // existed, so the workspace can immediately be used to namespace secrets.
+        if manifest.ensure_workspace_id() {
+            let _ = save_atomic(manifest_path, &manifest);
+        }
 
         Ok(Self {
             project_root,
@@ -35,6 +44,16 @@ impl Project {
 
     pub fn manifest(&self) -> &FirvManifest {
         &self.manifest
+    }
+
+    pub fn workspace_id(&self) -> &str {
+        &self.manifest.workspace_id
+    }
+
+    /// Returns all secrets defined for this workspace (id -> value), loaded from
+    /// `~/.firv/secrets.yaml`. Returns an empty map if the store can't be read.
+    pub fn secrets(&self) -> HashMap<String, String> {
+        secrets::get_workspace_secrets(&self.manifest.workspace_id).unwrap_or_default()
     }
 
     /// Returns the active environment id, using the session override if one is set,
@@ -87,6 +106,7 @@ mod tests {
                     key: "global_key".to_string(),
                     value: "global_value".to_string(),
                     enabled: true,
+                    secret_ref: None,
                 }],
                 environments: vec![WorkspaceEnvironment {
                     id: "dev".to_string(),
@@ -95,10 +115,12 @@ mod tests {
                         key: "env_key".to_string(),
                         value: "env_value".to_string(),
                         enabled: true,
+                        secret_ref: None,
                     }],
                 }],
                 active_environment: Some("dev".to_string()),
             },
+            workspace_id: "workspace-1".to_string(),
         }
     }
 

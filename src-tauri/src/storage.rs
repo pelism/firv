@@ -1,4 +1,6 @@
+use crate::models::request::KeyValue;
 use crate::models::{manifest::{FirvManifest, SidebarItem, Workspace}, FirvRequest, WsRequest};
+use crate::secrets;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -87,8 +89,37 @@ pub fn update_manifest_structure(project_root: String, workspace: Workspace, nam
     if let Some(n) = name {
         manifest.name = n;
     }
+    manifest.ensure_workspace_id();
 
     save_atomic(manifest_path, &manifest)
+}
+
+/// Collects the distinct secret ids referenced by a set of `KeyValue` rows.
+fn collect_secret_refs(variables: &[KeyValue], ids: &mut Vec<String>) {
+    for variable in variables {
+        if let Some(id) = variable.secret_ref.as_ref().filter(|s| !s.is_empty()) {
+            if !ids.contains(id) {
+                ids.push(id.clone());
+            }
+        }
+    }
+}
+
+/// Collects every secret id referenced anywhere in a workspace's globals,
+/// environment variables, and request headers/formdata fields.
+fn collect_referenced_secret_ids(workspace: &Workspace, requests: &[FirvRequest]) -> Vec<String> {
+    let mut ids = Vec::new();
+    collect_secret_refs(&workspace.globals, &mut ids);
+    for environment in &workspace.environments {
+        collect_secret_refs(&environment.variables, &mut ids);
+    }
+    for request in requests {
+        collect_secret_refs(&request.headers, &mut ids);
+        if let crate::models::request::RequestBody::Formdata(fields) = &request.body {
+            collect_secret_refs(fields, &mut ids);
+        }
+    }
+    ids
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -97,6 +128,11 @@ struct ExportedWorkspace {
     name: String,
     workspace: Workspace,
     requests: Vec<FirvRequest>,
+    /// Present only when the export was created with `include_secrets: true`.
+    /// Contains only the secrets actually referenced by this workspace's
+    /// globals/environments/requests, not the entire local secret store.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    secrets: Option<secrets::WorkspaceSecrets>,
 }
 
 fn collect_request_ids(items: &[SidebarItem], request_ids: &mut Vec<String>) {
@@ -110,7 +146,11 @@ fn collect_request_ids(items: &[SidebarItem], request_ids: &mut Vec<String>) {
 }
 
 #[tauri::command]
-pub fn export_workspace(project_root: String, output_path: String) -> Result<(), String> {
+pub fn export_workspace(
+    project_root: String,
+    output_path: String,
+    include_secrets: Option<bool>,
+) -> Result<(), String> {
     let manifest_path = Path::new(&project_root).join("firv.yaml");
     let manifest_content = std::fs::read_to_string(&manifest_path)
         .map_err(|e| format!("Failed to read manifest: {}", e))?;
@@ -126,11 +166,21 @@ pub fn export_workspace(project_root: String, output_path: String) -> Result<(),
         requests.push(request);
     }
 
+    // Secrets are excluded by default: an export is often shared/committed, and
+    // silently embedding plaintext secret values in it would be a data leak.
+    let secrets = if include_secrets.unwrap_or(false) {
+        let ids = collect_referenced_secret_ids(&manifest.workspace, &requests);
+        Some(secrets::export_secrets(&manifest.workspace_id, &ids)?)
+    } else {
+        None
+    };
+
     let exported = ExportedWorkspace {
         version: manifest.version,
         name: manifest.name,
         workspace: manifest.workspace,
         requests,
+        secrets,
     };
 
     save_atomic(PathBuf::from(output_path), &exported)
@@ -147,11 +197,19 @@ pub fn import_firv_export(project_root: String, input_path: String) -> Result<()
         update_request(project_root.clone(), request)?;
     }
 
-    let manifest = FirvManifest {
+    let mut manifest = FirvManifest {
         version: exported.version,
         name: exported.name,
         workspace: exported.workspace,
+        workspace_id: String::new(),
     };
+    // Always mint a fresh workspace id on import so this workspace's secrets are
+    // namespaced independently of wherever the export originally came from.
+    manifest.ensure_workspace_id();
+
+    if let Some(secret_values) = exported.secrets {
+        secrets::import_secrets(&manifest.workspace_id, &secret_values)?;
+    }
 
     let manifest_path = Path::new(&project_root).join("firv.yaml");
     save_atomic(manifest_path, &manifest)
@@ -203,7 +261,7 @@ pub fn create_workspace(project_root: String, name: String) -> Result<(), String
             .map_err(|e| format!("Failed to create project directory: {}", e))?;
     }
 
-    let manifest = FirvManifest {
+    let mut manifest = FirvManifest {
         version: "1.0".to_string(),
         name,
         workspace: Workspace {
@@ -212,7 +270,9 @@ pub fn create_workspace(project_root: String, name: String) -> Result<(), String
             environments: vec![],
             active_environment: None,
         },
+        workspace_id: String::new(),
     };
+    manifest.ensure_workspace_id();
 
     save_atomic(manifest_path, &manifest)
 }

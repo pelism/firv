@@ -50,6 +50,7 @@ async fn run_request_step_by_id(
     project_root: &str,
     workspace_vars: &[KeyValue],
     environment_vars: &[KeyValue],
+    secrets: &HashMap<String, String>,
     request_id: &str,
     current_resolver: &mut VariableResolver,
     depth: usize,
@@ -68,6 +69,7 @@ async fn run_request_step_by_id(
         next_request,
         workspace_vars.to_vec(),
         environment_vars.to_vec(),
+        secrets.clone(),
         depth,
     )
     .await?;
@@ -90,6 +92,7 @@ async fn run_before_run_step(
     project_root: &str,
     workspace_vars: &[KeyValue],
     environment_vars: &[KeyValue],
+    secrets: &HashMap<String, String>,
     step: &BeforeRunStep,
     current_resolver: &mut VariableResolver,
     depth: usize,
@@ -98,6 +101,7 @@ async fn run_before_run_step(
         project_root,
         workspace_vars,
         environment_vars,
+        secrets,
         &step.request_id,
         current_resolver,
         depth,
@@ -110,6 +114,7 @@ async fn run_chain_step(
     project_root: &str,
     workspace_vars: &[KeyValue],
     environment_vars: &[KeyValue],
+    secrets: &HashMap<String, String>,
     step: &RequestChainStep,
     current_resolver: &mut VariableResolver,
     depth: usize,
@@ -118,6 +123,7 @@ async fn run_chain_step(
         project_root,
         workspace_vars,
         environment_vars,
+        secrets,
         &step.next_request_id,
         current_resolver,
         depth,
@@ -131,6 +137,7 @@ pub async fn execute_chain(
     request: FirvRequest,
     workspace_vars: Vec<KeyValue>,
     environment_vars: Vec<KeyValue>,
+    secrets: HashMap<String, String>,
     depth: usize,
 ) -> Result<LifecycleResult, String> {
     const MAX_CHAIN_DEPTH: usize = 8;
@@ -145,7 +152,7 @@ pub async fn execute_chain(
     let environment_vars_for_chain = environment_vars.clone();
 
     // Setup variable resolver
-    let mut resolver = VariableResolver::from_scopes(&workspace_vars, &environment_vars);
+    let mut resolver = VariableResolver::from_scopes(&workspace_vars, &environment_vars, &secrets);
 
     let mut before_run_results = Vec::new();
 
@@ -155,6 +162,7 @@ pub async fn execute_chain(
             &project_root,
             &workspace_vars_for_chain,
             &environment_vars_for_chain,
+            &secrets,
             step,
             &mut resolver,
             depth + 1,
@@ -230,6 +238,7 @@ pub async fn execute_chain(
                     &project_root,
                     &workspace_vars_for_chain,
                     &environment_vars_for_chain,
+                    &secrets,
                     step,
                     &mut resolver,
                     depth + 1,
@@ -240,6 +249,19 @@ pub async fn execute_chain(
                 }
             }
         }
+    }
+
+    // Redact any resolved secret values out of the debug/preview payload before it
+    // reaches the frontend. The outgoing network request above already used the
+    // real values; this only sanitizes what gets displayed.
+    hydrated_info.url = resolver.redact_secrets(&hydrated_info.url);
+    hydrated_info.headers = hydrated_info
+        .headers
+        .into_iter()
+        .map(|(k, v)| (k, resolver.redact_secrets(&v)))
+        .collect();
+    if let Some(body) = hydrated_info.body.as_deref() {
+        hydrated_info.body = Some(resolver.redact_secrets(body));
     }
 
     Ok(LifecycleResult {
@@ -260,13 +282,14 @@ pub async fn run_request_by_id(
     request_id: &str,
     workspace_vars: Vec<KeyValue>,
     environment_vars: Vec<KeyValue>,
+    secrets: HashMap<String, String>,
 ) -> Result<LifecycleResult, String> {
     let request_path = Path::new(project_root).join("requests").join(format!("{}.yaml", request_id));
     let content = std::fs::read_to_string(&request_path)
         .map_err(|e| format!("Failed to read request {}: {}", request_id, e))?;
     let request: FirvRequest = serde_yaml::from_str(&content)
         .map_err(|e| format!("Failed to parse request {}: {}", request_id, e))?;
-    execute_chain(project_root.to_string(), request, workspace_vars, environment_vars, 0).await
+    execute_chain(project_root.to_string(), request, workspace_vars, environment_vars, secrets, 0).await
 }
 
 #[cfg(test)]
@@ -316,7 +339,7 @@ mod tests {
             transforms: RequestTransforms::default(),
         };
 
-        let result = execute_chain("C:/Repos/firv".to_string(), request, vec![], vec![], 9).await;
+        let result = execute_chain("C:/Repos/firv".to_string(), request, vec![], vec![], HashMap::new(), 9).await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("exceeded max depth"));
@@ -354,9 +377,10 @@ mod tests {
             key: "name".to_string(),
             value: "Firv".to_string(),
             enabled: true,
+            secret_ref: None,
         }];
 
-        let result = execute_chain(".".to_string(), request, workspace_vars, vec![], 0)
+        let result = execute_chain(".".to_string(), request, workspace_vars, vec![], HashMap::new(), 0)
             .await
             .expect("chain should succeed");
 
@@ -391,19 +415,22 @@ mod tests {
             key: "base_path".to_string(),
             value: "global".to_string(),
             enabled: true,
+            secret_ref: None,
         }];
 
         let environment_vars = vec![KeyValue {
             key: "base_path".to_string(),
             value: "env".to_string(),
             enabled: true,
+            secret_ref: None,
         }, KeyValue {
             key: "environment".to_string(),
             value: "dev".to_string(),
             enabled: true,
+            secret_ref: None,
         }];
 
-        let result = execute_chain(".".to_string(), request, workspace_vars, environment_vars, 0)
+        let result = execute_chain(".".to_string(), request, workspace_vars, environment_vars, HashMap::new(), 0)
             .await
             .expect("chain should succeed");
 

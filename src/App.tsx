@@ -14,6 +14,7 @@ import { X } from "lucide-react";
 import logo from "./assets/icons/firv-logo.png";
 import { twMerge } from "tailwind-merge";
 import { InputModal } from "./components/InputModal";
+import { SecretModal } from "./components/SecretModal";
 import { WindowControls } from "./components/WindowControls";
 import { useNativeContextMenu } from "./hooks/useNativeContextMenu";
 import { runDailyUpdateCheck, runUpdateFlow } from "./lib/updaterClient";
@@ -227,6 +228,7 @@ function App() {
 
       <div className="flex-1 overflow-hidden relative flex">
         <InputModal />
+        <SecretModal />
         {pendingUpdate?.available && (
           <UpdatePrompt
             version={pendingUpdate.version}

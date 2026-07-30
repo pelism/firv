@@ -71,6 +71,11 @@ pub struct KeyValue {
     pub value: String,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// When set, the effective value of this variable is resolved from the named
+    /// entry in the workspace's secret store (`~/.firv/secrets.yaml`) instead of
+    /// `value`. `value` is left empty and never persisted for secret-referencing rows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_ref: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, TS, Default, Clone)]

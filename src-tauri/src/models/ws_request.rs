@@ -27,6 +27,7 @@ mod tests {
                 key: "Authorization".to_string(),
                 value: "Bearer token".to_string(),
                 enabled: true,
+                secret_ref: None,
             }],
         };
 

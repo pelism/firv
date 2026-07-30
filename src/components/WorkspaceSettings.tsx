@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Plus, Save, Settings2, Trash2, X } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Pencil, Plus, Save, Settings2, Trash2, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useSidebarStore } from '../store/sidebarStore';
+import { useSecretModalStore } from '../store/secretModalStore';
 import { Button } from './ui/button';
-import { KVEditor, KeyValue } from './editors/KVEditor';
+import { KVEditor, KeyValue, SecretOption } from './editors/KVEditor';
 
 type EnvironmentDraft = {
   id: string;
@@ -11,19 +12,20 @@ type EnvironmentDraft = {
   variables: KeyValue[];
 };
 
-const hydrateRows = (rows: Array<{ id?: string; key: string; value: string; enabled?: boolean }>): KeyValue[] => {
+const hydrateRows = (rows: Array<{ id?: string; key: string; value: string; enabled?: boolean; secret_ref?: string }>): KeyValue[] => {
   return rows.map((row) => ({
     id: row.id || crypto.randomUUID(),
     key: row.key ?? '',
     value: row.value ?? '',
     enabled: row.enabled ?? true,
+    secretRef: row.secret_ref || undefined,
   }));
 };
 
 const serializeRows = (rows: KeyValue[]) => {
   return rows
-    .filter(row => row.key.trim() !== '' || row.value.trim() !== '')
-    .map(({ id: _id, ...row }) => row);
+    .filter(row => row.key.trim() !== '' || row.value.trim() !== '' || !!row.secretRef)
+    .map(({ id: _id, secretRef, ...row }) => ({ ...row, secret_ref: secretRef || undefined }));
 };
 
 const serializeEnvironment = (environment: EnvironmentDraft) => ({
@@ -44,6 +46,10 @@ export function WorkspaceSettings() {
   const [environments, setEnvironments] = useState<EnvironmentDraft[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [initialState, setInitialState] = useState<InitialState | null>(null);
+  const [workspaceId, setWorkspaceId] = useState<string>('');
+  const [secretOptions, setSecretOptions] = useState<SecretOption[]>([]);
+  const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
+  const [revealingSecret, setRevealingSecret] = useState<string | null>(null);
   const { projectPath, setWorkspaceName: setStoreWorkspaceName, setWorkspaceSettingsOpen, ensureWorkspace, setActiveMenu } = useSidebarStore();
 
   const handleClose = () => {
@@ -95,8 +101,101 @@ export function WorkspaceSettings() {
       setVariables(loadedVariables);
       setEnvironments(loadedEnvironments);
       setInitialState({ name: loadedName, variables: loadedVariables, environments: loadedEnvironments });
+      setWorkspaceId(manifest.workspace_id || '');
+      if (manifest.workspace_id) {
+        await refreshSecrets(manifest.workspace_id);
+      }
     } catch (err) {
       console.error("Failed to load workspace settings", err);
+    }
+  };
+
+  const refreshSecrets = async (id: string) => {
+    try {
+      const options = await invoke<SecretOption[]>('list_secrets', { workspaceId: id });
+      setSecretOptions(options);
+    } catch (err) {
+      console.error('Failed to load secrets', err);
+    }
+  };
+
+  const handleCreateSecret = async (secretName: string, value: string): Promise<string> => {
+    if (!workspaceId) throw new Error('No workspace loaded');
+    const id = await invoke<string>('create_secret_value', { workspaceId, name: secretName, value });
+    await refreshSecrets(workspaceId);
+    return id;
+  };
+
+  const stripSecretRef = (rows: KeyValue[], secretId: string): KeyValue[] =>
+    rows.map(row => (row.secretRef === secretId ? { ...row, secretRef: undefined } : row));
+
+  const handleDeleteSecret = async (secretId: string) => {
+    if (!workspaceId) return;
+    try {
+      await invoke('delete_secret_value', { workspaceId, id: secretId });
+      await refreshSecrets(workspaceId);
+      setVariables(prev => stripSecretRef(prev, secretId));
+      setEnvironments(prev => prev.map(environment => ({ ...environment, variables: stripSecretRef(environment.variables, secretId) })));
+      setRevealedSecrets(prev => {
+        const { [secretId]: _removed, ...rest } = prev;
+        return rest;
+      });
+    } catch (err) {
+      console.error('Failed to delete secret', err);
+    }
+  };
+
+  const handleEditSecret = async (secretId: string, currentName: string) => {
+    if (!workspaceId) return;
+    let currentValue = revealedSecrets[secretId];
+    if (currentValue === undefined) {
+      try {
+        currentValue = await invoke<string>('get_secret_value', { workspaceId, id: secretId });
+      } catch (err) {
+        console.error('Failed to load secret for editing', err);
+        currentValue = '';
+      }
+    }
+    const existingNames = secretOptions.filter(o => o.id !== secretId).map(o => o.name);
+    const result = await useSecretModalStore.getState().openSecretModal({
+      title: 'Edit Secret',
+      description: 'Update this secret\'s name and/or value. Renaming it keeps existing references working.',
+      initialName: currentName,
+      initialValue: currentValue,
+      existingNames,
+    });
+    if (!result) return;
+    try {
+      if (result.name !== currentName) {
+        await invoke('rename_secret_value', { workspaceId, id: secretId, name: result.name });
+      }
+      if (result.value !== currentValue) {
+        await invoke('set_secret_value', { workspaceId, id: secretId, value: result.value });
+      }
+      await refreshSecrets(workspaceId);
+      setRevealedSecrets(prev => (secretId in prev ? { ...prev, [secretId]: result.value } : prev));
+    } catch (err) {
+      console.error('Failed to update secret', err);
+    }
+  };
+
+  const toggleRevealSecret = async (secretId: string) => {
+    if (!workspaceId) return;
+    if (secretId in revealedSecrets) {
+      setRevealedSecrets(prev => {
+        const { [secretId]: _removed, ...rest } = prev;
+        return rest;
+      });
+      return;
+    }
+    setRevealingSecret(secretId);
+    try {
+      const value = await invoke<string>('get_secret_value', { workspaceId, id: secretId });
+      setRevealedSecrets(prev => ({ ...prev, [secretId]: value }));
+    } catch (err) {
+      console.error('Failed to reveal secret', err);
+    } finally {
+      setRevealingSecret(null);
     }
   };
 
@@ -222,6 +321,9 @@ export function WorkspaceSettings() {
                 placeholderKey="Variable Name" 
                 placeholderValue="Value" 
                 uniqueEnabledKeys={true}
+                secretsEnabled={true}
+                secretOptions={secretOptions}
+                onCreateSecret={handleCreateSecret}
               />
             </div>
           </section>
@@ -279,11 +381,81 @@ export function WorkspaceSettings() {
                           placeholderKey="Variable Name"
                           placeholderValue="Value"
                           uniqueEnabledKeys={true}
+                          secretsEnabled={true}
+                          secretOptions={secretOptions}
+                          onCreateSecret={handleCreateSecret}
+                          secretNamePrefix={environment.name}
                         />
                       </div>
                     );
                   })}
                 </div>
+              )}
+            </div>
+          </section>
+
+          {/* Secrets Section */}
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Secrets</h2>
+              <p className="text-sm text-zinc-500">
+                Values stored outside of {name || 'this workspace'}'s files, in your local secret store. Reference them from a
+                global or environment variable using the <KeyRound size={12} className="inline -mt-0.5" /> icon above.
+              </p>
+            </div>
+            <div className="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm">
+              {!workspaceId ? (
+                <div className="text-sm text-zinc-500">Save this workspace once to start managing secrets.</div>
+              ) : secretOptions.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800 px-4 py-5 text-sm text-zinc-500 bg-zinc-50/60 dark:bg-zinc-950/40">
+                  No secrets yet. Create one from a variable row using the <KeyRound size={12} className="inline -mt-0.5" /> icon.
+                </div>
+              ) : (
+                <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {secretOptions.map((secret) => {
+                    const isRevealed = secret.id in revealedSecrets;
+                    return (
+                      <li key={secret.id} className="flex items-center justify-between py-2.5 gap-4">
+                        <span className="flex items-center gap-2 font-mono text-sm text-zinc-800 dark:text-zinc-200 min-w-0">
+                          <KeyRound size={14} className="text-amber-500 shrink-0" />
+                          <span className="shrink-0">{secret.name}</span>
+                          {isRevealed && (
+                            <span className="truncate text-zinc-500 dark:text-zinc-400">
+                              {revealedSecrets[secret.id]}
+                            </span>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => toggleRevealSecret(secret.id)}
+                            disabled={revealingSecret === secret.id}
+                            className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors disabled:opacity-50"
+                            aria-label={isRevealed ? `Hide secret ${secret.name}` : `Reveal secret ${secret.name}`}
+                          >
+                            {isRevealed ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleEditSecret(secret.id, secret.name)}
+                            className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                            aria-label={`Edit secret ${secret.name}`}
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSecret(secret.id)}
+                            className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                            aria-label={`Delete secret ${secret.name}`}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
           </section>

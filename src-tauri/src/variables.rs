@@ -76,12 +76,28 @@ static LIQUID_PARSER: LazyLock<liquid::Parser> = LazyLock::new(|| {
         .expect("Failed to build Liquid parser")
 });
 
+pub const REDACTED_SECRET_PLACEHOLDER: &str = "••••••••";
+
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct VariableResolver {
     pub globals: HashMap<String, String>,
     pub environment: HashMap<String, String>,
     pub folder_stack: Vec<HashMap<String, String>>,
     pub request_vars: HashMap<String, String>,
+    /// Secrets available to this workspace (id -> value), loaded from
+    /// `~/.firv/secrets.yaml`. Used to resolve `KeyValue.secret_ref` entries,
+    /// which store a secret's id rather than its (renameable) name.
+    #[serde(skip)]
+    pub secrets: HashMap<String, String>,
+    /// Normalized variable keys whose effective value came from a secret_ref,
+    /// so `trace()` can redact them instead of exposing the resolved value.
+    #[serde(skip)]
+    secret_keys: HashSet<String>,
+    /// Resolved secret values that were actually substituted somewhere (e.g. into
+    /// a header via `resolve_key_value`), used to redact them out of any debug
+    /// payload (like the hydrated "final request") shown to the frontend.
+    #[serde(skip)]
+    used_secret_values: HashSet<String>,
     #[serde(skip)]
     used_variable_keys: HashSet<String>,
 }
@@ -91,10 +107,11 @@ impl VariableResolver {
         Self::default()
     }
 
-    pub fn from_scopes(globals: &[KeyValue], environment: &[KeyValue]) -> Self {
+    pub fn from_scopes(globals: &[KeyValue], environment: &[KeyValue], secrets: &HashMap<String, String>) -> Self {
         let mut resolver = Self::new();
-        resolver.globals = Self::collect_enabled_variables(globals);
-        resolver.environment = Self::collect_enabled_variables(environment);
+        resolver.secrets = secrets.clone();
+        resolver.globals = Self::collect_enabled_variables(globals, secrets, &mut resolver.secret_keys);
+        resolver.environment = Self::collect_enabled_variables(environment, secrets, &mut resolver.secret_keys);
         resolver
     }
 
@@ -102,7 +119,11 @@ impl VariableResolver {
         key.to_ascii_lowercase()
     }
 
-    fn collect_enabled_variables(variables: &[KeyValue]) -> HashMap<String, String> {
+    fn collect_enabled_variables(
+        variables: &[KeyValue],
+        secrets: &HashMap<String, String>,
+        secret_keys: &mut HashSet<String>,
+    ) -> HashMap<String, String> {
         let mut result = HashMap::new();
 
         for variable in variables {
@@ -115,10 +136,66 @@ impl VariableResolver {
                 continue;
             }
 
-            result.insert(Self::normalize_key(key), variable.value.clone());
+            let normalized_key = Self::normalize_key(key);
+
+            match variable.secret_ref.as_deref().filter(|s| !s.trim().is_empty()) {
+                Some(secret_id) => {
+                    secret_keys.insert(normalized_key.clone());
+                    let value = secrets.get(secret_id).cloned().unwrap_or_default();
+                    result.insert(normalized_key, value);
+                }
+                None => {
+                    result.insert(normalized_key, variable.value.clone());
+                }
+            }
         }
 
         result
+    }
+
+    /// Resolves a `KeyValue`'s effective value: a secret_ref is looked up directly
+    /// from the loaded secret map (no templating applied), otherwise the literal
+    /// `value` is resolved through liquid/template substitution as usual.
+    pub fn resolve_key_value(&mut self, kv: &KeyValue) -> String {
+        if let Some(secret_name) = kv.secret_ref.as_deref().filter(|s| !s.trim().is_empty()) {
+            self.secret_keys.insert(Self::normalize_key(&kv.key));
+            let value = self.secrets.get(secret_name).cloned().unwrap_or_default();
+            if !value.is_empty() {
+                self.used_secret_values.insert(value.clone());
+            }
+            value
+        } else {
+            self.render_liquid(&kv.value).unwrap_or_else(|_| self.resolve_string(&kv.value))
+        }
+    }
+
+    /// Returns the set of resolved secret values that were actually used while
+    /// preparing this request (via `secret_ref` on headers/form fields, or via
+    /// `{{var}}` templating of a secret-backed global/environment variable).
+    pub fn secret_redaction_values(&self) -> HashSet<String> {
+        let mut values = self.used_secret_values.clone();
+        let merged = self.merge();
+        for key in &self.secret_keys {
+            if self.used_variable_keys.contains(key) {
+                if let Some(value) = merged.get(key) {
+                    if !value.is_empty() {
+                        values.insert(value.clone());
+                    }
+                }
+            }
+        }
+        values
+    }
+
+    /// Replaces any occurrence of a used secret value in `text` with a redaction
+    /// placeholder. Intended for debug/preview payloads (e.g. the hydrated "final
+    /// request") that are surfaced to the frontend, never for the outgoing request itself.
+    pub fn redact_secrets(&self, text: &str) -> String {
+        let mut redacted = text.to_string();
+        for value in self.secret_redaction_values() {
+            redacted = redacted.replace(&value, REDACTED_SECRET_PLACEHOLDER);
+        }
+        redacted
     }
 
     fn record_used_keys_from_input(&mut self, input: &str) {
@@ -155,6 +232,13 @@ impl VariableResolver {
         let mut entries = Vec::new();
         let mut entry_indexes: HashMap<String, usize> = HashMap::new();
         let should_include = |key: &str| self.used_variable_keys.contains(&Self::normalize_key(key));
+        let redact = |key: &str, value: &str| -> String {
+            if self.secret_keys.contains(&Self::normalize_key(key)) {
+                REDACTED_SECRET_PLACEHOLDER.to_string()
+            } else {
+                value.to_string()
+            }
+        };
         let mut push_or_replace = |entry: VariableTraceEntry| {
             let normalized_key = Self::normalize_key(&entry.key);
             if let Some(index) = entry_indexes.get(&normalized_key).copied() {
@@ -171,7 +255,7 @@ impl VariableResolver {
             }
             push_or_replace(VariableTraceEntry {
                 key: key.clone(),
-                value: value.clone(),
+                value: redact(key, value),
                 scope: "workspace".to_string(),
                 source: "manifest.globals".to_string(),
             });
@@ -182,7 +266,7 @@ impl VariableResolver {
             }
             push_or_replace(VariableTraceEntry {
                 key: key.clone(),
-                value: value.clone(),
+                value: redact(key, value),
                 scope: "environment".to_string(),
                 source: "runtime.environment".to_string(),
             });
@@ -194,7 +278,7 @@ impl VariableResolver {
                 }
                 push_or_replace(VariableTraceEntry {
                     key: key.clone(),
-                    value: value.clone(),
+                    value: redact(key, value),
                     scope: format!("folder[{}]", index),
                     source: "folder.variables".to_string(),
                 });
@@ -206,7 +290,7 @@ impl VariableResolver {
             }
             push_or_replace(VariableTraceEntry {
                 key: key.clone(),
-                value: value.clone(),
+                value: redact(key, value),
                 scope: "request".to_string(),
                 source: "request.extraction".to_string(),
             });
@@ -322,12 +406,15 @@ mod tests {
                 key: "base_url".to_string(),
                 value: "https://global.example".to_string(),
                 enabled: true,
+                secret_ref: None,
             }],
             &[KeyValue {
                 key: "base_url".to_string(),
                 value: "https://dev.example".to_string(),
                 enabled: true,
+                secret_ref: None,
             }],
+            &HashMap::new(),
         );
 
         let merged = resolver.merge();
@@ -341,12 +428,15 @@ mod tests {
                 key: "base_url".to_string(),
                 value: "https://global.example".to_string(),
                 enabled: true,
+                secret_ref: None,
             }],
             &[KeyValue {
                 key: "base_url".to_string(),
                 value: "https://dev.example".to_string(),
                 enabled: true,
+                secret_ref: None,
             }],
+            &HashMap::new(),
         );
 
         let rendered = resolver.resolve_string("{{base_url}}/items");
@@ -470,5 +560,75 @@ mod tests {
         resolver.request_vars.insert(rule.target.clone(), value.unwrap());
 
         assert_eq!(resolver.resolve_string("Bearer {{token}}"), "Bearer abc123");
+    }
+
+    #[test]
+    fn secret_ref_resolves_from_secrets_map() {
+        let secrets = HashMap::from([("db_password".to_string(), "hunter2".to_string())]);
+        let resolver = VariableResolver::from_scopes(
+            &[KeyValue {
+                key: "password".to_string(),
+                value: String::new(),
+                enabled: true,
+                secret_ref: Some("db_password".to_string()),
+            }],
+            &[],
+            &secrets,
+        );
+
+        assert_eq!(resolver.merge().get("password").unwrap(), "hunter2");
+    }
+
+    #[test]
+    fn trace_redacts_secret_ref_values() {
+        let secrets = HashMap::from([("db_password".to_string(), "hunter2".to_string())]);
+        let mut resolver = VariableResolver::from_scopes(
+            &[KeyValue {
+                key: "password".to_string(),
+                value: String::new(),
+                enabled: true,
+                secret_ref: Some("db_password".to_string()),
+            }],
+            &[],
+            &secrets,
+        );
+
+        let rendered = resolver.resolve_string("{{password}}");
+        assert_eq!(rendered, "hunter2");
+
+        let trace = resolver.trace();
+        assert_eq!(trace.len(), 1);
+        assert_eq!(trace[0].value, REDACTED_SECRET_PLACEHOLDER);
+    }
+
+    #[test]
+    fn resolve_key_value_looks_up_secret_ref_without_templating() {
+        let secrets = HashMap::from([("api_key".to_string(), "{{literal}}".to_string())]);
+        let mut resolver = VariableResolver::new();
+        resolver.secrets = secrets;
+
+        let kv = KeyValue {
+            key: "Authorization".to_string(),
+            value: String::new(),
+            enabled: true,
+            secret_ref: Some("api_key".to_string()),
+        };
+
+        assert_eq!(resolver.resolve_key_value(&kv), "{{literal}}");
+    }
+
+    #[test]
+    fn resolve_key_value_falls_back_to_literal_value_when_no_secret_ref() {
+        let mut resolver = VariableResolver::new();
+        resolver.globals.insert("name".to_string(), "Firv".to_string());
+
+        let kv = KeyValue {
+            key: "X-App".to_string(),
+            value: "{{name}}".to_string(),
+            enabled: true,
+            secret_ref: None,
+        };
+
+        assert_eq!(resolver.resolve_key_value(&kv), "Firv");
     }
 }

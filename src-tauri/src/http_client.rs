@@ -46,7 +46,7 @@ pub fn prepare_request(request: &FirvRequest, resolver: &mut VariableResolver) -
     for kv in &request.headers {
         if kv.enabled {
             let res_key = resolver.render_liquid(&kv.key).unwrap_or_else(|_| resolver.resolve_string(&kv.key));
-            let res_val = resolver.render_liquid(&kv.value).unwrap_or_else(|_| resolver.resolve_string(&kv.value));
+            let res_val = resolver.resolve_key_value(kv);
             headers.insert(res_key, res_val);
         }
     }
@@ -63,7 +63,7 @@ pub fn prepare_request(request: &FirvRequest, resolver: &mut VariableResolver) -
             for field in fields {
                 if field.enabled {
                     let res_key = resolver.render_liquid(&field.key).unwrap_or_else(|_| resolver.resolve_string(&field.key));
-                    let res_val = resolver.render_liquid(&field.value).unwrap_or_else(|_| resolver.resolve_string(&field.value));
+                    let res_val = resolver.resolve_key_value(field);
                     form_pairs.push((res_key, res_val));
                 }
             }
@@ -155,6 +155,7 @@ mod tests {
                 key: "Authorization".to_string(),
                 value: "Bearer {{token}}".to_string(),
                 enabled: true,
+                secret_ref: None,
             }],
             params: vec![],
             body,
@@ -193,11 +194,13 @@ mod tests {
                 key: "first_name".to_string(),
                 value: "{{name}}".to_string(),
                 enabled: true,
+                secret_ref: None,
             },
             KeyValue {
                 key: "disabled".to_string(),
                 value: "{{token}}".to_string(),
                 enabled: false,
+                secret_ref: None,
             },
         ]));
         let mut resolver = resolver_with_values();

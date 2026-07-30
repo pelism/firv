@@ -8,6 +8,7 @@ mod mcp_tools;
 mod project;
 mod request_engine;
 mod scratchpad;
+pub mod secrets;
 mod storage;
 mod ws_client;
 
@@ -26,6 +27,7 @@ use storage::export_workspace;
 use storage::import_firv_export;
 use storage::get_ws_request;
 use storage::update_ws_request;
+use secrets::{create_secret_value, delete_secret_value, get_secret_value, list_secrets, rename_secret_value, set_secret_value};
 use ws_client::{ws_connect, ws_disconnect, ws_send, WsConnectionRegistry};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -206,7 +208,13 @@ pub fn run_with_project(cli_project_path: Option<String>) {
             update_ws_request,
             ws_connect,
             ws_send,
-            ws_disconnect
+            ws_disconnect,
+            list_secrets,
+            create_secret_value,
+            get_secret_value,
+            set_secret_value,
+            rename_secret_value,
+            delete_secret_value
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
