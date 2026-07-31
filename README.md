@@ -157,6 +157,32 @@ firv.exe --workspace C:\path\to\my-workspace
 
 Replace `C:\\\\path\\\\to\\\\firv.exe` and `C:\\\\path\\\\to\\\\my-workspace` with the actual paths to the firv binary and workspace directory. On Linux/macOS, adjust the command path and use forward slashes.
 
+### Passing secrets to the MCP server
+
+Secrets are normally stored in `~/.firv/secrets.yaml` and referenced by requests via a stable secret id. Since an MCP client only launches a subprocess, it can't write to that file directly — instead, a secret's value can be overridden at runtime with an environment variable named `FIRV_SECRET_<NAME>`, where `<NAME>` is the secret's name uppercased with any non-alphanumeric characters replaced by `_`.
+
+For example, a secret named `api-key` is overridden by setting `FIRV_SECRET_API_KEY`. Add it to the `env` block of the MCP server entry:
+
+```json
+{
+  "mcpServers": {
+    "firv": {
+      "command": "C:\\\\path\\\\to\\\\firv.exe",
+      "args": [
+        "mcp",
+        "--workspace",
+        "C:\\\\path\\\\to\\\\my-workspace"
+      ],
+      "env": {
+        "FIRV_SECRET_API_KEY": "sk-..."
+      }
+    }
+  }
+}
+```
+
+The secret must already exist (by name) in `secrets.yaml` for its id to be resolvable; the environment variable only overrides its value for the lifetime of the MCP server process and is never written to disk.
+
 ## Contributing
 
 Contributions are welcome. Please open an issue or pull request on GitHub.

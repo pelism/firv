@@ -71,11 +71,29 @@ pub fn get_workspace_secrets_raw(workspace_id: &str) -> Result<WorkspaceSecrets,
 
 /// Returns the id → value map for the given workspace, used by the variable
 /// resolver to look up `KeyValue.secret_ref` (which stores a secret's id).
+///
+/// A secret's value can be overridden at runtime via an environment variable
+/// named `FIRV_SECRET_<NAME>`, where `<NAME>` is the secret's name uppercased
+/// with any non-alphanumeric characters replaced by `_`. This lets an MCP
+/// client (e.g. an agent's `mcpServers` config `env` block) supply secret
+/// values without writing them to `secrets.yaml`.
 pub fn get_workspace_secrets(workspace_id: &str) -> Result<HashMap<String, String>, String> {
     Ok(get_workspace_secrets_raw(workspace_id)?
         .into_iter()
-        .map(|(id, entry)| (id, entry.value))
+        .map(|(id, entry)| {
+            let value = env_override_for_name(&entry.name).unwrap_or(entry.value);
+            (id, value)
+        })
         .collect())
+}
+
+/// Looks up `FIRV_SECRET_<NAME>` in the environment for the given secret name.
+fn env_override_for_name(name: &str) -> Option<String> {
+    let key: String = format!("FIRV_SECRET_{}", name.to_ascii_uppercase())
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .collect();
+    std::env::var(key).ok()
 }
 
 /// Returns the list of secrets (id + name, no values) defined for the given
