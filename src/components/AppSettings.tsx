@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { X, Settings, Moon, Sun, Monitor } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Settings, Moon, Sun, Monitor, Loader2 } from 'lucide-react';
 import { useSidebarStore } from '../store/sidebarStore';
 import { useThemeStore, Theme } from '../store/themeStore';
 import { twMerge } from 'tailwind-merge';
 import { APP_VERSION } from '../version';
-import { isTauriEnvironment, runUpdateFlow } from '../lib/updaterClient';
+import { isTauriEnvironment, runUpdateFlow, installUpdate } from '../lib/updaterClient';
 import { useUpdateStore } from '../store/updateStore';
 
 export function AppSettings() {
@@ -13,7 +13,23 @@ export function AppSettings() {
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   const [supportsUpdater] = useState(() => isTauriEnvironment());
-  const { setPendingUpdate, setIsInstalling, setError } = useUpdateStore();
+  const {
+    pendingUpdate,
+    isInstalling,
+    setPendingUpdate,
+    setIsInstalling,
+    setError,
+  } = useUpdateStore();
+
+  useEffect(() => {
+    if (pendingUpdate?.available) {
+      setUpdateMessage(
+        pendingUpdate.version
+          ? `Update v${pendingUpdate.version} is ready. Press Update now to install and relaunch.`
+          : 'An update is ready. Press Update now to install and relaunch.'
+      );
+    }
+  }, [pendingUpdate]);
 
   const handleClose = () => {
     setAppSettingsOpen(false);
@@ -28,27 +44,51 @@ export function AppSettings() {
 
     setIsCheckingUpdates(true);
     setUpdateMessage(null);
+    setPendingUpdate(null);
+    setIsInstalling(false);
+    setError(null);
 
     try {
       const result = await runUpdateFlow({ installOnAvailable: false });
 
       if (result.available) {
         setPendingUpdate(result);
-        setIsInstalling(false);
-        setError(null);
-        setUpdateMessage(
-          result.version
-            ? `Update ${result.version} is ready. Choose Update now when you're ready.`
-            : 'An update is ready. Choose Update now when you are ready.'
-        );
       } else {
+        setPendingUpdate(null);
         setUpdateMessage('You are already running the latest version.');
       }
     } catch (error) {
       console.error('Manual update check failed', error);
+      setPendingUpdate(null);
       setUpdateMessage('Unable to check for updates. Please try again later.');
     } finally {
       setIsCheckingUpdates(false);
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!pendingUpdate?.available || isInstalling || isCheckingUpdates) {
+      return;
+    }
+
+    setIsInstalling(true);
+    setError(null);
+    setUpdateMessage('Installing update… The app will relaunch when finished.');
+
+    try {
+      await installUpdate();
+      setUpdateMessage('Update installed. Relaunching…');
+      setPendingUpdate(null);
+    } catch (error) {
+      console.error('Update installation failed', error);
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Unable to install update. Please try again later.';
+      setError(message);
+      setUpdateMessage(`Unable to install update: ${message}`);
+    } finally {
+      setIsInstalling(false);
     }
   };
 
@@ -121,20 +161,45 @@ export function AppSettings() {
                 <div className="text-sm font-medium text-foreground mt-1">v{APP_VERSION}</div>
               </div>
 
-              <div className="flex flex-col gap-2 sm:items-end">
-                <button
-                  type="button"
-                  onClick={handleCheckForUpdates}
-                  disabled={isCheckingUpdates || !supportsUpdater}
-                  className={twMerge(
-                    'px-4 py-2 rounded-xl text-xs font-bold transition-colors border border-border',
-                    supportsUpdater
-                      ? 'bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-70'
-                      : 'bg-muted text-muted-foreground cursor-not-allowed'
+              <div className="flex flex-col gap-3 sm:items-end">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCheckForUpdates}
+                    disabled={isCheckingUpdates || isInstalling || !supportsUpdater}
+                    className={twMerge(
+                      'px-4 py-2 rounded-xl text-xs font-bold transition-colors border border-border',
+                      supportsUpdater
+                        ? 'bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-70'
+                        : 'bg-muted text-muted-foreground cursor-not-allowed'
+                    )}
+                  >
+                    {isCheckingUpdates ? 'Checking…' : 'Check for updates'}
+                  </button>
+
+                  {pendingUpdate?.available && !isInstalling && (
+                    <button
+                      type="button"
+                      onClick={handleInstallUpdate}
+                      disabled={isInstalling}
+                      className="px-4 py-2 rounded-xl text-xs font-bold transition-colors bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-70 border border-transparent"
+                    >
+                      Update now
+                    </button>
                   )}
-                >
-                  {isCheckingUpdates ? 'Checking…' : 'Check for updates'}
-                </button>
+
+                  {isInstalling && (
+                    <button
+                      type="button"
+                      disabled
+                      className="px-4 py-2 rounded-xl text-xs font-bold transition-colors bg-primary/80 text-primary-foreground flex items-center gap-2 cursor-wait opacity-80"
+                    >
+                      <Loader2 size={14} className="animate-spin" />
+                      Installing…
+                    </button>
+                  )}
+                </div>
+
                 {updateMessage && (
                   <p className="text-xs text-muted-foreground max-w-xs text-left sm:text-right">
                     {updateMessage}

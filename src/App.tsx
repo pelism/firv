@@ -17,7 +17,7 @@ import { InputModal } from "./components/InputModal";
 import { SecretModal } from "./components/SecretModal";
 import { WindowControls } from "./components/WindowControls";
 import { useNativeContextMenu } from "./hooks/useNativeContextMenu";
-import { runDailyUpdateCheck, runUpdateFlow } from "./lib/updaterClient";
+import { runDailyUpdateCheck, installUpdate } from "./lib/updaterClient";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
@@ -122,7 +122,7 @@ function App() {
     setUpdateError(null);
 
     try {
-      await runUpdateFlow();
+      await installUpdate();
       setPendingUpdate(null);
       setIsInstallingUpdate(false);
     } catch (error) {

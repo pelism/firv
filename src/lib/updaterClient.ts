@@ -1,8 +1,10 @@
-import { check } from '@tauri-apps/plugin-updater';
+import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 
 const DAY_IN_MS = 86_400_000;
 const LAST_AUTO_CHECK_STORAGE_KEY = 'firv:last-auto-update-check';
+
+let cachedUpdate: Update | null = null;
 
 type TauriAwareWindow = Window & {
   __TAURI_INTERNALS__?: unknown;
@@ -39,6 +41,7 @@ export async function runUpdateFlow(options: { installOnAvailable?: boolean } = 
   }
 
   const update = await check();
+  cachedUpdate = update ?? null;
 
   if (update !== null) {
     if (installOnAvailable) {
@@ -53,6 +56,20 @@ export async function runUpdateFlow(options: { installOnAvailable?: boolean } = 
   }
 
   return { available: false };
+}
+
+export async function installUpdate(): Promise<UpdateFlowResult> {
+  if (!isTauriEnvironment()) {
+    return { available: false };
+  }
+
+  if (cachedUpdate) {
+    await cachedUpdate.downloadAndInstall();
+    await relaunch();
+    return { available: true, version: cachedUpdate.version };
+  }
+
+  return runUpdateFlow({ installOnAvailable: true });
 }
 
 export async function runDailyUpdateCheck(): Promise<UpdateFlowResult | null> {
