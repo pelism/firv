@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -5,16 +7,20 @@ use crate::mcp_server::McpServerState;
 use crate::models::manifest::SidebarItem;
 use crate::models::request::{FirvRequest, HttpMethod};
 use crate::project::Project;
-use crate::request_engine::{execute_chain, run_request_by_id};
+use crate::request_engine::{execute_chain_with_overrides, run_request_by_id_with_overrides};
 use crate::storage;
 
 #[derive(Debug, Deserialize)]
 struct ExecuteRequestArgs {
     request_id: String,
+    #[serde(default)]
+    variables: HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct RequestPayloadArgs {
+    #[serde(default)]
+    variables: HashMap<String, String>,
     #[serde(flatten)]
     request: FirvRequest,
 }
@@ -27,6 +33,8 @@ struct SetEnvironmentArgs {
 #[derive(Debug, Deserialize)]
 struct ScratchpadIdArgs {
     request_id: String,
+    #[serde(default)]
+    variables: HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -91,18 +99,23 @@ pub fn tools_schema() -> Value {
             },
             {
                 "name": "execute_request",
-                "description": "Execute a persisted workspace request by ID using the current active environment.",
+                "description": "Execute a persisted workspace request by ID using the current active environment. Use 'variables' to override any {{name}} placeholder in the request (e.g. a URL path slug like {{bookid}}) for this run only, without changing workspace globals or environment variables.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "request_id": { "type": "string" }
+                        "request_id": { "type": "string" },
+                        "variables": {
+                            "type": "object",
+                            "description": "Map of placeholder name to override value, e.g. { \"bookid\": \"42\" } for a URL containing {{bookid}}.",
+                            "additionalProperties": { "type": "string" }
+                        }
                     },
                     "required": ["request_id"]
                 }
             },
             {
                 "name": "execute_request_by_payload",
-                "description": "Execute an ad-hoc request payload against the loaded project using the current active environment.",
+                "description": "Execute an ad-hoc request payload against the loaded project using the current active environment. Use 'variables' to override any {{name}} placeholder (e.g. a URL path slug like {{bookid}}) for this run only.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -113,7 +126,12 @@ pub fn tools_schema() -> Value {
                         "headers": { "type": "array" },
                         "params": { "type": "array" },
                         "body": { "type": "object" },
-                        "transforms": { "type": "object" }
+                        "transforms": { "type": "object" },
+                        "variables": {
+                            "type": "object",
+                            "description": "Map of placeholder name to override value, e.g. { \"bookid\": \"42\" } for a URL containing {{bookid}}.",
+                            "additionalProperties": { "type": "string" }
+                        }
                     },
                     "required": ["id", "name", "method", "url"]
                 }
@@ -212,11 +230,16 @@ pub fn tools_schema() -> Value {
             },
             {
                 "name": "execute_scratchpad_request",
-                "description": "Execute a scratchpad request by ID using the current active environment.",
+                "description": "Execute a scratchpad request by ID using the current active environment. Use 'variables' to override any {{name}} placeholder (e.g. a URL path slug like {{bookid}}) for this run only.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "request_id": { "type": "string" }
+                        "request_id": { "type": "string" },
+                        "variables": {
+                            "type": "object",
+                            "description": "Map of placeholder name to override value, e.g. { \"bookid\": \"42\" } for a URL containing {{bookid}}.",
+                            "additionalProperties": { "type": "string" }
+                        }
                     },
                     "required": ["request_id"]
                 }
@@ -312,12 +335,13 @@ fn execute_request(arguments: Value, state: &McpServerState) -> Result<Value, St
     let environment_vars = state.environment_vars();
     let secrets = state.secrets();
 
-    let result = state.runtime.block_on(run_request_by_id(
+    let result = state.runtime.block_on(run_request_by_id_with_overrides(
         project_root,
         &args.request_id,
         workspace_vars,
         environment_vars,
         secrets,
+        args.variables,
     ));
 
     Ok(json!({ "result": result? }))
@@ -331,12 +355,13 @@ fn execute_request_by_payload(arguments: Value, state: &McpServerState) -> Resul
     let environment_vars = state.environment_vars();
     let secrets = state.secrets();
 
-    let result = state.runtime.block_on(execute_chain(
+    let result = state.runtime.block_on(execute_chain_with_overrides(
         project_root.to_string(),
         args.request,
         workspace_vars,
         environment_vars,
         secrets,
+        args.variables,
         0,
     ));
 
@@ -449,12 +474,13 @@ fn execute_scratchpad_request(arguments: Value, state: &mut McpServerState) -> R
     let environment_vars = state.environment_vars();
     let secrets = state.secrets();
 
-    let result = state.runtime.block_on(execute_chain(
+    let result = state.runtime.block_on(execute_chain_with_overrides(
         project_root.to_string(),
         request,
         workspace_vars,
         environment_vars,
         secrets,
+        args.variables,
         0,
     ));
 

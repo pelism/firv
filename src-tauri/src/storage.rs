@@ -1,4 +1,4 @@
-use crate::models::request::KeyValue;
+use crate::models::request::{KeyValue, RequestVariable};
 use crate::models::{manifest::{FirvManifest, SidebarItem, Workspace}, FirvRequest, WsRequest};
 use crate::secrets;
 use serde::Serialize;
@@ -105,8 +105,19 @@ fn collect_secret_refs(variables: &[KeyValue], ids: &mut Vec<String>) {
     }
 }
 
+/// Collects the distinct secret ids referenced by a set of `RequestVariable` rows.
+fn collect_request_variable_secret_refs(variables: &[RequestVariable], ids: &mut Vec<String>) {
+    for variable in variables {
+        if let Some(id) = variable.secret_ref.as_ref().filter(|s| !s.is_empty()) {
+            if !ids.contains(id) {
+                ids.push(id.clone());
+            }
+        }
+    }
+}
+
 /// Collects every secret id referenced anywhere in a workspace's globals,
-/// environment variables, and request headers/formdata fields.
+/// environment variables, and request headers/formdata/request-variable fields.
 fn collect_referenced_secret_ids(workspace: &Workspace, requests: &[FirvRequest]) -> Vec<String> {
     let mut ids = Vec::new();
     collect_secret_refs(&workspace.globals, &mut ids);
@@ -115,6 +126,7 @@ fn collect_referenced_secret_ids(workspace: &Workspace, requests: &[FirvRequest]
     }
     for request in requests {
         collect_secret_refs(&request.headers, &mut ids);
+        collect_request_variable_secret_refs(&request.transforms.request_variables, &mut ids);
         if let crate::models::request::RequestBody::Formdata(fields) = &request.body {
             collect_secret_refs(fields, &mut ids);
         }

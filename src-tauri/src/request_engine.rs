@@ -140,6 +140,31 @@ pub async fn execute_chain(
     secrets: HashMap<String, String>,
     depth: usize,
 ) -> Result<LifecycleResult, String> {
+    execute_chain_with_overrides(
+        project_root,
+        request,
+        workspace_vars,
+        environment_vars,
+        secrets,
+        HashMap::new(),
+        depth,
+    )
+    .await
+}
+
+/// Same as `execute_chain`, but accepts per-execution `overrides` (e.g. request variable
+/// values supplied from the UI or an MCP tool call) that take precedence over both the
+/// request's persisted `request_variables` defaults and any workspace/environment variable.
+#[async_recursion::async_recursion]
+pub async fn execute_chain_with_overrides(
+    project_root: String,
+    request: FirvRequest,
+    workspace_vars: Vec<KeyValue>,
+    environment_vars: Vec<KeyValue>,
+    secrets: HashMap<String, String>,
+    overrides: HashMap<String, String>,
+    depth: usize,
+) -> Result<LifecycleResult, String> {
     const MAX_CHAIN_DEPTH: usize = 8;
     if depth > MAX_CHAIN_DEPTH {
         return Err(format!("Request chain exceeded max depth of {}", MAX_CHAIN_DEPTH));
@@ -153,6 +178,16 @@ pub async fn execute_chain(
 
     // Setup variable resolver
     let mut resolver = VariableResolver::from_scopes(&workspace_vars, &environment_vars, &secrets);
+
+    // Seed the request-scoped variables: persisted defaults first, then any
+    // per-execution overrides on top (both land in `request_vars`, the highest
+    // precedence scope in `VariableResolver::merge`).
+    for rv in &request.transforms.request_variables {
+        resolver.seed_request_variable(&rv.key, &rv.value, rv.secret_ref.as_deref());
+    }
+    for (key, value) in &overrides {
+        resolver.request_vars.insert(key.trim().to_string(), value.clone());
+    }
 
     let mut before_run_results = Vec::new();
 
@@ -277,25 +312,26 @@ pub async fn execute_chain(
     })
 }
 
-pub async fn run_request_by_id(
+pub async fn run_request_by_id_with_overrides(
     project_root: &str,
     request_id: &str,
     workspace_vars: Vec<KeyValue>,
     environment_vars: Vec<KeyValue>,
     secrets: HashMap<String, String>,
+    overrides: HashMap<String, String>,
 ) -> Result<LifecycleResult, String> {
     let request_path = Path::new(project_root).join("requests").join(format!("{}.yaml", request_id));
     let content = std::fs::read_to_string(&request_path)
         .map_err(|e| format!("Failed to read request {}: {}", request_id, e))?;
     let request: FirvRequest = serde_yaml::from_str(&content)
         .map_err(|e| format!("Failed to parse request {}: {}", request_id, e))?;
-    execute_chain(project_root.to_string(), request, workspace_vars, environment_vars, secrets, 0).await
+    execute_chain_with_overrides(project_root.to_string(), request, workspace_vars, environment_vars, secrets, overrides, 0).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::request::{HttpMethod, RequestBody, RequestTransforms};
+    use crate::models::request::{HttpMethod, RequestBody, RequestTransforms, RequestVariable};
     use httpmock::prelude::*;
 
     #[test]
@@ -437,5 +473,111 @@ mod tests {
         mock.assert();
         assert_eq!(result.final_request.url, format!("{}/env/dev", server.base_url()));
         assert_eq!(result.variable_trace.iter().find(|entry| entry.key == "base_path").unwrap().scope, "environment");
+    }
+
+    #[tokio::test]
+    async fn request_variable_default_is_used_when_no_override_is_supplied() {
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET).path("/books/123");
+            then.status(200).body("ok");
+        });
+
+        let request = FirvRequest {
+            id: "id".to_string(),
+            name: "request variable default".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/books/{{{{bookid}}}}", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms {
+                request_variables: vec![RequestVariable {
+                    key: "bookid".to_string(),
+                    value: "123".to_string(),
+                    secret_ref: None,
+                }],
+                ..Default::default()
+            },
+        };
+
+        let result = execute_chain_with_overrides(".".to_string(), request, vec![], vec![], HashMap::new(), HashMap::new(), 0)
+            .await
+            .expect("chain should succeed");
+
+        mock.assert();
+        assert_eq!(result.final_request.url, format!("{}/books/123", server.base_url()));
+    }
+
+    #[tokio::test]
+    async fn per_execution_override_takes_precedence_over_request_variable_default() {
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET).path("/books/999");
+            then.status(200).body("ok");
+        });
+
+        let request = FirvRequest {
+            id: "id".to_string(),
+            name: "request variable override".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/books/{{{{bookid}}}}", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms {
+                request_variables: vec![RequestVariable {
+                    key: "bookid".to_string(),
+                    value: "123".to_string(),
+                    secret_ref: None,
+                }],
+                ..Default::default()
+            },
+        };
+
+        let overrides = HashMap::from([("bookid".to_string(), "999".to_string())]);
+
+        let result = execute_chain_with_overrides(".".to_string(), request, vec![], vec![], HashMap::new(), overrides, 0)
+            .await
+            .expect("chain should succeed");
+
+        mock.assert();
+        assert_eq!(result.final_request.url, format!("{}/books/999", server.base_url()));
+    }
+
+    #[tokio::test]
+    async fn request_variable_secret_ref_is_resolved_from_secret_store() {
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET).path("/books/hunter2");
+            then.status(200).body("ok");
+        });
+
+        let request = FirvRequest {
+            id: "id".to_string(),
+            name: "request variable secret".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/books/{{{{bookid}}}}", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms {
+                request_variables: vec![RequestVariable {
+                    key: "bookid".to_string(),
+                    value: String::new(),
+                    secret_ref: Some("secret-1".to_string()),
+                }],
+                ..Default::default()
+            },
+        };
+
+        let secrets = HashMap::from([("secret-1".to_string(), "hunter2".to_string())]);
+
+        let result = execute_chain_with_overrides(".".to_string(), request, vec![], vec![], secrets, HashMap::new(), 0)
+            .await
+            .expect("chain should succeed");
+
+        mock.assert();
+        assert_eq!(result.final_request.url, format!("{}/books/{}", server.base_url(), crate::variables::REDACTED_SECRET_PLACEHOLDER));
     }
 }

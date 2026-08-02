@@ -169,6 +169,27 @@ impl VariableResolver {
         }
     }
 
+    /// Seeds a request-scoped variable (e.g. a persisted request variable default,
+    /// or a per-execution override) into `request_vars`, resolving `secret_ref`
+    /// from the loaded secret map when set, mirroring `resolve_key_value`.
+    pub fn seed_request_variable(&mut self, key: &str, value: &str, secret_ref: Option<&str>) {
+        let key = key.trim().to_string();
+        if key.is_empty() {
+            return;
+        }
+
+        match secret_ref.filter(|s| !s.trim().is_empty()) {
+            Some(secret_id) => {
+                self.secret_keys.insert(Self::normalize_key(&key));
+                let resolved = self.secrets.get(secret_id).cloned().unwrap_or_default();
+                self.request_vars.insert(key, resolved);
+            }
+            None => {
+                self.request_vars.insert(key, value.to_string());
+            }
+        }
+    }
+
     /// Returns the set of resolved secret values that were actually used while
     /// preparing this request (via `secret_ref` on headers/form fields, or via
     /// `{{var}}` templating of a secret-backed global/environment variable).

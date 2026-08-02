@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use tokio::sync::oneshot;
 use tauri::Manager;
 use crate::models::request::FirvRequest;
 use crate::project::Project;
-use crate::request_engine::{execute_chain, LifecycleResult};
+use crate::request_engine::{execute_chain_with_overrides, LifecycleResult};
 use crate::RequestCancellationState;
 
 #[tauri::command]
@@ -10,6 +11,7 @@ pub async fn run_firv_request(
     app: tauri::AppHandle,
     project_root: String,
     request: FirvRequest,
+    overrides: Option<HashMap<String, String>>,
 ) -> Result<LifecycleResult, String> {
     let project = Project::load(project_root.clone())?;
     let workspace_vars = project.workspace_vars();
@@ -24,7 +26,7 @@ pub async fn run_firv_request(
     }
 
     let result = tokio::select! {
-        result = execute_chain(project_root, request, workspace_vars, environment_vars, secrets, 0) => result,
+        result = execute_chain_with_overrides(project_root, request, workspace_vars, environment_vars, secrets, overrides.unwrap_or_default(), 0) => result,
         _ = cancel_rx => Err("Request canceled".to_string()),
     };
 

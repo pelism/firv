@@ -97,6 +97,23 @@ pub struct RequestTransforms {
     pub response_extractions: Vec<RequestExtractionRule>,
     pub before_run: Vec<BeforeRunStep>,
     pub chain_steps: Vec<RequestChainStep>,
+    /// Named placeholders (e.g. `bookid` for a URL like `/books/{{bookid}}`, or any
+    /// `{{name}}` used in headers/params/body) with a persisted default value.
+    /// Resolved with the highest precedence of any variable scope, and may be
+    /// overridden per-execution (see `overrides` on `execute_chain`) without
+    /// mutating workspace globals or environment variables.
+    pub request_variables: Vec<RequestVariable>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, TS, Clone)]
+#[serde(default)]
+#[ts(export, export_to = "requestVariable.ts")]
+pub struct RequestVariable {
+    pub key: String,
+    pub value: String,
+    /// Id of a secret in the workspace's secret store. When set, the effective
+    /// value is resolved from that secret instead of `value` (which is left empty).
+    pub secret_ref: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, TS, Clone)]
