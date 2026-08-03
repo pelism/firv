@@ -24,13 +24,13 @@ export function WsEditor({ requestId, initialUrl, onProtocolChange }: WsEditorPr
   const { setWsStatus, appendWsMessage, clearWsMessages, wsConnections, setDirty } = useAppStore();
   const isDirty = useAppStore(state => state.dirtyRequests.has(requestId));
   const connection = wsConnections[requestId] ?? { status: 'disconnected' as const, messages: [] };
-  const { projectPath, getRequestName, pendingNames } = useSidebarStore();
+  const { workspacePath, getRequestName, pendingNames } = useSidebarStore();
 
   useEffect(() => {
     async function load() {
-      if (!projectPath) return;
+      if (!workspacePath) return;
       try {
-        const req: any = await invoke('get_ws_request', { projectRoot: projectPath, id: requestId });
+        const req: any = await invoke('get_ws_request', { workspaceRoot: workspacePath, id: requestId });
         const loadedUrl = req.url || '';
         const loadedHeaders = (req.headers || []).map((h: any) => ({ id: Math.random().toString(36).slice(2), ...h }));
         setUrl(loadedUrl);
@@ -46,7 +46,7 @@ export function WsEditor({ requestId, initialUrl, onProtocolChange }: WsEditorPr
       }
     }
     load();
-  }, [requestId, projectPath]);
+  }, [requestId, workspacePath]);
 
   useEffect(() => {
     if (!savedStateRef.current) {
@@ -118,11 +118,11 @@ export function WsEditor({ requestId, initialUrl, onProtocolChange }: WsEditorPr
   };
 
   const handleSave = async () => {
-    if (!projectPath) return;
+    if (!workspacePath) return;
     try {
       const name = pendingNames[requestId] || getRequestName(requestId) || 'New WS Request';
       await invoke('update_ws_request', {
-        projectRoot: projectPath,
+        workspaceRoot: workspacePath,
         request: {
           id: requestId,
           name,
@@ -157,7 +157,7 @@ export function WsEditor({ requestId, initialUrl, onProtocolChange }: WsEditorPr
         isRunning={isConnecting}
         isWsConnected={isConnected}
         isDirty={isDirty}
-        projectPath={projectPath ?? ''}
+        workspacePath={workspacePath ?? ''}
         validationError={null}
         isScratchpadRequest={false}
         workspaceGlobals={{}}

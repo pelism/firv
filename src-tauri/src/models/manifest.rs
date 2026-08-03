@@ -7,7 +7,7 @@ use crate::models::request::{KeyValue};
 #[ts(export, export_to = "firvManifest.ts")]
 pub struct FirvManifest {
     pub version: String, // e.g., "1.0"
-    pub name: String,    // Project Name
+    pub name: String,    // Workspace Name
     pub workspace: Workspace,
     /// Stable identifier for this workspace, used to namespace entries in the
     /// global secret store (`~/.firv/secrets.yaml`) independent of the

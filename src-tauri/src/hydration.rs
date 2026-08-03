@@ -47,8 +47,8 @@ pub struct HydratedTree {
     pub orphans: Vec<String>, // List of file names/paths that are orphans
 }
 
-pub async fn hydrate_manifest(project_path: &Path) -> Result<HydratedTree, String> {
-    let manifest_path = project_path.join("firv.yaml");
+pub async fn hydrate_manifest(workspace_path: &Path) -> Result<HydratedTree, String> {
+    let manifest_path = workspace_path.join("firv.yaml");
     let content = fs::read_to_string(&manifest_path)
         .await
         .map_err(|e| format!("Failed to read firv.yaml: {}", e))?;
@@ -56,7 +56,7 @@ pub async fn hydrate_manifest(project_path: &Path) -> Result<HydratedTree, Strin
     let manifest: FirvManifest =
         serde_yaml::from_str(&content).map_err(|e| format!("Failed to parse firv.yaml: {}", e))?;
 
-    let requests_dir = project_path.join("requests");
+    let requests_dir = workspace_path.join("requests");
 
     // Pass a mutable HashSet to collect found IDs during traversal
     let mut found_ids = HashSet::new();

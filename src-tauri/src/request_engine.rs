@@ -47,7 +47,7 @@ fn serialize_form_pairs(pairs: &[(String, String)]) -> String {
 
 #[async_recursion::async_recursion]
 async fn run_request_step_by_id(
-    project_root: &str,
+    workspace_root: &str,
     workspace_vars: &[KeyValue],
     environment_vars: &[KeyValue],
     secrets: &HashMap<String, String>,
@@ -55,7 +55,7 @@ async fn run_request_step_by_id(
     current_resolver: &mut VariableResolver,
     depth: usize,
 ) -> Result<Option<LifecycleResultSummary>, String> {
-    let next_path = Path::new(project_root).join("requests").join(format!("{}.yaml", request_id));
+    let next_path = Path::new(workspace_root).join("requests").join(format!("{}.yaml", request_id));
     let next_request = match std::fs::read_to_string(&next_path)
         .ok()
         .and_then(|content| serde_yaml::from_str::<FirvRequest>(&content).ok())
@@ -65,7 +65,7 @@ async fn run_request_step_by_id(
     };
 
     let next_result = execute_chain(
-        project_root.to_string(),
+        workspace_root.to_string(),
         next_request,
         workspace_vars.to_vec(),
         environment_vars.to_vec(),
@@ -89,7 +89,7 @@ async fn run_request_step_by_id(
 
 #[async_recursion::async_recursion]
 async fn run_before_run_step(
-    project_root: &str,
+    workspace_root: &str,
     workspace_vars: &[KeyValue],
     environment_vars: &[KeyValue],
     secrets: &HashMap<String, String>,
@@ -98,7 +98,7 @@ async fn run_before_run_step(
     depth: usize,
 ) -> Result<Option<LifecycleResultSummary>, String> {
     run_request_step_by_id(
-        project_root,
+        workspace_root,
         workspace_vars,
         environment_vars,
         secrets,
@@ -111,7 +111,7 @@ async fn run_before_run_step(
 
 #[async_recursion::async_recursion]
 async fn run_chain_step(
-    project_root: &str,
+    workspace_root: &str,
     workspace_vars: &[KeyValue],
     environment_vars: &[KeyValue],
     secrets: &HashMap<String, String>,
@@ -120,7 +120,7 @@ async fn run_chain_step(
     depth: usize,
 ) -> Result<Option<LifecycleResultSummary>, String> {
     run_request_step_by_id(
-        project_root,
+        workspace_root,
         workspace_vars,
         environment_vars,
         secrets,
@@ -133,7 +133,7 @@ async fn run_chain_step(
 
 #[async_recursion::async_recursion]
 pub async fn execute_chain(
-    project_root: String,
+    workspace_root: String,
     request: FirvRequest,
     workspace_vars: Vec<KeyValue>,
     environment_vars: Vec<KeyValue>,
@@ -141,7 +141,7 @@ pub async fn execute_chain(
     depth: usize,
 ) -> Result<LifecycleResult, String> {
     execute_chain_with_overrides(
-        project_root,
+        workspace_root,
         request,
         workspace_vars,
         environment_vars,
@@ -157,7 +157,7 @@ pub async fn execute_chain(
 /// request's persisted `request_variables` defaults and any workspace/environment variable.
 #[async_recursion::async_recursion]
 pub async fn execute_chain_with_overrides(
-    project_root: String,
+    workspace_root: String,
     request: FirvRequest,
     workspace_vars: Vec<KeyValue>,
     environment_vars: Vec<KeyValue>,
@@ -194,7 +194,7 @@ pub async fn execute_chain_with_overrides(
     // --- Before-run chain ---
     for step in &request.transforms.before_run {
         if let Some(summary) = run_before_run_step(
-            &project_root,
+            &workspace_root,
             &workspace_vars_for_chain,
             &environment_vars_for_chain,
             &secrets,
@@ -270,7 +270,7 @@ pub async fn execute_chain_with_overrides(
 
             if should_run {
                 if let Some(summary) = run_chain_step(
-                    &project_root,
+                    &workspace_root,
                     &workspace_vars_for_chain,
                     &environment_vars_for_chain,
                     &secrets,
@@ -313,19 +313,19 @@ pub async fn execute_chain_with_overrides(
 }
 
 pub async fn run_request_by_id_with_overrides(
-    project_root: &str,
+    workspace_root: &str,
     request_id: &str,
     workspace_vars: Vec<KeyValue>,
     environment_vars: Vec<KeyValue>,
     secrets: HashMap<String, String>,
     overrides: HashMap<String, String>,
 ) -> Result<LifecycleResult, String> {
-    let request_path = Path::new(project_root).join("requests").join(format!("{}.yaml", request_id));
+    let request_path = Path::new(workspace_root).join("requests").join(format!("{}.yaml", request_id));
     let content = std::fs::read_to_string(&request_path)
         .map_err(|e| format!("Failed to read request {}: {}", request_id, e))?;
     let request: FirvRequest = serde_yaml::from_str(&content)
         .map_err(|e| format!("Failed to parse request {}: {}", request_id, e))?;
-    execute_chain_with_overrides(project_root.to_string(), request, workspace_vars, environment_vars, secrets, overrides, 0).await
+    execute_chain_with_overrides(workspace_root.to_string(), request, workspace_vars, environment_vars, secrets, overrides, 0).await
 }
 
 #[cfg(test)]

@@ -26,7 +26,7 @@ describe('useSidebarStore export/import flows', () => {
       tree: [],
       scratchpadTree: [],
       pendingNames: {},
-      projectPath: '/workspace',
+      workspacePath: '/workspace',
       workspaceName: 'My Workspace',
       fetchSidebar: vi.fn(),
       loadOrphans: vi.fn(),
@@ -50,7 +50,7 @@ describe('useSidebarStore export/import flows', () => {
       filters: [{ name: 'YAML', extensions: ['yaml', 'yml'] }],
     });
     expect(invoke).toHaveBeenCalledWith('export_workspace', {
-      projectRoot: '/workspace',
+      workspaceRoot: '/workspace',
       outputPath: '/tmp/exported-workspace.yaml',
     });
   });
@@ -73,7 +73,7 @@ describe('useSidebarStore export/import flows', () => {
       title: 'Select FIRV Export YAML',
     });
     expect(invoke).toHaveBeenCalledWith('import_firv_export', {
-      projectRoot: '/workspace',
+      workspaceRoot: '/workspace',
       inputPath: '/tmp/imported-workspace.yaml',
     });
     expect(fetchSidebar).toHaveBeenCalledTimes(1);

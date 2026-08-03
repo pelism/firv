@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use crate::mcp_server::McpServerState;
 use crate::models::manifest::SidebarItem;
 use crate::models::request::{FirvRequest, HttpMethod};
-use crate::project::Project;
+use crate::workspace_context::WorkspaceContext;
 use crate::request_engine::{execute_chain_with_overrides, run_request_by_id_with_overrides};
 use crate::storage;
 
@@ -68,14 +68,14 @@ pub fn tools_schema() -> Value {
     json!({
         "tools": [
             {
-                "name": "load_project",
-                "description": "Load or reload a firv project from disk by path. Required before most other operations.",
+                "name": "load_workspace",
+                "description": "Load or reload a firv workspace from disk by path. Required before most other operations.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "project_root": { "type": "string", "description": "Absolute or relative path to the project directory containing firv.yaml" }
+                        "workspace_root": { "type": "string", "description": "Absolute or relative path to the workspace directory containing firv.yaml" }
                     },
-                    "required": ["project_root"]
+                    "required": ["workspace_root"]
                 }
             },
             {
@@ -115,7 +115,7 @@ pub fn tools_schema() -> Value {
             },
             {
                 "name": "execute_request_by_payload",
-                "description": "Execute an ad-hoc request payload against the loaded project using the current active environment. Use 'variables' to override any {{name}} placeholder (e.g. a URL path slug like {{bookid}}) for this run only.",
+                "description": "Execute an ad-hoc request payload against the loaded workspace using the current active environment. Use 'variables' to override any {{name}} placeholder (e.g. a URL path slug like {{bookid}}) for this run only.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -262,7 +262,7 @@ pub fn tools_schema() -> Value {
 
 pub fn handle_tool_call(name: &str, arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
     match name {
-        "load_project" => load_project(arguments, state),
+        "load_workspace" => load_workspace(arguments, state),
         "list_requests" => list_requests(state),
         "get_request" => get_request(arguments, state),
         "execute_request" => execute_request(arguments, state),
@@ -281,20 +281,20 @@ pub fn handle_tool_call(name: &str, arguments: Value, state: &mut McpServerState
     }
 }
 
-fn load_project(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
+fn load_workspace(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
     let args: std::collections::HashMap<String, Value> = serde_json::from_value(arguments)
         .map_err(|e| format!("Invalid arguments: {}", e))?;
-    let project_root = args
-        .get("project_root")
+    let workspace_root = args
+        .get("workspace_root")
         .and_then(|v| v.as_str())
-        .ok_or("Missing project_root")?;
-    state.load_project(project_root.to_string())?;
+        .ok_or("Missing workspace_root")?;
+    state.load_workspace(workspace_root.to_string())?;
     Ok(json!({ "status": "ok" }))
 }
 
 fn list_requests(state: &McpServerState) -> Result<Value, String> {
-    if state.project.is_none() {
-        return Err("No project loaded".to_string());
+    if state.workspace.is_none() {
+        return Err("No workspace loaded".to_string());
     }
     let items = state.list_request_items();
     let requests: Vec<Value> = items
@@ -322,21 +322,21 @@ fn list_requests(state: &McpServerState) -> Result<Value, String> {
 fn get_request(arguments: Value, state: &McpServerState) -> Result<Value, String> {
     let args: ExecuteRequestArgs = serde_json::from_value(arguments)
         .map_err(|e| format!("Invalid arguments: {}", e))?;
-    let project_root = state.project_root().ok_or("No project loaded")?;
-    let request = storage::get_request(project_root.to_string(), args.request_id)?;
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
+    let request = storage::get_request(workspace_root.to_string(), args.request_id)?;
     Ok(json!({ "request": request }))
 }
 
 fn execute_request(arguments: Value, state: &McpServerState) -> Result<Value, String> {
     let args: ExecuteRequestArgs = serde_json::from_value(arguments)
         .map_err(|e| format!("Invalid arguments: {}", e))?;
-    let project_root = state.project_root().ok_or("No project loaded")?;
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
     let workspace_vars = state.workspace_vars();
     let environment_vars = state.environment_vars();
     let secrets = state.secrets();
 
     let result = state.runtime.block_on(run_request_by_id_with_overrides(
-        project_root,
+        workspace_root,
         &args.request_id,
         workspace_vars,
         environment_vars,
@@ -350,13 +350,13 @@ fn execute_request(arguments: Value, state: &McpServerState) -> Result<Value, St
 fn execute_request_by_payload(arguments: Value, state: &McpServerState) -> Result<Value, String> {
     let args: RequestPayloadArgs = serde_json::from_value(arguments)
         .map_err(|e| format!("Invalid arguments: {}", e))?;
-    let project_root = state.project_root().ok_or("No project loaded")?;
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
     let workspace_vars = state.workspace_vars();
     let environment_vars = state.environment_vars();
     let secrets = state.secrets();
 
     let result = state.runtime.block_on(execute_chain_with_overrides(
-        project_root.to_string(),
+        workspace_root.to_string(),
         args.request,
         workspace_vars,
         environment_vars,
@@ -384,7 +384,7 @@ fn set_active_environment(arguments: Value, state: &mut McpServerState) -> Resul
     let args: SetEnvironmentArgs = serde_json::from_value(arguments)
         .map_err(|e| format!("Invalid arguments: {}", e))?;
 
-    let manifest = state.project.as_ref().map(|p| p.manifest()).ok_or("No project loaded")?;
+    let manifest = state.workspace.as_ref().map(|w| w.manifest()).ok_or("No workspace loaded")?;
     if !manifest.workspace.environments.iter().any(|e| e.id == args.environment_id) {
         return Err(format!("Environment {} not found", args.environment_id));
     }
@@ -394,8 +394,8 @@ fn set_active_environment(arguments: Value, state: &mut McpServerState) -> Resul
 }
 
 fn list_ws_requests(state: &McpServerState) -> Result<Value, String> {
-    if state.project.is_none() {
-        return Err("No project loaded".to_string());
+    if state.workspace.is_none() {
+        return Err("No workspace loaded".to_string());
     }
     let items = state.list_ws_request_items();
     let requests: Vec<Value> = items
@@ -469,13 +469,13 @@ fn execute_scratchpad_request(arguments: Value, state: &mut McpServerState) -> R
         .ok_or_else(|| format!("Scratchpad request {} not found", args.request_id))?
         .clone();
 
-    let project_root = state.project_root().ok_or("No project loaded")?;
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
     let workspace_vars = state.workspace_vars();
     let environment_vars = state.environment_vars();
     let secrets = state.secrets();
 
     let result = state.runtime.block_on(execute_chain_with_overrides(
-        project_root.to_string(),
+        workspace_root.to_string(),
         request,
         workspace_vars,
         environment_vars,
@@ -495,14 +495,14 @@ fn promote_scratchpad_request(arguments: Value, state: &mut McpServerState) -> R
         .take(&args.request_id)
         .ok_or_else(|| format!("Scratchpad request {} not found", args.request_id))?;
 
-    let project_root = state.project_root().ok_or("No project loaded")?;
-    let mut manifest = Project::load(project_root.to_string())?.manifest().clone();
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
+    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
 
     if request.id.is_empty() || request.id != args.request_id {
         request.id = args.request_id.clone();
     }
 
-    storage::update_request(project_root.to_string(), request.clone())?;
+    storage::update_request(workspace_root.to_string(), request.clone())?;
 
     let request_item = SidebarItem::Request {
         id: request.id.clone(),
@@ -517,7 +517,7 @@ fn promote_scratchpad_request(arguments: Value, state: &mut McpServerState) -> R
     }
 
     storage::update_manifest_structure(
-        project_root.to_string(),
+        workspace_root.to_string(),
         manifest.workspace,
         Some(manifest.name),
     )?;

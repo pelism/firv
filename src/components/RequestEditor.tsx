@@ -70,7 +70,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const requestOrigin = requestOrigins[requestId] ?? (scratchpadRequest ? 'scratchpad' : 'workspace');
   const {
     syncTreeToBackend, 
-    projectPath, 
+    workspacePath, 
     ensureWorkspace, 
     getRequestName, 
     pendingNames,
@@ -118,7 +118,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   // Hydration
   useEffect(() => {
     async function loadRequest() {
-      if (projectPath) {
+      if (workspacePath) {
         try {
           isHydratingRef.current = true;
 
@@ -140,7 +140,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           }
 
           const req: any = await invoke('get_request', {
-            projectRoot: projectPath,
+            workspaceRoot: workspacePath,
             id: requestId,
           });
           setMethod(req.method || 'GET');
@@ -280,7 +280,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         return;
       }
 
-      if (!projectPath) {
+      if (!workspacePath) {
         // Wait for workspace rehydration before deciding whether this is a scratchpad request.
         return;
       }
@@ -313,7 +313,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       isHydratingRef.current = false;
     }
     loadRequest();
-  }, [requestId, projectPath, scratchpadRequest, getRequestName, setDirty, clearScratchpadRequestData]);
+  }, [requestId, workspacePath, scratchpadRequest, getRequestName, setDirty, clearScratchpadRequestData]);
 
   const addChainStep = (placement?: 'before' | 'on_success' | 'on_failure') => {
     const selected = placement;
@@ -391,10 +391,10 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   };
 
   useEffect(() => {
-    if (!projectPath) return;
+    if (!workspacePath) return;
     (async () => {
       try {
-        const manifest: any = await invoke('get_manifest', { projectPath });
+        const manifest: any = await invoke('get_manifest', { workspacePath });
         if (manifest.workspace_id) {
           setWorkspaceId(manifest.workspace_id);
           await refreshSecrets(manifest.workspace_id);
@@ -403,14 +403,14 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         console.error('Failed to load workspace secrets', err);
       }
     })();
-  }, [projectPath]);
+  }, [workspacePath]);
 
   // Variables produced by response_extractions on the "before run" request are merged into
   // this request's variables at execution time and take precedence over any default set here
   // (see execute_chain_with_overrides), so they shouldn't be flagged as unresolved.
   useEffect(() => {
     const beforeRequestId = beforeRunChain[0]?.request_id;
-    if (!projectPath || !beforeRequestId) {
+    if (!workspacePath || !beforeRequestId) {
       setBeforeRunSuppliedVariableNames([]);
       return;
     }
@@ -418,7 +418,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     (async () => {
       try {
         const beforeRequest: any = await invoke('get_request', {
-          projectRoot: projectPath,
+          workspaceRoot: workspacePath,
           id: beforeRequestId,
         });
         if (cancelled) return;
@@ -429,7 +429,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       }
     })();
     return () => { cancelled = true; };
-  }, [projectPath, beforeRunChain]);
+  }, [workspacePath, beforeRunChain]);
 
   useEffect(() => {
     const handleGlobalKeydown = (e: KeyboardEvent) => {
@@ -469,7 +469,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       transforms: getTransformsState(templateText, extractions, beforeRunChain, chainSteps, url, requestVariables, { headers, params, body, formBody, authorization: authorization.value }),
     };
 
-    if (!projectPath) {
+    if (!workspacePath) {
       // Do not infer scratchpad state during workspace startup rehydration.
       // If this tab was restored from a workspace, persisting it here would
       // contaminate scratchpad storage and cause future launches to hydrate
@@ -507,7 +507,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     requestId,
     setDirty,
     pendingNames,
-    projectPath,
+    workspacePath,
     requestOrigin,
     scratchpadRequest,
   ]);
@@ -546,8 +546,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     const ok = await ensureWorkspace();
     if (!ok) return;
 
-    // After ensureWorkspace, the projectPath might have changed, so we MUST get the latest state
-    const { projectPath: currentPath, tree: currentTree } = useSidebarStore.getState();
+    // After ensureWorkspace, the workspacePath might have changed, so we MUST get the latest state
+    const { workspacePath: currentPath, tree: currentTree } = useSidebarStore.getState();
 
     try {
       const pendingName = pendingNames[requestId];
@@ -613,12 +613,12 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
       if (isWs) {
         await invoke('update_ws_request', {
-          projectRoot: currentPath || '.',
+          workspaceRoot: currentPath || '.',
           request: { id: requestId, name: requestName, url, headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })) }
         });
       } else {
         await invoke('update_request', {
-          projectRoot: currentPath || '.',
+          workspaceRoot: currentPath || '.',
           request: buildFormattedRequest()
         });
       }
@@ -705,7 +705,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       );
 
       const result: any = await invoke('run_firv_request', {
-        projectRoot: projectPath || '.',
+        workspaceRoot: workspacePath || '.',
         request: buildFormattedRequest(),
         overrides,
       });
@@ -750,7 +750,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         onRun={handleRun}
         isRunning={isRunning}
         isDirty={isDirty}
-        projectPath={projectPath}
+        workspacePath={workspacePath}
         validationError={validationError}
         isScratchpadRequest={isScratchpadRequest}
         workspaceGlobals={workspaceGlobals}

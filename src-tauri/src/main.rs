@@ -15,5 +15,5 @@ struct Cli {
 
 fn main() {
     let cli = Cli::parse();
-    firv_lib::run_with_project(cli.workspace)
+    firv_lib::run_with_workspace(cli.workspace)
 }

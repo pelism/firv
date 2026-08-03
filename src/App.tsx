@@ -33,8 +33,8 @@ function App() {
   const requestOrigins = useAppStore(state => state.requestOrigins);
   const responses = useAppStore(state => state.responses);
   const requestProtocols = useAppStore(state => state.requestProtocols);
-  const projectPath = useSidebarStore(state => state.projectPath);
-  const setProjectPath = useSidebarStore(state => state.setProjectPath);
+  const workspacePath = useSidebarStore(state => state.workspacePath);
+  const setWorkspacePath = useSidebarStore(state => state.setWorkspacePath);
   const workspaceEnvironments = useSidebarStore(state => state.workspaceEnvironments);
   const activeWorkspaceEnvironmentId = useSidebarStore(state => state.activeWorkspaceEnvironmentId);
   const setWorkspaceActiveEnvironment = useSidebarStore(state => state.setWorkspaceActiveEnvironment);
@@ -68,7 +68,7 @@ function App() {
   });
   const defaultMainLayout: Layout = { workspace: 30, requestEditor: 70 };
   const mainLayout = storedMainLayout ?? defaultMainLayout;
-  const showWorkspaceEnvironmentFooter = Boolean(projectPath);
+  const showWorkspaceEnvironmentFooter = Boolean(workspacePath);
 
   useEffect(() => {
     if (editingTabId && editInputRef.current) {
@@ -80,9 +80,9 @@ function App() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
-    listen<string>("cli-project-path", event => {
-      if (event.payload && event.payload !== projectPath) {
-        setProjectPath(event.payload);
+    listen<string>("cli-workspace-path", event => {
+      if (event.payload && event.payload !== workspacePath) {
+        setWorkspacePath(event.payload);
       }
     }).then(listener => {
       unlisten = listener;
@@ -93,7 +93,7 @@ function App() {
         unlisten();
       }
     };
-  }, [projectPath, setProjectPath]);
+  }, [workspacePath, setWorkspacePath]);
 
   useEffect(() => {
     let isMounted = true;
@@ -143,7 +143,7 @@ function App() {
   };
 
   const handleEnvironmentChange = async (environmentId: string) => {
-    if (!projectPath) return;
+    if (!workspacePath) return;
 
     setIsUpdatingEnvironment(true);
     try {

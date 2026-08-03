@@ -5,7 +5,7 @@ mod models;
 mod http_client;
 pub mod mcp_server;
 mod mcp_tools;
-mod project;
+mod workspace_context;
 mod request_engine;
 mod scratchpad;
 pub mod secrets;
@@ -16,7 +16,7 @@ pub mod variables;
 mod watcher;
 
 use lifecycle::run_firv_request;
-use project::Project;
+use workspace_context::WorkspaceContext;
 use storage::get_request;
 use storage::update_request;
 use storage::delete_request;
@@ -75,15 +75,15 @@ fn save_window_state(app: &tauri::AppHandle, state: &WindowState) -> Result<(), 
 }
 
 #[tauri::command]
-async fn get_hydrated_sidebar(project_path: String) -> Result<hydration::HydratedTree, String> {
-    let path = std::path::PathBuf::from(project_path);
+async fn get_hydrated_sidebar(workspace_path: String) -> Result<hydration::HydratedTree, String> {
+    let path = std::path::PathBuf::from(workspace_path);
     hydration::hydrate_manifest(&path).await
 }
 
 #[tauri::command]
-fn get_manifest(project_path: String) -> Result<crate::models::FirvManifest, String> {
-    let project = Project::load(project_path)?;
-    Ok(project.manifest().clone())
+fn get_manifest(workspace_path: String) -> Result<crate::models::FirvManifest, String> {
+    let workspace = WorkspaceContext::load(workspace_path)?;
+    Ok(workspace.manifest().clone())
 }
 
 #[tauri::command]
@@ -96,19 +96,19 @@ fn cancel_firv_request(state: tauri::State<'_, RequestCancellationState>) -> Res
 }
 
 #[tauri::command]
-fn start_project_watcher(app: tauri::AppHandle, path: String) -> Result<(), String> {
+fn start_workspace_watcher(app: tauri::AppHandle, path: String) -> Result<(), String> {
     let path_buf = std::path::PathBuf::from(path);
     watcher::start_watching(app, path_buf)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    run_with_project(None)
+    run_with_workspace(None)
 }
 
-pub fn run_with_project(cli_project_path: Option<String>) {
-    let cli_project_path = cli_project_path.map(std::sync::Arc::new);
-    let cli_project_path_for_setup = cli_project_path.clone();
+pub fn run_with_workspace(cli_workspace_path: Option<String>) {
+    let cli_workspace_path = cli_workspace_path.map(std::sync::Arc::new);
+    let cli_workspace_path_for_setup = cli_workspace_path.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -119,12 +119,12 @@ pub fn run_with_project(cli_project_path: Option<String>) {
         .manage(RequestCancellationState(Mutex::new(None)))
         .manage(WsConnectionRegistry::new())
         .setup(move |app| {
-            if let Some(path) = cli_project_path_for_setup.as_ref() {
+            if let Some(path) = cli_workspace_path_for_setup.as_ref() {
                 let path = (**path).clone();
                 let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                    let _ = app_handle.emit("cli-project-path", path);
+                    let _ = app_handle.emit("cli-workspace-path", path);
                 });
             }
 
@@ -194,7 +194,7 @@ pub fn run_with_project(cli_project_path: Option<String>) {
             get_manifest,
             cancel_firv_request,
             run_firv_request,
-            start_project_watcher,
+            start_workspace_watcher,
             get_hydrated_sidebar,
             get_request,
             update_request,

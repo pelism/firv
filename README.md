@@ -21,12 +21,12 @@
 ## Features
 
 - **Request editor** — compose HTTP requests with methods, headers, query parameters, and body payloads.
-- **Workspace-based projects** — organize requests into folders and projects stored on the local filesystem.
+- **Workspace-based requests** — organize requests into folders and workspaces stored on the local filesystem.
 - **Environments** — switch between environment variables per workspace.
 - **Response viewer** — inspect response status, headers, and body.
 - **Transforms** — reshape response bodies using Liquid templates before display. A custom `uuid` filter is included.
 - **Request chaining** — run sequential request steps with extraction rules and conditional logic.
-- **File-driven storage** — projects are plain files, making them easy to version control and share.
+- **File-driven storage** — requests are plain files, making them easy to version control and share.
 - **MCP server** — control firv headlessly via an MCP (Model Context Protocol) server over stdio for agent automation.
 - **Cross-platform** — runs on Windows and Linux.
 - **Automatic updates** — built-in updater checks for new releases.

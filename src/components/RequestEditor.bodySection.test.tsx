@@ -21,7 +21,7 @@ describe('RequestEditor body section', () => {
   beforeEach(() => {
     invoke.mockReset();
     useAppStore.getState().reset();
-    useSidebarStore.setState({ projectPath: '/workspace', tree: [], pendingNames: {}, workspaceName: 'workspace' } as any);
+    useSidebarStore.setState({ workspacePath: '/workspace', tree: [], pendingNames: {}, workspaceName: 'workspace' } as any);
     invoke.mockImplementation((name: string) => {
       if (name === 'get_request') return Promise.resolve(baseRequest);
       if (name === 'get_manifest') return Promise.resolve({ workspace: { globals: [] } });

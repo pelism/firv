@@ -18,7 +18,7 @@ const baseRequest = {
 };
 
 const createScratchpadSidebarState = () => ({
-  projectPath: '',
+  workspacePath: '',
   tree: [],
   scratchpadTree: [
     {
@@ -51,7 +51,7 @@ describe('RequestEditor command bar', () => {
     invoke.mockReset();
     useAppStore.getState().reset();
     useSidebarStore.setState({
-      projectPath: '/workspace',
+      workspacePath: '/workspace',
       tree: [],
       scratchpadTree: [],
       pendingNames: {},
@@ -178,7 +178,7 @@ describe('RequestEditor command bar', () => {
       transforms: { pre_request_template: '', response_extractions: [], before_run: [], chain_steps: [] },
     });
     useSidebarStore.setState({
-      projectPath: '',
+      workspacePath: '',
       tree: [],
       scratchpadTree: [],
       pendingNames: {},

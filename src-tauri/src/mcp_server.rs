@@ -5,7 +5,7 @@ use std::io::{self, BufRead, Write};
 use crate::mcp_tools::handle_tool_call;
 use crate::models::manifest::{SidebarItem, WorkspaceEnvironment};
 use crate::models::request::KeyValue;
-use crate::project::Project;
+use crate::workspace_context::WorkspaceContext;
 use crate::scratchpad::Scratchpad;
 use crate::storage;
 
@@ -16,7 +16,7 @@ pub struct ServerInfo {
 }
 
 pub struct McpServerState {
-    pub project: Option<Project>,
+    pub workspace: Option<WorkspaceContext>,
     pub scratchpad: Scratchpad,
     pub runtime: tokio::runtime::Runtime,
     pub startup_error: Option<String>,
@@ -27,57 +27,57 @@ impl McpServerState {
         let runtime = tokio::runtime::Runtime::new()
             .map_err(|e| format!("Failed to create Tokio runtime: {}", e))?;
         Ok(Self {
-            project: None,
+            workspace: None,
             scratchpad: Scratchpad::new(),
             runtime,
             startup_error: None,
         })
     }
 
-    pub fn load_project(&mut self, project_root: String) -> Result<(), String> {
-        self.project = Some(Project::load(project_root)?);
+    pub fn load_workspace(&mut self, workspace_root: String) -> Result<(), String> {
+        self.workspace = Some(WorkspaceContext::load(workspace_root)?);
         Ok(())
     }
 
-    pub fn project_root(&self) -> Option<&str> {
-        self.project.as_ref().map(|p| p.project_root())
+    pub fn workspace_root(&self) -> Option<&str> {
+        self.workspace.as_ref().map(|w| w.workspace_root())
     }
 
     pub fn workspace_vars(&self) -> Vec<KeyValue> {
-        self.project.as_ref().map(|p| p.workspace_vars()).unwrap_or_default()
+        self.workspace.as_ref().map(|w| w.workspace_vars()).unwrap_or_default()
     }
 
     pub fn environment_vars(&self) -> Vec<KeyValue> {
-        self.project.as_ref().map(|p| p.environment_vars()).unwrap_or_default()
+        self.workspace.as_ref().map(|w| w.environment_vars()).unwrap_or_default()
     }
 
     pub fn secrets(&self) -> std::collections::HashMap<String, String> {
-        self.project.as_ref().map(|p| p.secrets()).unwrap_or_default()
+        self.workspace.as_ref().map(|w| w.secrets()).unwrap_or_default()
     }
 
     pub fn active_environment_id(&self) -> Option<&str> {
-        self.project.as_ref().and_then(|p| p.active_environment_id())
+        self.workspace.as_ref().and_then(|w| w.active_environment_id())
     }
 
     pub fn set_active_environment(&mut self, id: Option<String>) {
-        if let Some(project) = self.project.as_mut() {
-            project.set_active_environment(id);
+        if let Some(workspace) = self.workspace.as_mut() {
+            workspace.set_active_environment(id);
         }
     }
 
     pub fn list_environments(&self) -> Vec<&WorkspaceEnvironment> {
-        self.project
+        self.workspace
             .as_ref()
-            .map(|p| p.manifest().workspace.environments.iter().collect())
+            .map(|w| w.manifest().workspace.environments.iter().collect())
             .unwrap_or_default()
     }
 
     pub fn list_request_items(&self) -> Vec<(&SidebarItem, Vec<String>)> {
-        let project = match self.project.as_ref() {
-            Some(p) => p,
+        let workspace = match self.workspace.as_ref() {
+            Some(w) => w,
             None => return Vec::new(),
         };
-        collect_items(&project.manifest().workspace.order, Vec::new())
+        collect_items(&workspace.manifest().workspace.order, Vec::new())
     }
 
     pub fn list_ws_request_items(&self) -> Vec<(&SidebarItem, Vec<String>)> {
@@ -137,16 +137,16 @@ struct JsonRpcError {
     data: Option<Value>,
 }
 
-pub fn run_server(project_root: String, debug: bool) -> Result<(), String> {
+pub fn run_server(workspace_root: String, debug: bool) -> Result<(), String> {
     if debug {
-        eprintln!("[firv-mcp] starting server workspace={}", project_root);
+        eprintln!("[firv-mcp] starting server workspace={}", workspace_root);
     }
 
     let mut state = McpServerState::new()?;
-    if let Err(e) = state.load_project(project_root) {
+    if let Err(e) = state.load_workspace(workspace_root) {
         return Err(e);
     } else if debug {
-        eprintln!("[firv-mcp] project loaded successfully");
+        eprintln!("[firv-mcp] workspace loaded successfully");
     }
 
     let stdin = io::stdin();
@@ -348,7 +348,7 @@ fn resources_list(state: &McpServerState) -> Result<Value, String> {
     let mut resources = vec![
         json!({
             "uri": "manifest://firv.yaml",
-            "name": "Project Manifest",
+            "name": "Workspace Manifest",
             "mimeType": "text/yaml"
         }),
         json!({
@@ -358,8 +358,8 @@ fn resources_list(state: &McpServerState) -> Result<Value, String> {
         }),
     ];
 
-    if let Some(project_root) = state.project_root() {
-        let requests_dir = std::path::Path::new(project_root).join("requests");
+    if let Some(workspace_root) = state.workspace_root() {
+        let requests_dir = std::path::Path::new(workspace_root).join("requests");
         if let Ok(entries) = std::fs::read_dir(requests_dir) {
             for entry in entries.flatten() {
                 if let Some(stem) = entry.path().file_stem().and_then(|s| s.to_str()) {
@@ -384,7 +384,7 @@ fn resources_read(params: &Value, state: &McpServerState) -> Result<Value, Strin
 
     let contents = match uri {
         "manifest://firv.yaml" => {
-            let manifest = state.project.as_ref().map(|p| p.manifest()).ok_or("No project loaded")?;
+            let manifest = state.workspace.as_ref().map(|w| w.manifest()).ok_or("No workspace loaded")?;
             let yaml = serde_yaml::to_string(manifest).map_err(|e| e.to_string())?;
             vec![json!({ "uri": uri, "mimeType": "text/yaml", "text": yaml })]
         }
@@ -395,8 +395,8 @@ fn resources_read(params: &Value, state: &McpServerState) -> Result<Value, Strin
         }
         _ if uri.starts_with("request://") => {
             let id = uri.trim_start_matches("request://");
-            let project_root = state.project_root().ok_or("No project loaded")?;
-            let content = storage::get_request(project_root.to_string(), id.to_string())?;
+            let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
+            let content = storage::get_request(workspace_root.to_string(), id.to_string())?;
             let yaml = serde_yaml::to_string(&content).map_err(|e| e.to_string())?;
             vec![json!({ "uri": uri, "mimeType": "text/yaml", "text": yaml })]
         }
@@ -503,7 +503,7 @@ url: "{{base_url}}/hello"
     }
 
     #[test]
-    fn load_project_and_list_requests() {
+    fn load_workspace_and_list_requests() {
         let (_dir, root) = temp_project();
         let mut state = McpServerState::new().expect("state");
 
@@ -511,8 +511,8 @@ url: "{{base_url}}/hello"
             &message(
                 "tools/call",
                 json!({
-                    "name": "load_project",
-                    "arguments": {"project_root": root}
+                    "name": "load_workspace",
+                    "arguments": {"workspace_root": root}
                 }),
             ),
             &mut state,

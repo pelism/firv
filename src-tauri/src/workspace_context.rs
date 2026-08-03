@@ -5,21 +5,21 @@ use crate::storage::save_atomic;
 use std::collections::HashMap;
 use std::path::Path;
 
-/// Shared project state used by both the GUI Tauri commands and the MCP server.
+/// Shared workspace state used by both the GUI Tauri commands and the MCP server.
 ///
 /// This centralizes manifest loading and variable extraction so both entry points
 /// behave identically when reading `firv.yaml`, globals, and active environment variables.
-pub struct Project {
-    project_root: String,
+pub struct WorkspaceContext {
+    workspace_root: String,
     manifest: FirvManifest,
     /// Optional session-level override for the active environment (e.g. MCP `set_active_environment`).
     active_environment_id: Option<String>,
 }
 
-impl Project {
-    /// Load a project from disk by its root directory (the directory containing `firv.yaml`).
-    pub fn load(project_root: String) -> Result<Self, String> {
-        let manifest_path = Path::new(&project_root).join("firv.yaml");
+impl WorkspaceContext {
+    /// Load a workspace from disk by its root directory (the directory containing `firv.yaml`).
+    pub fn load(workspace_root: String) -> Result<Self, String> {
+        let manifest_path = Path::new(&workspace_root).join("firv.yaml");
         let content = std::fs::read_to_string(&manifest_path)
             .map_err(|e| format!("Failed to read manifest at {}: {}", manifest_path.display(), e))?;
         let mut manifest: FirvManifest = serde_yaml::from_str(&content)
@@ -32,14 +32,14 @@ impl Project {
         }
 
         Ok(Self {
-            project_root,
+            workspace_root,
             manifest,
             active_environment_id: None,
         })
     }
 
-    pub fn project_root(&self) -> &str {
-        &self.project_root
+    pub fn workspace_root(&self) -> &str {
+        &self.workspace_root
     }
 
     pub fn manifest(&self) -> &FirvManifest {
@@ -126,37 +126,37 @@ mod tests {
 
     #[test]
     fn workspace_vars_returns_globals() {
-        let project = Project {
-            project_root: "/tmp".to_string(),
+        let workspace = WorkspaceContext {
+            workspace_root: "/tmp".to_string(),
             manifest: sample_manifest(),
             active_environment_id: None,
         };
-        let vars = project.workspace_vars();
+        let vars = workspace.workspace_vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].key, "global_key");
     }
 
     #[test]
     fn environment_vars_uses_manifest_active_environment() {
-        let project = Project {
-            project_root: "/tmp".to_string(),
+        let workspace = WorkspaceContext {
+            workspace_root: "/tmp".to_string(),
             manifest: sample_manifest(),
             active_environment_id: None,
         };
-        let vars = project.environment_vars();
+        let vars = workspace.environment_vars();
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].key, "env_key");
     }
 
     #[test]
     fn environment_vars_respects_session_override() {
-        let mut project = Project {
-            project_root: "/tmp".to_string(),
+        let mut workspace = WorkspaceContext {
+            workspace_root: "/tmp".to_string(),
             manifest: sample_manifest(),
             active_environment_id: None,
         };
-        project.set_active_environment(Some("missing".to_string()));
-        let vars = project.environment_vars();
+        workspace.set_active_environment(Some("missing".to_string()));
+        let vars = workspace.environment_vars();
         assert!(vars.is_empty());
     }
 }

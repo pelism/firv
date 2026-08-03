@@ -35,8 +35,8 @@ pub fn save_atomic<T: Serialize>(path: PathBuf, data: &T) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub fn get_request(project_root: String, id: String) -> Result<FirvRequest, String> {
-    let target_path = Path::new(&project_root).join("requests").join(format!("{}.yaml", id));
+pub fn get_request(workspace_root: String, id: String) -> Result<FirvRequest, String> {
+    let target_path = Path::new(&workspace_root).join("requests").join(format!("{}.yaml", id));
     let content = std::fs::read_to_string(&target_path)
         .map_err(|e| format!("Failed to read request {}: {}", id, e))?;
     serde_yaml::from_str(&content)
@@ -44,12 +44,12 @@ pub fn get_request(project_root: String, id: String) -> Result<FirvRequest, Stri
 }
 
 #[tauri::command]
-pub fn update_request(project_root: String, request: FirvRequest) -> Result<(), String> {
+pub fn update_request(workspace_root: String, request: FirvRequest) -> Result<(), String> {
     if request.id.is_empty() {
         return Err("Validation failed: Request is missing an ID".to_string());
     }
 
-    let root_path = Path::new(&project_root);
+    let root_path = Path::new(&workspace_root);
     let requests_dir = root_path.join("requests");
 
     if !requests_dir.exists() {
@@ -62,8 +62,8 @@ pub fn update_request(project_root: String, request: FirvRequest) -> Result<(), 
 }
 
 #[tauri::command]
-pub fn delete_request(project_root: String, id: String) -> Result<(), String> {
-    let target_path = Path::new(&project_root)
+pub fn delete_request(workspace_root: String, id: String) -> Result<(), String> {
+    let target_path = Path::new(&workspace_root)
         .join("requests")
         .join(format!("{}.yaml", id));
 
@@ -76,8 +76,8 @@ pub fn delete_request(project_root: String, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn update_manifest_structure(project_root: String, workspace: Workspace, name: Option<String>) -> Result<(), String> {
-    let manifest_path = Path::new(&project_root).join("firv.yaml");
+pub fn update_manifest_structure(workspace_root: String, workspace: Workspace, name: Option<String>) -> Result<(), String> {
+    let manifest_path = Path::new(&workspace_root).join("firv.yaml");
 
     let content = std::fs::read_to_string(&manifest_path)
         .map_err(|e| format!("Failed to read existing manifest: {}", e))?;
@@ -159,11 +159,11 @@ fn collect_request_ids(items: &[SidebarItem], request_ids: &mut Vec<String>) {
 
 #[tauri::command]
 pub fn export_workspace(
-    project_root: String,
+    workspace_root: String,
     output_path: String,
     include_secrets: Option<bool>,
 ) -> Result<(), String> {
-    let manifest_path = Path::new(&project_root).join("firv.yaml");
+    let manifest_path = Path::new(&workspace_root).join("firv.yaml");
     let manifest_content = std::fs::read_to_string(&manifest_path)
         .map_err(|e| format!("Failed to read manifest: {}", e))?;
     let manifest: FirvManifest = serde_yaml::from_str(&manifest_content)
@@ -174,7 +174,7 @@ pub fn export_workspace(
 
     let mut requests = Vec::new();
     for id in request_ids {
-        let request = get_request(project_root.clone(), id)?;
+        let request = get_request(workspace_root.clone(), id)?;
         requests.push(request);
     }
 
@@ -199,14 +199,14 @@ pub fn export_workspace(
 }
 
 #[tauri::command]
-pub fn import_firv_export(project_root: String, input_path: String) -> Result<(), String> {
+pub fn import_firv_export(workspace_root: String, input_path: String) -> Result<(), String> {
     let content = std::fs::read_to_string(&input_path)
         .map_err(|e| format!("Failed to read export file: {}", e))?;
     let exported: ExportedWorkspace = serde_yaml::from_str(&content)
         .map_err(|e| format!("Failed to parse export file: {}", e))?;
 
     for request in exported.requests {
-        update_request(project_root.clone(), request)?;
+        update_request(workspace_root.clone(), request)?;
     }
 
     let mut manifest = FirvManifest {
@@ -223,13 +223,13 @@ pub fn import_firv_export(project_root: String, input_path: String) -> Result<()
         secrets::import_secrets(&manifest.workspace_id, &secret_values)?;
     }
 
-    let manifest_path = Path::new(&project_root).join("firv.yaml");
+    let manifest_path = Path::new(&workspace_root).join("firv.yaml");
     save_atomic(manifest_path, &manifest)
 }
 
 #[tauri::command]
-pub fn get_ws_request(project_root: String, id: String) -> Result<WsRequest, String> {
-    let target_path = Path::new(&project_root).join("requests").join(format!("{}.yaml", id));
+pub fn get_ws_request(workspace_root: String, id: String) -> Result<WsRequest, String> {
+    let target_path = Path::new(&workspace_root).join("requests").join(format!("{}.yaml", id));
     let content = std::fs::read_to_string(&target_path)
         .map_err(|e| format!("Failed to read ws request {}: {}", id, e))?;
     serde_yaml::from_str(&content)
@@ -237,12 +237,12 @@ pub fn get_ws_request(project_root: String, id: String) -> Result<WsRequest, Str
 }
 
 #[tauri::command]
-pub fn update_ws_request(project_root: String, request: WsRequest) -> Result<(), String> {
+pub fn update_ws_request(workspace_root: String, request: WsRequest) -> Result<(), String> {
     if request.id.is_empty() {
         return Err("Validation failed: WsRequest is missing an ID".to_string());
     }
 
-    let root_path = Path::new(&project_root);
+    let root_path = Path::new(&workspace_root);
     let requests_dir = root_path.join("requests");
 
     if !requests_dir.exists() {
@@ -255,13 +255,13 @@ pub fn update_ws_request(project_root: String, request: WsRequest) -> Result<(),
 }
 
 #[tauri::command]
-pub fn check_workspace_exists(project_root: String) -> bool {
-    Path::new(&project_root).join("firv.yaml").exists()
+pub fn check_workspace_exists(workspace_root: String) -> bool {
+    Path::new(&workspace_root).join("firv.yaml").exists()
 }
 
 #[tauri::command]
-pub fn create_workspace(project_root: String, name: String) -> Result<(), String> {
-    let root_path = Path::new(&project_root);
+pub fn create_workspace(workspace_root: String, name: String) -> Result<(), String> {
+    let root_path = Path::new(&workspace_root);
     let manifest_path = root_path.join("firv.yaml");
 
     if manifest_path.exists() {
@@ -270,7 +270,7 @@ pub fn create_workspace(project_root: String, name: String) -> Result<(), String
 
     if !root_path.exists() {
         std::fs::create_dir_all(&root_path)
-            .map_err(|e| format!("Failed to create project directory: {}", e))?;
+            .map_err(|e| format!("Failed to create workspace directory: {}", e))?;
     }
 
     let mut manifest = FirvManifest {

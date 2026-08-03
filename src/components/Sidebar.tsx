@@ -90,7 +90,7 @@ const SidebarNode: React.FC<{
 
     const newRequestId = crypto.randomUUID();
     const newItemId = crypto.randomUUID();
-    const { projectPath, addItem } = useSidebarStore.getState();
+    const { workspacePath, addItem } = useSidebarStore.getState();
     const { setRequestOrigin, setScratchpadRequestData, scratchpadRequestData, openTab } = useAppStore.getState();
     const isWs = item.kind.type === 'ws';
     const newName = `${item.kind.name} Copy`;
@@ -123,15 +123,15 @@ const SidebarNode: React.FC<{
 
     try {
       if (isWs) {
-        const req = await invoke<WsRequest>('get_ws_request', { projectRoot: projectPath, id: item.kind.id });
+        const req = await invoke<WsRequest>('get_ws_request', { workspaceRoot: workspacePath, id: item.kind.id });
         const copied = { ...req, id: newRequestId, name: newName };
-        await invoke('update_ws_request', { projectRoot: projectPath, request: copied });
+        await invoke('update_ws_request', { workspaceRoot: workspacePath, request: copied });
         const newItem: HydratedSidebarItem = { id: newItemId, kind: { type: 'ws', id: newRequestId, name: newName } };
         await addItem(newItem, path.slice(0, -1));
       } else {
-        const req = await invoke<FirvRequest>('get_request', { projectRoot: projectPath, id: item.kind.id });
+        const req = await invoke<FirvRequest>('get_request', { workspaceRoot: workspacePath, id: item.kind.id });
         const copied = { ...req, id: newRequestId, name: newName };
-        await invoke('update_request', { projectRoot: projectPath, request: copied });
+        await invoke('update_request', { workspaceRoot: workspacePath, request: copied });
         const newItem: HydratedSidebarItem = { id: newItemId, kind: { type: 'request', id: newRequestId, name: newName, method: req.method || (item.kind as any).method } };
         await addItem(newItem, path.slice(0, -1));
       }
@@ -370,7 +370,7 @@ export const Sidebar: React.FC = () => {
     exportWorkspace, 
     importPostmanCollection, 
     importFirvExport, 
-    projectPath, 
+    workspacePath, 
     tree,
     expandedFolderIdsByWorkspace,
     toggleFolderExpansion,
@@ -387,9 +387,9 @@ export const Sidebar: React.FC = () => {
   const setRequestOrigin = useAppStore(state => state.setRequestOrigin);
 
   const [activeItem, setActiveItem] = useState<HydratedSidebarItem | null>(null);
-  const [activeTab, setActiveTab] = useState<'workspace' | 'scratchpad'>(() => (projectPath ? 'workspace' : 'scratchpad'));
+  const [activeTab, setActiveTab] = useState<'workspace' | 'scratchpad'>(() => (workspacePath ? 'workspace' : 'scratchpad'));
 
-  const workspaceKey = projectPath || SCRATCHPAD_WORKSPACE_KEY;
+  const workspaceKey = workspacePath || SCRATCHPAD_WORKSPACE_KEY;
   const expandedFolderIds = useMemo(() => new Set(expandedFolderIdsByWorkspace[workspaceKey] ?? []), [expandedFolderIdsByWorkspace, workspaceKey]);
 
   const sensors = useSensors(
@@ -412,16 +412,16 @@ export const Sidebar: React.FC = () => {
   }, [syncExpandedFoldersWithTree, workspaceKey, tree]);
 
   useEffect(() => {
-    if (!projectPath) {
+    if (!workspacePath) {
       setActiveTab('scratchpad');
     }
-  }, [projectPath]);
+  }, [workspacePath]);
 
   useEffect(() => {
-    if (projectPath) {
+    if (workspacePath) {
       setActiveTab('workspace');
     }
-  }, [projectPath]);
+  }, [workspacePath]);
 
   useLayoutEffect(() => {
     if (!isImportFlyoutOpen) return;
@@ -560,24 +560,24 @@ export const Sidebar: React.FC = () => {
             <button
               onClick={() => {
                 if (isWorkspaceTab) {
-                  if (!projectPath) return;
+                  if (!workspacePath) return;
                   void handleAddRequest();
                 } else {
                   handleAddScratchpadRequest();
                 }
               }}
-              disabled={isWorkspaceTab && !projectPath}
+              disabled={isWorkspaceTab && !workspacePath}
               className={twMerge(
                 "p-1.5 rounded-md text-muted-foreground/80 transition-colors",
-                isWorkspaceTab && !projectPath
+                isWorkspaceTab && !workspacePath
                   ? 'cursor-not-allowed opacity-40 bg-muted/60'
                   : 'hover:bg-muted hover:text-foreground'
               )}
-              title={isWorkspaceTab ? (projectPath ? "New Workspace Request" : "Open a workspace to add requests") : "New Scratchpad Request"}
+              title={isWorkspaceTab ? (workspacePath ? "New Workspace Request" : "Open a workspace to add requests") : "New Scratchpad Request"}
             >
               <Plus size={16} />
             </button>
-            {isWorkspaceTab && projectPath && (
+            {isWorkspaceTab && workspacePath && (
               <>
                 <button
                   onClick={handleAddFolder}
@@ -725,7 +725,7 @@ export const Sidebar: React.FC = () => {
           </div>
 
           {isWorkspaceTab && workspaceName && (
-            <div className="flex items-center justify-between px-3 py-2 border border-primary/20 rounded-xl group/workspace-pill transition-all" title={projectPath}>
+            <div className="flex items-center justify-between px-3 py-2 border border-primary/20 rounded-xl group/workspace-pill transition-all" title={workspacePath}>
               <div className="flex items-center gap-2 overflow-hidden">
                 <span className="text-[11px] font-bold text-primary truncate uppercase tracking-wider">
                   {workspaceName}
@@ -761,10 +761,10 @@ export const Sidebar: React.FC = () => {
                 isWorkspaceTab
                   ? 'text-primary border-primary'
                   : 'text-muted-foreground border-transparent hover:text-foreground hover:border-border',
-                !projectPath && 'opacity-50 cursor-not-allowed hover:border-transparent'
+                !workspacePath && 'opacity-50 cursor-not-allowed hover:border-transparent'
               )}
               onClick={() => {
-                if (!projectPath) return;
+                if (!workspacePath) return;
                 setActiveTab('workspace');
               }}
             >
@@ -796,7 +796,7 @@ const SidebarContent: React.FC<{
   activeTab: 'workspace' | 'scratchpad';
   onAddScratchpadRequest: () => void;
 }> = ({ searchQuery, activeItem, expandedFolderIds, toggleFolder, activeTab, onAddScratchpadRequest }) => {
-  const { tree, scratchpadTree, projectPath } = useSidebarStore();
+  const { tree, scratchpadTree, workspacePath } = useSidebarStore();
   const { setNodeRef } = useDroppable({
     id: 'sidebar-root',
   });
@@ -804,7 +804,7 @@ const SidebarContent: React.FC<{
   return (
     <div ref={setNodeRef} className="flex-1 overflow-y-auto pb-4 custom-scrollbar min-h-0 px-3">
       {activeTab === 'workspace' ? (
-        projectPath ? (
+        workspacePath ? (
           tree.length > 0 ? (
             <SortableContext items={tree.map(i => i.id)} strategy={verticalListSortingStrategy}>
               {tree.map((item, idx) => (

@@ -50,7 +50,7 @@ export function WorkspaceSettings() {
   const [secretOptions, setSecretOptions] = useState<SecretOption[]>([]);
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
   const [revealingSecret, setRevealingSecret] = useState<string | null>(null);
-  const { projectPath, setWorkspaceName: setStoreWorkspaceName, setWorkspaceSettingsOpen, ensureWorkspace, setActiveMenu } = useSidebarStore();
+  const { workspacePath, setWorkspaceName: setStoreWorkspaceName, setWorkspaceSettingsOpen, ensureWorkspace, setActiveMenu } = useSidebarStore();
 
   const handleClose = () => {
     setWorkspaceSettingsOpen(false);
@@ -77,17 +77,17 @@ export function WorkspaceSettings() {
   };
 
   useEffect(() => {
-    if (projectPath) {
+    if (workspacePath) {
       loadWorkspaceSettings();
     }
-  }, [projectPath]);
+  }, [workspacePath]);
 
   const loadWorkspaceSettings = async () => {
-    const { projectPath: currentPath } = useSidebarStore.getState();
+    const { workspacePath: currentPath } = useSidebarStore.getState();
     if (!currentPath) return;
 
     try {
-      const manifest: any = await invoke('get_manifest', { projectPath: currentPath });
+      const manifest: any = await invoke('get_manifest', { workspacePath: currentPath });
       const loadedName = manifest.name || '';
       const loadedVariables = manifest.workspace.globals ? hydrateRows(manifest.workspace.globals) : [];
       const loadedEnvironments = Array.isArray(manifest.workspace.environments)
@@ -209,12 +209,12 @@ export function WorkspaceSettings() {
     const ok = await ensureWorkspace();
     if (!ok) return;
 
-    const { projectPath: currentPath } = useSidebarStore.getState();
+    const { workspacePath: currentPath } = useSidebarStore.getState();
     setIsSaving(true);
     try {
-      const manifest: any = await invoke('get_manifest', { projectPath: currentPath });
+      const manifest: any = await invoke('get_manifest', { workspacePath: currentPath });
       
-      manifest.name = name || projectPath.split(/[/\\]/).filter(Boolean).pop() || 'Workspace';
+      manifest.name = name || workspacePath.split(/[/\\]/).filter(Boolean).pop() || 'Workspace';
       
       // Filter out only completely empty rows for saving, keep disabled ones
       const globals = serializeRows(variables);
@@ -234,7 +234,7 @@ export function WorkspaceSettings() {
       };
 
       await invoke('update_manifest_structure', {
-        projectRoot: currentPath,
+        workspaceRoot: currentPath,
         workspace: updatedWorkspace,
         name: name.trim() || null
       });
