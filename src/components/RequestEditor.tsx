@@ -837,6 +837,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           onUpdateFormField={updateFormField}
           bodyErrorLine={bodyErrorLine}
           workspaceGlobals={workspaceGlobals}
+          templateText={templateText}
         />
       )}
     </div>

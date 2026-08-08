@@ -8,10 +8,11 @@ import { buildSingleVariableHoverTitle, type VariableLookup } from '../../lib/va
 interface BodyEditorProps {
   value: string;
   mode: 'json' | 'form' | 'raw' | 'none';
-  onChange: (newValue: string) => void;
+  onChange?: (newValue: string) => void;
   onFormat?: () => void;
   highlightLine?: number | null;
   workspaceGlobals?: VariableLookup;
+  readOnly?: boolean;
 }
 
 const buildVariableDeco = (variableName: string, lookup: VariableLookup) => {
@@ -58,7 +59,7 @@ const lineHighlightExtension = (highlightLine?: number | null): Extension => {
   });
 };
 
-export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, onFormat, highlightLine, workspaceGlobals = {} }) => {
+export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, onFormat, highlightLine, workspaceGlobals = {}, readOnly = false }) => {
   const [localValue, setLocalValue] = useState(value);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(
@@ -77,6 +78,8 @@ export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, o
   }, [value]);
 
   useEffect(() => {
+    if (readOnly || !onChange) return;
+
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
@@ -90,7 +93,7 @@ export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, o
         clearTimeout(debounceRef.current);
       }
     };
-  }, [localValue, onChange]);
+  }, [localValue, onChange, readOnly]);
 
   const handleChange = useCallback((val: string) => {
     setLocalValue(val);
@@ -109,16 +112,20 @@ export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, o
     if (mode === 'json') {
       exts.push(json());
     }
+    if (readOnly) {
+      exts.push(EditorView.editable.of(false));
+    }
     return exts;
-  }, [mode, highlightLine, workspaceGlobals]);
+  }, [mode, highlightLine, workspaceGlobals, readOnly]);
 
   const handleFormat = () => {
+    if (readOnly) return;
     if (mode === 'json') {
       try {
         const parsed = JSON.parse(localValue);
         const formatted = JSON.stringify(parsed, null, 2);
         setLocalValue(formatted);
-        onChange(formatted);
+        onChange?.(formatted);
       } catch (e) {
         console.warn('Invalid JSON format');
       }
@@ -131,11 +138,11 @@ export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, o
       e.preventDefault();
       // Save is typically handled at a higher level
     }
-    if (e.key === 'f' && e.shiftKey && e.altKey) {
+    if (e.key === 'f' && e.shiftKey && e.altKey && !readOnly) {
       e.preventDefault();
       handleFormat();
     }
-  }, [localValue, mode, handleFormat]);
+  }, [readOnly, handleFormat]);
 
   return (
     <div className="flex flex-col h-full w-full bg-white relative border rounded" onKeyDown={handleKeyDown}>

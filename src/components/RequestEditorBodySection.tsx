@@ -26,6 +26,7 @@ interface RequestEditorBodySectionProps {
   onUpdateFormField: (index: number, patch: Partial<KeyValue>) => void;
   bodyErrorLine: number | null;
   workspaceGlobals: VariableLookup;
+  templateText?: string;
 }
 
 export function RequestEditorBodySection({
@@ -48,8 +49,10 @@ export function RequestEditorBodySection({
   onUpdateFormField,
   bodyErrorLine,
   workspaceGlobals,
+  templateText,
 }: RequestEditorBodySectionProps) {
   const [authHover, setAuthHover] = useState<{ title: string; left: number } | null>(null);
+  const showTemplatePreview = bodyMode === 'json' && !body.trim() && !!templateText?.trim();
 
   const handleAuthMouseMove = (e: React.MouseEvent<HTMLInputElement>) => {
     const title = getVariableHoverTitleAtPoint(authorization.value, workspaceGlobals, e.currentTarget, e.clientX, e.clientY);
@@ -175,19 +178,32 @@ export function RequestEditorBodySection({
                 <div className="h-full min-h-0 flex flex-col gap-4">
                   {bodyMode === 'json' && (
                     <div className="flex items-center justify-between">
-                      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">JSON Body</div>
-                      <select
-                        value={jsonViewMode}
-                        aria-label="JSON view mode"
-                        onChange={e => onJsonViewModeChange(e.target.value as 'Raw' | 'Preview')}
-                        className="text-[11px] font-bold uppercase tracking-wider bg-background border border-border rounded-lg px-3 py-1 outline-none focus:ring-2 focus:ring-primary/20 transition-all cursor-pointer"
-                      >
-                        <option value="Raw">Raw</option>
-                        <option value="Preview">Preview</option>
-                      </select>
+                      {showTemplatePreview ? (
+                        <>
+                          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pre-request Template Output</div>
+                          <span className="text-[10px] text-muted-foreground">Read-only</span>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">JSON Body</div>
+                          <select
+                            value={jsonViewMode}
+                            aria-label="JSON view mode"
+                            onChange={e => onJsonViewModeChange(e.target.value as 'Raw' | 'Preview')}
+                            className="text-[11px] font-bold uppercase tracking-wider bg-background border border-border rounded-lg px-3 py-1 outline-none focus:ring-2 focus:ring-primary/20 transition-all cursor-pointer"
+                          >
+                            <option value="Raw">Raw</option>
+                            <option value="Preview">Preview</option>
+                          </select>
+                        </>
+                      )}
                     </div>
                   )}
-                  {bodyMode === 'json' && jsonViewMode === 'Preview' ? (
+                  {showTemplatePreview ? (
+                    <div className="flex-1 min-h-0 border border-border rounded-xl overflow-hidden shadow-sm">
+                      <BodyEditor value={templateText ?? ''} mode="json" readOnly onChange={() => {}} highlightLine={bodyErrorLine} workspaceGlobals={workspaceGlobals} />
+                    </div>
+                  ) : bodyMode === 'json' && jsonViewMode === 'Preview' ? (
                     <div className="flex-1 min-h-0 border border-border rounded-xl overflow-hidden shadow-sm">
                       <div className="h-full overflow-auto p-4 bg-background">
                         <pre className="text-xs font-mono whitespace-pre-wrap text-foreground">{body.trim() ? JSON.stringify(JSON.parse(body), null, 2) : '(empty JSON body)'}</pre>
