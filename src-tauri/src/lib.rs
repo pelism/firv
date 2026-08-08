@@ -61,6 +61,16 @@ fn load_window_state(app: &tauri::AppHandle) -> Option<WindowState> {
     serde_json::from_str(&content).ok()
 }
 
+/// Windows reports a window's position as (-32000, -32000) while it is
+/// minimized. If that sentinel value (or any other far-off-screen position)
+/// was ever persisted, restoring it verbatim would place the window where
+/// the user can never see or interact with it again. Guard against that by
+/// rejecting clearly invalid saved geometry.
+fn is_valid_window_state(state: &WindowState) -> bool {
+    const MIN_COORD: i32 = -10_000;
+    state.x > MIN_COORD && state.y > MIN_COORD && state.width > 0 && state.height > 0
+}
+
 fn save_window_state(app: &tauri::AppHandle, state: &WindowState) -> Result<(), String> {
     let path = window_state_path(app)?;
     if let Some(parent) = path.parent() {
@@ -142,11 +152,13 @@ pub fn run_with_workspace(cli_workspace_path: Option<String>) {
 
             if let Some(window) = app.get_webview_window("main") {
                 if let Some(state) = load_window_state(app.handle()) {
-                    if state.maximized {
-                        let _ = window.maximize();
-                    } else {
-                        let _ = window.set_size(PhysicalSize::new(state.width, state.height));
-                        let _ = window.set_position(PhysicalPosition::new(state.x, state.y));
+                    if is_valid_window_state(&state) {
+                        if state.maximized {
+                            let _ = window.maximize();
+                        } else {
+                            let _ = window.set_size(PhysicalSize::new(state.width, state.height));
+                            let _ = window.set_position(PhysicalPosition::new(state.x, state.y));
+                        }
                     }
                 }
 
@@ -154,6 +166,10 @@ pub fn run_with_workspace(cli_workspace_path: Option<String>) {
                 let window_for_events = window.clone();
                 window.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { .. } = event {
+                        let is_minimized = window_for_events.is_minimized().unwrap_or(false);
+                        if is_minimized {
+                            return;
+                        }
                         if let Ok(maximized) = window_for_events.is_maximized() {
                             let state = if maximized {
                                 let size = window_for_events.inner_size().ok();

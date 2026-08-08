@@ -7,6 +7,8 @@ import type { WsRequest } from '../types/wsRequest.ts';
 import { useAppStore } from '../store/appStore';
 import { useModalStore } from '../store/modalStore';
 import { invoke } from '@tauri-apps/api/core';
+import { OpenApiImportModal } from './OpenApiImportModal';
+import { parseSpec, OpenApiDoc, OpenApiOperationSummary } from '../lib/openapi';
 import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search, Trash2, Settings2, GripVertical, X, MoreVertical, Download, Upload, ChevronsDown, ChevronsUp, Copy } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { 
@@ -370,6 +372,7 @@ export const Sidebar: React.FC = () => {
     exportWorkspace, 
     importPostmanCollection, 
     importFirvExport, 
+    importOpenApiSpec,
     workspacePath, 
     tree,
     expandedFolderIdsByWorkspace,
@@ -381,6 +384,8 @@ export const Sidebar: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isImportFlyoutOpen, setIsImportFlyoutOpen] = useState(false);
+  const [openApiDoc, setOpenApiDoc] = useState<OpenApiDoc | null>(null);
+  const [isOpenApiModalOpen, setIsOpenApiModalOpen] = useState(false);
   const importTriggerRef = useRef<HTMLDivElement>(null);
   const [importFlyoutPosition, setImportFlyoutPosition] = useState({ top: 0, left: 0 });
   const openTab = useAppStore(state => state.openTab);
@@ -528,6 +533,39 @@ export const Sidebar: React.FC = () => {
     } catch (err) {
       console.error("Failed to add folder", err);
     }
+  };
+
+  const handleImportOpenApi = async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const { readTextFile } = await import('@tauri-apps/plugin-fs');
+
+      const selected = await open({
+        multiple: false,
+        filters: [{
+          name: 'OpenAPI Spec',
+          extensions: ['json', 'yaml', 'yml']
+        }],
+        title: 'Select OpenAPI Spec'
+      });
+
+      if (!selected || Array.isArray(selected)) return;
+
+      const content = await readTextFile(selected);
+      const doc = parseSpec(content);
+      setOpenApiDoc(doc);
+      setIsOpenApiModalOpen(true);
+    } catch (err) {
+      console.error("Failed to load OpenAPI spec:", err);
+    }
+  };
+
+  const handleOpenApiImportConfirm = async (selected: OpenApiOperationSummary[]) => {
+    if (openApiDoc) {
+      await importOpenApiSpec(openApiDoc, selected);
+    }
+    setIsOpenApiModalOpen(false);
+    setOpenApiDoc(null);
   };
 
   const handleAddScratchpadRequest = useCallback(() => {
@@ -689,6 +727,16 @@ export const Sidebar: React.FC = () => {
                               >
                                 FIRV
                               </button>
+                              <button
+                                onClick={() => {
+                                  void handleImportOpenApi();
+                                  setIsImportFlyoutOpen(false);
+                                  setIsMenuOpen(false);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-[10px] font-bold transition-all uppercase tracking-wider text-muted-foreground hover:text-primary hover:bg-primary/10"
+                              >
+                                OpenAPI
+                              </button>
                             </div>,
                             document.body
                           )}
@@ -784,6 +832,15 @@ export const Sidebar: React.FC = () => {
           </div>
         </div>
       </div>
+      <OpenApiImportModal
+        isOpen={isOpenApiModalOpen}
+        doc={openApiDoc}
+        onClose={() => {
+          setIsOpenApiModalOpen(false);
+          setOpenApiDoc(null);
+        }}
+        onImport={handleOpenApiImportConfirm}
+      />
     </DndContext>
   );
 };

@@ -9,6 +9,7 @@ import { HydratedTree } from "../types/hydratedTree.ts";
 import {KeyValue} from "../types/keyValue.ts";
 import { WorkspaceEnvironment } from "../types/environment.ts";
 import { normalizeVariableLookup } from '../lib/variableHover';
+import { buildFirvRequest, OpenApiDoc, OpenApiOperationSummary } from '../lib/openapi';
 
 export const SCRATCHPAD_WORKSPACE_KEY = '__scratchpad__';
 
@@ -108,6 +109,7 @@ interface SidebarState {
   exportWorkspace: () => Promise<void>;
   importFirvExport: () => Promise<void>;
   importPostmanCollection: () => Promise<void>;
+  importOpenApiSpec: (doc: OpenApiDoc, selected: OpenApiOperationSummary[]) => Promise<void>;
   loadOrphans: () => Promise<void>;
   getRequestName: (id: string) => string;
   clearPendingName: (id: string) => void;
@@ -936,6 +938,93 @@ export const useSidebarStore = create<SidebarState>()(
 
         } catch (e) {
           console.error("Failed to import Postman collection:", e);
+        }
+      },
+      importOpenApiSpec: async (doc, selected) => {
+        const { workspacePath, workspaceName: currentWorkspaceName } = get();
+        if (!workspacePath) {
+          console.error("No workspace open. Please open a workspace first.");
+          return;
+        }
+        if (selected.length === 0) return;
+
+        try {
+          const workspaceRoot = workspacePath;
+          const requestsToSave: any[] = [];
+          const folderItems = new Map<string, any[]>();
+          const rootItems: any[] = [];
+
+          for (const op of selected) {
+            const id = crypto.randomUUID();
+            const built = buildFirvRequest(doc, op.path, op.method, op);
+
+            requestsToSave.push({
+              id,
+              name: built.name,
+              method: built.method,
+              url: built.url,
+              headers: built.headers,
+              params: built.params,
+              body: built.body,
+              transforms: { request_variables: built.requestVariables },
+            });
+
+            const sidebarItem = {
+              type: 'request',
+              id,
+              name: built.name,
+              method: built.method,
+            };
+
+            const tag = op.tags[0];
+            if (tag) {
+              if (!folderItems.has(tag)) folderItems.set(tag, []);
+              folderItems.get(tag)!.push(sidebarItem);
+            } else {
+              rootItems.push(sidebarItem);
+            }
+          }
+
+          for (const req of requestsToSave) {
+            await invoke('update_request', { workspaceRoot, request: req });
+          }
+
+          const currentManifest: any = await invoke('get_manifest', { workspacePath });
+          if (!currentManifest || !currentManifest.workspace) {
+            console.error("Invalid manifest structure during OpenAPI import");
+            return;
+          }
+
+          let newOrder = [...(currentManifest.workspace.order || [])];
+
+          for (const [tag, items] of folderItems.entries()) {
+            const existingFolderIndex = newOrder.findIndex((item: any) => item.type === 'folder' && item.name === tag);
+            if (existingFolderIndex >= 0) {
+              newOrder = newOrder.map((item: any, index: number) =>
+                index === existingFolderIndex
+                  ? { ...item, items: [...item.items, ...items] }
+                  : item
+              );
+            } else {
+              newOrder.push({ type: 'folder', name: tag, items });
+            }
+          }
+
+          newOrder = [...newOrder, ...rootItems];
+
+          await invoke('update_manifest_structure', {
+            workspaceRoot,
+            workspace: {
+              ...currentManifest.workspace,
+              order: newOrder,
+            },
+            name: currentWorkspaceName || undefined
+          });
+
+          await get().fetchSidebar();
+          await get().loadOrphans();
+        } catch (e) {
+          console.error("Failed to import OpenAPI spec:", e);
         }
       },
       loadOrphans: async () => {
