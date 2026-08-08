@@ -442,6 +442,8 @@ id: hello
 name: Hello
 method: GET
 url: "{{base_url}}/hello"
+body:
+  mode: none
 "#;
         std::fs::write(dir.path().join("requests").join("hello.yaml"), request_content).expect("write request");
 
@@ -584,5 +586,157 @@ url: "{{base_url}}/hello"
             .collect();
         assert!(uris.contains(&"manifest://firv.yaml"));
         assert!(uris.contains(&"scratchpad://requests"));
+    }
+
+    #[test]
+    fn create_request_persists_file_and_manifest_entry() {
+        let (_dir, root) = temp_project();
+        let mut state = McpServerState::new().expect("state");
+
+        let load_response = handle_message(
+            &message("tools/call", json!({"name": "load_workspace", "arguments": {"workspace_root": root}})),
+            &mut state,
+        )
+        .expect("load response");
+        assert_no_error(&load_response);
+
+        let create_response = handle_message(
+            &message(
+                "tools/call",
+                json!({
+                    "name": "create_request",
+                    "arguments": {
+                        "id": "ping",
+                        "name": "Ping",
+                        "method": "GET",
+                        "url": "https://example.com/ping"
+                    }
+                }),
+            ),
+            &mut state,
+        )
+        .expect("create response");
+        assert_no_error(&create_response);
+
+        let inner = tool_result(&create_response);
+        assert_eq!(inner["id"], "ping");
+
+        let request_path = std::path::Path::new(&root).join("requests").join("ping.yaml");
+        assert!(request_path.exists());
+
+        let manifest = crate::workspace_context::WorkspaceContext::load(root).expect("reload").manifest().clone();
+        let ids: Vec<_> = crate::mcp_tools::collect_request_ids(&manifest.workspace.order);
+        assert!(ids.contains(&"ping".to_string()));
+    }
+
+    #[test]
+    fn update_request_changes_file_and_metadata() {
+        let (_dir, root) = temp_project();
+        let mut state = McpServerState::new().expect("state");
+
+        let load_response = handle_message(
+            &message("tools/call", json!({"name": "load_workspace", "arguments": {"workspace_root": root}})),
+            &mut state,
+        )
+        .expect("load response");
+        assert_no_error(&load_response);
+
+        let update_response = handle_message(
+            &message(
+                "tools/call",
+                json!({
+                    "name": "update_request",
+                    "arguments": {
+                        "id": "hello",
+                        "name": "Hello Updated",
+                        "method": "POST",
+                        "url": "https://example.com/hello",
+                        "body": {"mode": "none"}
+                    }
+                }),
+            ),
+            &mut state,
+        )
+        .expect("update response");
+        assert_no_error(&update_response);
+
+        let request = crate::storage::get_request(root.clone(), "hello".to_string()).expect("read request");
+        assert_eq!(request.name, "Hello Updated");
+        assert_eq!(request.method, crate::models::request::HttpMethod::POST);
+
+        let manifest = crate::workspace_context::WorkspaceContext::load(root).expect("reload").manifest().clone();
+        let request_item = manifest.workspace.order.iter().find_map(|item| match item {
+            crate::models::manifest::SidebarItem::Request { id, name, method } if id == "hello" => {
+                Some((name.clone(), method.clone()))
+            }
+            _ => None,
+        });
+        assert_eq!(
+            request_item,
+            Some(("Hello Updated".to_string(), crate::models::request::HttpMethod::POST))
+        );
+    }
+
+    #[test]
+    fn delete_request_removes_file_and_manifest_entry() {
+        let (_dir, root) = temp_project();
+        let mut state = McpServerState::new().expect("state");
+
+        let load_response = handle_message(
+            &message("tools/call", json!({"name": "load_workspace", "arguments": {"workspace_root": root}})),
+            &mut state,
+        )
+        .expect("load response");
+        assert_no_error(&load_response);
+
+        let delete_response = handle_message(
+            &message("tools/call", json!({"name": "delete_request", "arguments": {"request_id": "hello"}})),
+            &mut state,
+        )
+        .expect("delete response");
+        assert_no_error(&delete_response);
+
+        let request_path = std::path::Path::new(&root).join("requests").join("hello.yaml");
+        assert!(!request_path.exists());
+
+        let manifest = crate::workspace_context::WorkspaceContext::load(root).expect("reload").manifest().clone();
+        let ids: Vec<_> = crate::mcp_tools::collect_request_ids(&manifest.workspace.order);
+        assert!(!ids.contains(&"hello".to_string()));
+    }
+
+    #[test]
+    fn duplicate_request_creates_copy() {
+        let (_dir, root) = temp_project();
+        let mut state = McpServerState::new().expect("state");
+
+        let load_response = handle_message(
+            &message("tools/call", json!({"name": "load_workspace", "arguments": {"workspace_root": root}})),
+            &mut state,
+        )
+        .expect("load response");
+        assert_no_error(&load_response);
+
+        let duplicate_response = handle_message(
+            &message(
+                "tools/call",
+                json!({
+                    "name": "duplicate_request",
+                    "arguments": {"request_id": "hello", "new_id": "hello-copy"}
+                }),
+            ),
+            &mut state,
+        )
+        .expect("duplicate response");
+        assert_no_error(&duplicate_response);
+
+        let inner = tool_result(&duplicate_response);
+        assert_eq!(inner["id"], "hello-copy");
+
+        let request = crate::storage::get_request(root.clone(), "hello-copy".to_string()).expect("read copy");
+        assert_eq!(request.name, "Hello (copy)");
+
+        let manifest = crate::workspace_context::WorkspaceContext::load(root).expect("reload").manifest().clone();
+        let ids: Vec<_> = crate::mcp_tools::collect_request_ids(&manifest.workspace.order);
+        assert!(ids.contains(&"hello-copy".to_string()));
     }
 }

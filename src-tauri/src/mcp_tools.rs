@@ -64,6 +64,40 @@ struct PromoteScratchpadArgs {
     parent_path: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct CreateRequestArgs {
+    id: String,
+    name: String,
+    method: HttpMethod,
+    url: String,
+    #[serde(default)]
+    headers: Vec<crate::models::request::KeyValue>,
+    #[serde(default)]
+    params: Vec<crate::models::request::KeyValue>,
+    #[serde(default)]
+    body: crate::models::request::RequestBody,
+    #[serde(default)]
+    parent_path: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateRequestArgs {
+    #[serde(flatten)]
+    request: FirvRequest,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteRequestArgs {
+    request_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DuplicateRequestArgs {
+    request_id: String,
+    #[serde(default)]
+    new_id: Option<String>,
+}
+
 pub fn tools_schema() -> Value {
     json!({
         "tools": [
@@ -255,6 +289,65 @@ pub fn tools_schema() -> Value {
                     },
                     "required": ["request_id"]
                 }
+            },
+            {
+                "name": "create_request",
+                "description": "Create a new persisted workspace request, saving it to requests/<id>.yaml and adding it to the manifest order.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string" },
+                        "name": { "type": "string" },
+                        "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"] },
+                        "url": { "type": "string" },
+                        "headers": { "type": "array" },
+                        "params": { "type": "array" },
+                        "body": { "type": "object" },
+                        "parent_path": { "type": "array", "items": { "type": "string" }, "description": "Optional folder path for placement in the manifest tree" }
+                    },
+                    "required": ["id", "name", "method", "url"]
+                }
+            },
+            {
+                "name": "update_request",
+                "description": "Replace an existing persisted workspace request by ID.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string" },
+                        "name": { "type": "string" },
+                        "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"] },
+                        "url": { "type": "string" },
+                        "headers": { "type": "array" },
+                        "params": { "type": "array" },
+                        "body": { "type": "object" },
+                        "transforms": { "type": "object" }
+                    },
+                    "required": ["id", "name", "method", "url"]
+                }
+            },
+            {
+                "name": "delete_request",
+                "description": "Delete a persisted workspace request by ID and remove it from the manifest order.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "request_id": { "type": "string" }
+                    },
+                    "required": ["request_id"]
+                }
+            },
+            {
+                "name": "duplicate_request",
+                "description": "Duplicate an existing persisted workspace request. Generates a new ID and appends ' (copy)' to the name. Optionally specify new_id to override the generated ID.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "request_id": { "type": "string" },
+                        "new_id": { "type": "string", "description": "Optional explicit ID for the duplicate. If omitted, a UUID is generated." }
+                    },
+                    "required": ["request_id"]
+                }
             }
         ]
     })
@@ -277,6 +370,10 @@ pub fn handle_tool_call(name: &str, arguments: Value, state: &mut McpServerState
         "delete_scratchpad_request" => delete_scratchpad_request(arguments, state),
         "execute_scratchpad_request" => execute_scratchpad_request(arguments, state),
         "promote_scratchpad_request" => promote_scratchpad_request(arguments, state),
+        "create_request" => create_request(arguments, state),
+        "update_request" => update_request(arguments, state),
+        "delete_request" => delete_request(arguments, state),
+        "duplicate_request" => duplicate_request(arguments, state),
         _ => Err(format!("Unknown tool: {}", name)),
     }
 }
@@ -545,4 +642,184 @@ fn insert_into_folder(
     }
 
     Err(format!("Folder '{}' not found", target))
+}
+
+pub(crate) fn collect_request_ids(items: &[SidebarItem]) -> Vec<String> {
+    let mut ids = Vec::new();
+    for item in items {
+        match item {
+            SidebarItem::Request { id, .. } => ids.push(id.clone()),
+            SidebarItem::Ws { id, .. } => ids.push(id.clone()),
+            SidebarItem::Folder { items: children, .. } => ids.extend(collect_request_ids(children)),
+        }
+    }
+    ids
+}
+
+fn update_request_in_order(
+    items: &mut Vec<SidebarItem>,
+    id: &str,
+    name: String,
+    method: crate::models::request::HttpMethod,
+) -> bool {
+    for item in items.iter_mut() {
+        match item {
+            SidebarItem::Request { id: rid, name: rname, method: rmethod } if rid == id => {
+                *rname = name;
+                *rmethod = method;
+                return true;
+            }
+            SidebarItem::Folder { items: children, .. } => {
+                if update_request_in_order(children, id, name.clone(), method.clone()) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn remove_from_order(items: &mut Vec<SidebarItem>, id: &str) {
+    let mut i = 0;
+    while i < items.len() {
+        match &mut items[i] {
+            SidebarItem::Request { id: rid, .. } | SidebarItem::Ws { id: rid, .. } if rid == id => {
+                items.remove(i);
+                continue;
+            }
+            SidebarItem::Folder { items: children, .. } => {
+                remove_from_order(children, id);
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+}
+
+fn create_request(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
+    let args: CreateRequestArgs = serde_json::from_value(arguments)
+        .map_err(|e| format!("Invalid arguments: {}", e))?;
+
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
+    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
+
+    if collect_request_ids(&manifest.workspace.order).contains(&args.id) {
+        return Err(format!("Request {} already exists", args.id));
+    }
+
+    let request = FirvRequest {
+        id: args.id.clone(),
+        name: args.name,
+        method: args.method,
+        url: args.url,
+        headers: args.headers,
+        params: args.params,
+        body: args.body,
+        transforms: Default::default(),
+    };
+
+    storage::update_request(workspace_root.to_string(), request.clone())?;
+
+    let request_item = SidebarItem::Request {
+        id: request.id.clone(),
+        name: request.name.clone(),
+        method: request.method.clone(),
+    };
+
+    if args.parent_path.is_empty() {
+        manifest.workspace.order.push(request_item);
+    } else {
+        insert_into_folder(&mut manifest.workspace.order, &args.parent_path, request_item)?;
+    }
+
+    storage::update_manifest_structure(
+        workspace_root.to_string(),
+        manifest.workspace,
+        Some(manifest.name),
+    )?;
+
+    Ok(json!({ "id": request.id }))
+}
+
+fn update_request(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
+    let args: UpdateRequestArgs = serde_json::from_value(arguments)
+        .map_err(|e| format!("Invalid arguments: {}", e))?;
+
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
+    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
+
+    if !collect_request_ids(&manifest.workspace.order).contains(&args.request.id) {
+        return Err(format!("Request {} not found", args.request.id));
+    }
+
+    storage::update_request(workspace_root.to_string(), args.request.clone())?;
+    update_request_in_order(
+        &mut manifest.workspace.order,
+        &args.request.id,
+        args.request.name.clone(),
+        args.request.method.clone(),
+    );
+
+    storage::update_manifest_structure(
+        workspace_root.to_string(),
+        manifest.workspace,
+        Some(manifest.name),
+    )?;
+
+    Ok(json!({ "status": "ok" }))
+}
+
+fn delete_request(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
+    let args: DeleteRequestArgs = serde_json::from_value(arguments)
+        .map_err(|e| format!("Invalid arguments: {}", e))?;
+
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
+    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
+
+    storage::delete_request(workspace_root.to_string(), args.request_id.clone())?;
+    remove_from_order(&mut manifest.workspace.order, &args.request_id);
+
+    storage::update_manifest_structure(
+        workspace_root.to_string(),
+        manifest.workspace,
+        Some(manifest.name),
+    )?;
+
+    Ok(json!({ "status": "ok" }))
+}
+
+fn duplicate_request(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
+    let args: DuplicateRequestArgs = serde_json::from_value(arguments)
+        .map_err(|e| format!("Invalid arguments: {}", e))?;
+
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
+    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
+
+    let mut request = storage::get_request(workspace_root.to_string(), args.request_id.clone())?;
+    let new_id = args.new_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+    if collect_request_ids(&manifest.workspace.order).contains(&new_id) {
+        return Err(format!("Request {} already exists", new_id));
+    }
+
+    request.id = new_id.clone();
+    request.name = format!("{} (copy)", request.name);
+
+    storage::update_request(workspace_root.to_string(), request.clone())?;
+
+    let request_item = SidebarItem::Request {
+        id: request.id.clone(),
+        name: request.name.clone(),
+        method: request.method.clone(),
+    };
+    manifest.workspace.order.push(request_item);
+
+    storage::update_manifest_structure(
+        workspace_root.to_string(),
+        manifest.workspace,
+        Some(manifest.name),
+    )?;
+
+    Ok(json!({ "id": new_id }))
 }
