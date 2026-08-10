@@ -94,7 +94,7 @@ export const OpenApiImportModal: React.FC<OpenApiImportModalProps> = ({ isOpen, 
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[560px] max-h-[80vh] flex flex-col">
+      <DialogContent className="sm:max-w-[800px] max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Import from OpenAPI</DialogTitle>
           <DialogDescription>Select the operations you want to create as requests.</DialogDescription>
@@ -148,9 +148,9 @@ export const OpenApiImportModal: React.FC<OpenApiImportModalProps> = ({ isOpen, 
                     >
                       {op.method}
                     </span>
-                    <span className="truncate font-mono text-xs text-foreground">{op.path}</span>
+                    <span className="truncate font-mono text-xs text-foreground" title={op.path}>{op.path}</span>
                     {op.summary && (
-                      <span className="truncate text-xs text-muted-foreground ml-1">{op.summary}</span>
+                      <span className="truncate text-xs text-muted-foreground ml-1" title={op.summary}>{op.summary}</span>
                     )}
                   </label>
                 ))}

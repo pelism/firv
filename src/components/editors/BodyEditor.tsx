@@ -145,8 +145,8 @@ export const BodyEditor: React.FC<BodyEditorProps> = ({ value, mode, onChange, o
   }, [readOnly, handleFormat]);
 
   return (
-    <div className="flex flex-col h-full w-full bg-white relative border rounded" onKeyDown={handleKeyDown}>
-      <div className="flex-1 overflow-auto">
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden w-full bg-white relative border rounded" onKeyDown={handleKeyDown}>
+      <div className="flex-1 min-h-0 overflow-auto">
         <CodeMirror
           value={localValue}
           height="100%"
