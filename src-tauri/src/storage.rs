@@ -1,5 +1,5 @@
 use crate::models::request::{KeyValue, RequestVariable};
-use crate::models::{manifest::{FirvManifest, SidebarItem, Workspace}, FirvRequest, WsRequest};
+use crate::models::{manifest::{FirvManifest, SidebarItem, Workspace}, FirvFlow, FirvRequest, WsRequest};
 use crate::secrets;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -70,6 +70,47 @@ pub fn delete_request(workspace_root: String, id: String) -> Result<(), String> 
     if target_path.exists() {
         std::fs::remove_file(target_path)
             .map_err(|e| format!("Failed to delete request file {}: {}", id, e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_flow(workspace_root: String, id: String) -> Result<FirvFlow, String> {
+    let target_path = Path::new(&workspace_root).join("flows").join(format!("{}.yaml", id));
+    let content = std::fs::read_to_string(&target_path)
+        .map_err(|e| format!("Failed to read flow {}: {}", id, e))?;
+    serde_yaml::from_str(&content)
+        .map_err(|e| format!("Failed to parse flow {}: {}", id, e))
+}
+
+#[tauri::command]
+pub fn update_flow(workspace_root: String, flow: FirvFlow) -> Result<(), String> {
+    if flow.id.is_empty() {
+        return Err("Validation failed: Flow is missing an ID".to_string());
+    }
+
+    let root_path = Path::new(&workspace_root);
+    let flows_dir = root_path.join("flows");
+
+    if !flows_dir.exists() {
+        std::fs::create_dir_all(&flows_dir)
+            .map_err(|e| format!("Failed to create flows directory: {}", e))?;
+    }
+
+    let target_path = flows_dir.join(format!("{}.yaml", flow.id));
+    save_atomic(target_path, &flow)
+}
+
+#[tauri::command]
+pub fn delete_flow(workspace_root: String, id: String) -> Result<(), String> {
+    let target_path = Path::new(&workspace_root)
+        .join("flows")
+        .join(format!("{}.yaml", id));
+
+    if target_path.exists() {
+        std::fs::remove_file(target_path)
+            .map_err(|e| format!("Failed to delete flow file {}: {}", id, e))?;
     }
 
     Ok(())
@@ -153,6 +194,7 @@ fn collect_request_ids(items: &[SidebarItem], request_ids: &mut Vec<String>) {
             SidebarItem::Folder { items, .. } => collect_request_ids(items, request_ids),
             SidebarItem::Request { id, .. } => request_ids.push(id.clone()),
             SidebarItem::Ws { .. } => {}
+            SidebarItem::Flow { .. } => {}
         }
     }
 }

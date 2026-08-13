@@ -4,7 +4,8 @@ use std::path::Path;
 use std::time::Instant;
 
 use crate::http_client::{FirvResponse, PreparedBody, prepare_request, run_request};
-use crate::models::request::{BeforeRunStep, ChainCondition, FirvRequest, HttpMethod, KeyValue, RequestChainStep};
+use crate::models::flow::FirvFlow;
+use crate::models::request::{BeforeRunStep, ChainCondition, FirvRequest, HttpMethod, KeyValue, RequestChainStep, RequestExtractionRule};
 use crate::variables::{VariableResolver, VariableTraceEntry};
 use urlencoding::encode;
 
@@ -155,7 +156,6 @@ pub async fn execute_chain(
 /// Same as `execute_chain`, but accepts per-execution `overrides` (e.g. request variable
 /// values supplied from the UI or an MCP tool call) that take precedence over both the
 /// request's persisted `request_variables` defaults and any workspace/environment variable.
-#[async_recursion::async_recursion]
 pub async fn execute_chain_with_overrides(
     workspace_root: String,
     request: FirvRequest,
@@ -163,6 +163,38 @@ pub async fn execute_chain_with_overrides(
     environment_vars: Vec<KeyValue>,
     secrets: HashMap<String, String>,
     overrides: HashMap<String, String>,
+    depth: usize,
+) -> Result<LifecycleResult, String> {
+    execute_chain_with_skip(
+        workspace_root,
+        request,
+        workspace_vars,
+        environment_vars,
+        secrets,
+        overrides,
+        false,
+        false,
+        false,
+        depth,
+    )
+    .await
+}
+
+/// Same as `execute_chain_with_overrides`, but additionally allows suppressing this
+/// request's own persisted `before_run` chain and/or `chain_steps` (by `ChainCondition`)
+/// for this execution only, without mutating the request. Used by the flow executor so
+/// a flow step can opt out of a member request's nested chains selectively.
+#[async_recursion::async_recursion]
+pub async fn execute_chain_with_skip(
+    workspace_root: String,
+    request: FirvRequest,
+    workspace_vars: Vec<KeyValue>,
+    environment_vars: Vec<KeyValue>,
+    secrets: HashMap<String, String>,
+    overrides: HashMap<String, String>,
+    skip_before_chain: bool,
+    skip_on_success_chain: bool,
+    skip_on_failure_chain: bool,
     depth: usize,
 ) -> Result<LifecycleResult, String> {
     const MAX_CHAIN_DEPTH: usize = 8;
@@ -192,19 +224,21 @@ pub async fn execute_chain_with_overrides(
     let mut before_run_results = Vec::new();
 
     // --- Before-run chain ---
-    for step in &request.transforms.before_run {
-        if let Some(summary) = run_before_run_step(
-            &workspace_root,
-            &workspace_vars_for_chain,
-            &environment_vars_for_chain,
-            &secrets,
-            step,
-            &mut resolver,
-            depth + 1,
-        )
-        .await?
-        {
-            before_run_results.push(summary);
+    if !skip_before_chain {
+        for step in &request.transforms.before_run {
+            if let Some(summary) = run_before_run_step(
+                &workspace_root,
+                &workspace_vars_for_chain,
+                &environment_vars_for_chain,
+                &secrets,
+                step,
+                &mut resolver,
+                depth + 1,
+            )
+            .await?
+            {
+                before_run_results.push(summary);
+            }
         }
     }
 
@@ -263,10 +297,15 @@ pub async fn execute_chain_with_overrides(
 
     if let Some(resp) = &firv_resp {
         for step in &request.transforms.chain_steps {
-            let should_run = match step.when {
-                ChainCondition::OnSuccess => resp.status < 400,
-                ChainCondition::OnFailure => resp.status >= 400,
+            let is_skipped = match step.when {
+                ChainCondition::OnSuccess => skip_on_success_chain,
+                ChainCondition::OnFailure => skip_on_failure_chain,
             };
+            let should_run = !is_skipped
+                && match step.when {
+                    ChainCondition::OnSuccess => resp.status < 400,
+                    ChainCondition::OnFailure => resp.status >= 400,
+                };
 
             if should_run {
                 if let Some(summary) = run_chain_step(
@@ -328,11 +367,178 @@ pub async fn run_request_by_id_with_overrides(
     execute_chain_with_overrides(workspace_root.to_string(), request, workspace_vars, environment_vars, secrets, overrides, 0).await
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct FlowStepResult {
+    pub request_id: String,
+    pub success: bool,
+    pub status: Option<u16>,
+    pub execution_time_ms: u64,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FlowResult {
+    pub steps: Vec<FlowStepResult>,
+    /// True if the flow halted before running every step, either because a step's
+    /// response was a failure (network error or status >= 400) or because a step's
+    /// request_id could not be resolved to a persisted request.
+    pub stopped_early: bool,
+}
+
+/// Runs a persisted `FirvFlow`'s steps in order, stopping immediately if any step
+/// fails. Each step still fully honors its own request's persisted `before_run` and
+/// `chain_steps`, unless suppressed by that step's `skip_before_chain`/
+/// `skip_on_success_chain`/`skip_on_failure_chain` flags. Variables extracted by a
+/// step (via its `response_extractions`) are carried forward and available to
+/// subsequent steps. Each step's own `input_variables` take precedence over
+/// carried variables.
+pub async fn execute_flow(
+    workspace_root: String,
+    flow: FirvFlow,
+    workspace_vars: Vec<KeyValue>,
+    environment_vars: Vec<KeyValue>,
+    secrets: HashMap<String, String>,
+) -> Result<FlowResult, String> {
+    let mut step_results = Vec::new();
+    let mut carried_vars: HashMap<String, String> = HashMap::new();
+    let mut stopped_early = false;
+
+    for step in &flow.steps {
+        let request_path = Path::new(&workspace_root)
+            .join("requests")
+            .join(format!("{}.yaml", step.request_id));
+
+        let request: FirvRequest = match std::fs::read_to_string(&request_path)
+            .ok()
+            .and_then(|content| serde_yaml::from_str(&content).ok())
+        {
+            Some(req) => req,
+            None => {
+                step_results.push(FlowStepResult {
+                    request_id: step.request_id.clone(),
+                    success: false,
+                    status: None,
+                    execution_time_ms: 0,
+                    error: Some(format!("Request '{}' could not be found or parsed", step.request_id)),
+                });
+                stopped_early = true;
+                break;
+            }
+        };
+
+        // Resolve this step's input variables against the flow context.
+        let mut resolver = VariableResolver::from_scopes(&workspace_vars, &environment_vars, &secrets);
+        for (k, v) in &carried_vars {
+            resolver.request_vars.insert(k.clone(), v.clone());
+        }
+
+        let mut step_overrides = carried_vars.clone();
+        for iv in &step.input_variables {
+            if !iv.enabled {
+                continue;
+            }
+            let key = iv.key.trim();
+            if key.is_empty() {
+                continue;
+            }
+            let resolved = resolver.resolve_string(&iv.value);
+            step_overrides.insert(key.to_string(), resolved);
+        }
+
+        let result = execute_chain_with_skip(
+            workspace_root.clone(),
+            request,
+            workspace_vars.clone(),
+            environment_vars.clone(),
+            secrets.clone(),
+            step_overrides,
+            step.skip_before_chain,
+            step.skip_on_success_chain,
+            step.skip_on_failure_chain,
+            0,
+        )
+        .await;
+
+        match result {
+            Ok(lifecycle) => {
+                let status = lifecycle.response.as_ref().map(|r| r.status);
+                let success = status.map(|s| s < 400).unwrap_or(false);
+
+                for (key, value) in lifecycle.variables {
+                    carried_vars.insert(key, value);
+                }
+
+                // Apply flow-level export variables from the response.
+                if let Some(resp) = &lifecycle.response {
+                    let mut export_resolver = VariableResolver::from_scopes(&workspace_vars, &environment_vars, &secrets);
+                    for (k, v) in &carried_vars {
+                        export_resolver.request_vars.insert(k.clone(), v.clone());
+                    }
+                    for ev in &step.export_variables {
+                        if !ev.enabled || ev.target.trim().is_empty() {
+                            continue;
+                        }
+                        let rule = RequestExtractionRule {
+                            target: ev.target.clone(),
+                            source: ev.source.clone(),
+                            pattern: ev.pattern.clone(),
+                        };
+                        match export_resolver.apply_extraction_rule(&rule, &resp.body) {
+                            Ok(Some(value)) => {
+                                carried_vars.insert(ev.target.clone(), value);
+                            }
+                            Ok(None) => {}
+                            Err(_) => {}
+                        }
+                    }
+                }
+
+                step_results.push(FlowStepResult {
+                    request_id: step.request_id.clone(),
+                    success,
+                    status,
+                    execution_time_ms: lifecycle.execution_time_ms,
+                    error: if success { None } else { lifecycle.script_errors.first().cloned() },
+                });
+
+                if !success {
+                    stopped_early = true;
+                    break;
+                }
+            }
+            Err(err) => {
+                step_results.push(FlowStepResult {
+                    request_id: step.request_id.clone(),
+                    success: false,
+                    status: None,
+                    execution_time_ms: 0,
+                    error: Some(err),
+                });
+                stopped_early = true;
+                break;
+            }
+        }
+    }
+
+    Ok(FlowResult { steps: step_results, stopped_early })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::request::{HttpMethod, RequestBody, RequestTransforms, RequestVariable};
+    use crate::models::flow::{FlowExtractionRule, FlowInputVariable, FlowStep};
+    use crate::models::request::{
+        BeforeRunStep, ChainCondition, ExtractionSource, HttpMethod, RequestBody, RequestChainStep,
+        RequestExtractionRule, RequestTransforms, RequestVariable,
+    };
     use httpmock::prelude::*;
+
+    fn write_request(workspace_root: &std::path::Path, request: &FirvRequest) {
+        let requests_dir = workspace_root.join("requests");
+        std::fs::create_dir_all(&requests_dir).expect("create requests dir");
+        let content = serde_yaml::to_string(request).expect("serialize request");
+        std::fs::write(requests_dir.join(format!("{}.yaml", request.id)), content).expect("write request");
+    }
 
     #[test]
     fn trace_only_includes_used_variables() {
@@ -579,5 +785,576 @@ mod tests {
 
         mock.assert();
         assert_eq!(result.final_request.url, format!("{}/books/{}", server.base_url(), crate::variables::REDACTED_SECRET_PLACEHOLDER));
+    }
+
+    #[tokio::test]
+    async fn execute_flow_stops_on_failed_step_and_skips_remaining() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace_root = dir.path().to_string_lossy().to_string();
+        let server = MockServer::start();
+
+        let failing_mock = server.mock(|when, then| {
+            when.method(GET).path("/fail");
+            then.status(500).body("boom");
+        });
+        let never_called_mock = server.mock(|when, then| {
+            when.method(GET).path("/never-called");
+            then.status(200).body("ok");
+        });
+
+        write_request(dir.path(), &FirvRequest {
+            id: "step-a".to_string(),
+            name: "step a".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/fail", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+        write_request(dir.path(), &FirvRequest {
+            id: "step-b".to_string(),
+            name: "step b".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/never-called", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+
+        let flow = FirvFlow {
+            id: "flow-1".to_string(),
+            name: "Flow".to_string(),
+            steps: vec![
+                FlowStep { request_id: "step-a".to_string(), ..Default::default() },
+                FlowStep { request_id: "step-b".to_string(), ..Default::default() },
+            ],
+        };
+
+        let result = execute_flow(workspace_root, flow, vec![], vec![], HashMap::new())
+            .await
+            .expect("flow should return a result even when a step fails");
+
+        failing_mock.assert();
+        never_called_mock.assert_hits(0);
+        assert!(result.stopped_early);
+        assert_eq!(result.steps.len(), 1);
+        assert!(!result.steps[0].success);
+        assert_eq!(result.steps[0].status, Some(500));
+    }
+
+    #[tokio::test]
+    async fn execute_flow_carries_extracted_variables_between_steps() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace_root = dir.path().to_string_lossy().to_string();
+        let server = MockServer::start();
+
+        let first_mock = server.mock(|when, then| {
+            when.method(GET).path("/login");
+            then.status(200).body("{\"token\":\"secret-token\"}");
+        });
+        let second_mock = server.mock(|when, then| {
+            when.method(GET).path("/books/secret-token");
+            then.status(200).body("ok");
+        });
+
+        write_request(dir.path(), &FirvRequest {
+            id: "login".to_string(),
+            name: "login".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/login", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms {
+                response_extractions: vec![RequestExtractionRule {
+                    target: "token".to_string(),
+                    source: ExtractionSource::ResponseBodyJson,
+                    pattern: "token".to_string(),
+                }],
+                ..Default::default()
+            },
+        });
+        write_request(dir.path(), &FirvRequest {
+            id: "fetch-book".to_string(),
+            name: "fetch book".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/books/{{{{token}}}}", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+
+        let flow = FirvFlow {
+            id: "flow-2".to_string(),
+            name: "Flow".to_string(),
+            steps: vec![
+                FlowStep { request_id: "login".to_string(), ..Default::default() },
+                FlowStep { request_id: "fetch-book".to_string(), ..Default::default() },
+            ],
+        };
+
+        let result = execute_flow(workspace_root, flow, vec![], vec![], HashMap::new())
+            .await
+            .expect("flow should succeed");
+
+        first_mock.assert();
+        second_mock.assert();
+        assert!(!result.stopped_early);
+        assert_eq!(result.steps.len(), 2);
+        assert!(result.steps.iter().all(|s| s.success));
+    }
+
+    #[tokio::test]
+    async fn execute_flow_resolves_input_variables_against_step_context() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace_root = dir.path().to_string_lossy().to_string();
+        let server = MockServer::start();
+
+        let mock = server.mock(|when, then| {
+            when.method(GET).path("/hello/world");
+            then.status(200).body("ok");
+        });
+
+        write_request(dir.path(), &FirvRequest {
+            id: "greet".to_string(),
+            name: "greet".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/hello/{{{{name}}}}", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+
+        let flow = FirvFlow {
+            id: "flow-input".to_string(),
+            name: "Flow".to_string(),
+            steps: vec![FlowStep {
+                request_id: "greet".to_string(),
+                input_variables: vec![FlowInputVariable {
+                    key: "name".to_string(),
+                    value: "world".to_string(),
+                    enabled: true,
+                }],
+                ..Default::default()
+            }],
+        };
+
+        let result = execute_flow(workspace_root, flow, vec![], vec![], HashMap::new())
+            .await
+            .expect("flow should succeed");
+
+        mock.assert();
+        assert!(!result.stopped_early);
+        assert!(result.steps[0].success);
+    }
+
+    #[tokio::test]
+    async fn execute_flow_exports_variables_from_step_response() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace_root = dir.path().to_string_lossy().to_string();
+        let server = MockServer::start();
+
+        let produce_mock = server.mock(|when, then| {
+            when.method(GET).path("/produce");
+            then.status(200).body("{\"id\":\"42\"}");
+        });
+        let consume_mock = server.mock(|when, then| {
+            when.method(GET).path("/consume/42");
+            then.status(200).body("ok");
+        });
+
+        write_request(dir.path(), &FirvRequest {
+            id: "produce".to_string(),
+            name: "produce".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/produce", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+        write_request(dir.path(), &FirvRequest {
+            id: "consume".to_string(),
+            name: "consume".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/consume/{{{{id}}}}", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+
+        let flow = FirvFlow {
+            id: "flow-export".to_string(),
+            name: "Flow".to_string(),
+            steps: vec![
+                FlowStep {
+                    request_id: "produce".to_string(),
+                    export_variables: vec![FlowExtractionRule {
+                        target: "id".to_string(),
+                        source: ExtractionSource::ResponseBodyJson,
+                        pattern: "id".to_string(),
+                        enabled: true,
+                    }],
+                    ..Default::default()
+                },
+                FlowStep {
+                    request_id: "consume".to_string(),
+                    ..Default::default()
+                },
+            ],
+        };
+
+        let result = execute_flow(workspace_root, flow, vec![], vec![], HashMap::new())
+            .await
+            .expect("flow should succeed");
+
+        produce_mock.assert();
+        consume_mock.assert();
+        assert!(!result.stopped_early);
+        assert_eq!(result.steps.len(), 2);
+        assert!(result.steps.iter().all(|s| s.success));
+    }
+
+    #[tokio::test]
+    async fn on_success_chain_step_runs_when_response_is_successful() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let server = MockServer::start();
+
+        let next_mock = server.mock(|when, then| {
+            when.method(GET).path("/next");
+            then.status(200).body("ok");
+        });
+
+        write_request(dir.path(), &FirvRequest {
+            id: "next".to_string(),
+            name: "next".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/next", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+
+        let main_mock = server.mock(|when, then| {
+            when.method(GET).path("/main-ok");
+            then.status(200).body("ok");
+        });
+
+        let request = FirvRequest {
+            id: "main".to_string(),
+            name: "main".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/main-ok", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms {
+                chain_steps: vec![RequestChainStep {
+                    when: ChainCondition::OnSuccess,
+                    next_request_id: "next".to_string(),
+                }],
+                ..Default::default()
+            },
+        };
+
+        let result = execute_chain(dir.path().to_string_lossy().to_string(), request, vec![], vec![], HashMap::new(), 0)
+            .await
+            .expect("chain should succeed");
+
+        main_mock.assert();
+        next_mock.assert();
+        assert_eq!(result.chained_results.len(), 1);
+        assert_eq!(result.chained_results[0].request_id, "next");
+    }
+
+    #[tokio::test]
+    async fn on_success_chain_step_does_not_run_when_response_is_a_failure() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let server = MockServer::start();
+
+        let next_mock = server.mock(|when, then| {
+            when.method(GET).path("/next");
+            then.status(200).body("ok");
+        });
+
+        write_request(dir.path(), &FirvRequest {
+            id: "next".to_string(),
+            name: "next".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/next", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+
+        let main_mock = server.mock(|when, then| {
+            when.method(GET).path("/main-fail");
+            then.status(500).body("boom");
+        });
+
+        let request = FirvRequest {
+            id: "main".to_string(),
+            name: "main".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/main-fail", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms {
+                chain_steps: vec![RequestChainStep {
+                    when: ChainCondition::OnSuccess,
+                    next_request_id: "next".to_string(),
+                }],
+                ..Default::default()
+            },
+        };
+
+        let result = execute_chain(dir.path().to_string_lossy().to_string(), request, vec![], vec![], HashMap::new(), 0)
+            .await
+            .expect("chain should succeed even though the main response failed");
+
+        main_mock.assert();
+        next_mock.assert_hits(0);
+        assert!(result.chained_results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn on_failure_chain_step_runs_only_when_response_is_a_failure() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let server = MockServer::start();
+
+        let next_mock = server.mock(|when, then| {
+            when.method(GET).path("/next");
+            then.status(200).body("ok");
+        });
+
+        write_request(dir.path(), &FirvRequest {
+            id: "next".to_string(),
+            name: "next".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/next", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+
+        let main_mock = server.mock(|when, then| {
+            when.method(GET).path("/main-fail");
+            then.status(500).body("boom");
+        });
+
+        let request = FirvRequest {
+            id: "main".to_string(),
+            name: "main".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/main-fail", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms {
+                chain_steps: vec![RequestChainStep {
+                    when: ChainCondition::OnFailure,
+                    next_request_id: "next".to_string(),
+                }],
+                ..Default::default()
+            },
+        };
+
+        let result = execute_chain(dir.path().to_string_lossy().to_string(), request, vec![], vec![], HashMap::new(), 0)
+            .await
+            .expect("chain should succeed");
+
+        main_mock.assert();
+        next_mock.assert();
+        assert_eq!(result.chained_results.len(), 1);
+        assert_eq!(result.chained_results[0].request_id, "next");
+    }
+
+    #[tokio::test]
+    async fn skip_on_success_chain_suppresses_chain_step_even_on_success() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let server = MockServer::start();
+
+        let next_mock = server.mock(|when, then| {
+            when.method(GET).path("/next");
+            then.status(200).body("ok");
+        });
+
+        write_request(dir.path(), &FirvRequest {
+            id: "next".to_string(),
+            name: "next".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/next", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+
+        let main_mock = server.mock(|when, then| {
+            when.method(GET).path("/main-ok");
+            then.status(200).body("ok");
+        });
+
+        let request = FirvRequest {
+            id: "main".to_string(),
+            name: "main".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/main-ok", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms {
+                chain_steps: vec![RequestChainStep {
+                    when: ChainCondition::OnSuccess,
+                    next_request_id: "next".to_string(),
+                }],
+                ..Default::default()
+            },
+        };
+
+        let result = execute_chain_with_skip(
+            dir.path().to_string_lossy().to_string(),
+            request,
+            vec![],
+            vec![],
+            HashMap::new(),
+            HashMap::new(),
+            false,
+            true,
+            false,
+            0,
+        )
+        .await
+        .expect("chain should succeed");
+
+        main_mock.assert();
+        next_mock.assert_hits(0);
+        assert!(result.chained_results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn before_run_step_executes_and_its_variables_are_visible_to_main_request() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let server = MockServer::start();
+
+        write_request(dir.path(), &FirvRequest {
+            id: "login".to_string(),
+            name: "login".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/login", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms {
+                response_extractions: vec![RequestExtractionRule {
+                    target: "token".to_string(),
+                    source: ExtractionSource::ResponseBodyJson,
+                    pattern: "token".to_string(),
+                }],
+                ..Default::default()
+            },
+        });
+
+        let login_mock = server.mock(|when, then| {
+            when.method(GET).path("/login");
+            then.status(200).body("{\"token\":\"abc123\"}");
+        });
+        let main_mock = server.mock(|when, then| {
+            when.method(GET).path("/books/abc123");
+            then.status(200).body("ok");
+        });
+
+        let request = FirvRequest {
+            id: "main".to_string(),
+            name: "main".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/books/{{{{token}}}}", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms {
+                before_run: vec![BeforeRunStep { request_id: "login".to_string() }],
+                ..Default::default()
+            },
+        };
+
+        let result = execute_chain(dir.path().to_string_lossy().to_string(), request, vec![], vec![], HashMap::new(), 0)
+            .await
+            .expect("chain should succeed");
+
+        login_mock.assert();
+        main_mock.assert();
+        assert_eq!(result.before_run_results.len(), 1);
+        assert_eq!(result.before_run_results[0].request_id, "login");
+        assert!(result.before_run_results[0].success);
+        assert_eq!(result.final_request.url, format!("{}/books/abc123", server.base_url()));
+    }
+
+    #[tokio::test]
+    async fn skip_before_chain_prevents_before_run_step_from_executing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let server = MockServer::start();
+
+        write_request(dir.path(), &FirvRequest {
+            id: "login".to_string(),
+            name: "login".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/login", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+
+        let login_mock = server.mock(|when, then| {
+            when.method(GET).path("/login");
+            then.status(200).body("ok");
+        });
+        let main_mock = server.mock(|when, then| {
+            when.method(GET).path("/main-ok");
+            then.status(200).body("ok");
+        });
+
+        let request = FirvRequest {
+            id: "main".to_string(),
+            name: "main".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/main-ok", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms {
+                before_run: vec![BeforeRunStep { request_id: "login".to_string() }],
+                ..Default::default()
+            },
+        };
+
+        let result = execute_chain_with_skip(
+            dir.path().to_string_lossy().to_string(),
+            request,
+            vec![],
+            vec![],
+            HashMap::new(),
+            HashMap::new(),
+            true,
+            false,
+            false,
+            0,
+        )
+        .await
+        .expect("chain should succeed");
+
+        login_mock.assert_hits(0);
+        main_mock.assert();
+        assert!(result.before_run_results.is_empty());
     }
 }

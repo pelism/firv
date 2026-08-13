@@ -68,6 +68,10 @@ pub enum SidebarItem {
         id: String, // Links to requests/id.yaml
         name: String,
     },
+    Flow {
+        id: String, // Links to flows/id.yaml
+        name: String,
+    },
 }
 
 #[cfg(test)]

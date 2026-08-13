@@ -592,7 +592,7 @@ fn promote_scratchpad_request(arguments: Value, state: &mut McpServerState) -> R
         .take(&args.request_id)
         .ok_or_else(|| format!("Scratchpad request {} not found", args.request_id))?;
 
-    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?.to_string();
     let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
 
     if request.id.is_empty() || request.id != args.request_id {
@@ -618,6 +618,7 @@ fn promote_scratchpad_request(arguments: Value, state: &mut McpServerState) -> R
         manifest.workspace,
         Some(manifest.name),
     )?;
+    state.load_workspace(workspace_root.clone())?;
 
     Ok(json!({ "id": request.id }))
 }
@@ -651,6 +652,7 @@ pub(crate) fn collect_request_ids(items: &[SidebarItem]) -> Vec<String> {
             SidebarItem::Request { id, .. } => ids.push(id.clone()),
             SidebarItem::Ws { id, .. } => ids.push(id.clone()),
             SidebarItem::Folder { items: children, .. } => ids.extend(collect_request_ids(children)),
+            SidebarItem::Flow { .. } => {}
         }
     }
     ids
@@ -701,7 +703,7 @@ fn create_request(arguments: Value, state: &mut McpServerState) -> Result<Value,
     let args: CreateRequestArgs = serde_json::from_value(arguments)
         .map_err(|e| format!("Invalid arguments: {}", e))?;
 
-    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?.to_string();
     let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
 
     if collect_request_ids(&manifest.workspace.order).contains(&args.id) {
@@ -738,6 +740,7 @@ fn create_request(arguments: Value, state: &mut McpServerState) -> Result<Value,
         manifest.workspace,
         Some(manifest.name),
     )?;
+    state.load_workspace(workspace_root.clone())?;
 
     Ok(json!({ "id": request.id }))
 }
@@ -746,7 +749,7 @@ fn update_request(arguments: Value, state: &mut McpServerState) -> Result<Value,
     let args: UpdateRequestArgs = serde_json::from_value(arguments)
         .map_err(|e| format!("Invalid arguments: {}", e))?;
 
-    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?.to_string();
     let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
 
     if !collect_request_ids(&manifest.workspace.order).contains(&args.request.id) {
@@ -766,6 +769,7 @@ fn update_request(arguments: Value, state: &mut McpServerState) -> Result<Value,
         manifest.workspace,
         Some(manifest.name),
     )?;
+    state.load_workspace(workspace_root.clone())?;
 
     Ok(json!({ "status": "ok" }))
 }
@@ -774,7 +778,7 @@ fn delete_request(arguments: Value, state: &mut McpServerState) -> Result<Value,
     let args: DeleteRequestArgs = serde_json::from_value(arguments)
         .map_err(|e| format!("Invalid arguments: {}", e))?;
 
-    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?.to_string();
     let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
 
     storage::delete_request(workspace_root.to_string(), args.request_id.clone())?;
@@ -785,6 +789,7 @@ fn delete_request(arguments: Value, state: &mut McpServerState) -> Result<Value,
         manifest.workspace,
         Some(manifest.name),
     )?;
+    state.load_workspace(workspace_root.clone())?;
 
     Ok(json!({ "status": "ok" }))
 }
@@ -793,7 +798,7 @@ fn duplicate_request(arguments: Value, state: &mut McpServerState) -> Result<Val
     let args: DuplicateRequestArgs = serde_json::from_value(arguments)
         .map_err(|e| format!("Invalid arguments: {}", e))?;
 
-    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
+    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?.to_string();
     let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
 
     let mut request = storage::get_request(workspace_root.to_string(), args.request_id.clone())?;
@@ -820,6 +825,251 @@ fn duplicate_request(arguments: Value, state: &mut McpServerState) -> Result<Val
         manifest.workspace,
         Some(manifest.name),
     )?;
+    state.load_workspace(workspace_root.clone())?;
 
     Ok(json!({ "id": new_id }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp_server::McpServerState;
+
+    fn temp_project() -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().to_string_lossy().to_string();
+
+        let manifest_content = r#"
+version: "1.0"
+name: test-project
+workspace:
+  active_environment: dev
+  globals: []
+  environments:
+    - id: dev
+      name: Development
+      variables:
+        - key: base_url
+          value: https://example.com
+          enabled: true
+  order:
+    - type: request
+      id: hello
+      name: Hello
+      method: GET
+"#;
+
+        std::fs::write(dir.path().join("firv.yaml"), manifest_content).expect("write manifest");
+        std::fs::create_dir(dir.path().join("requests")).expect("create requests dir");
+
+        let request_content = r#"
+id: hello
+name: Hello
+method: GET
+url: "{{base_url}}/hello"
+body:
+  mode: none
+"#;
+        std::fs::write(dir.path().join("requests").join("hello.yaml"), request_content).expect("write request");
+
+        (dir, root)
+    }
+
+    fn loaded_state(root: &str) -> McpServerState {
+        let mut state = McpServerState::new().expect("state");
+        state.load_workspace(root.to_string()).expect("load workspace");
+        state
+    }
+
+    #[test]
+    fn handle_tool_call_rejects_unknown_tool_names() {
+        let mut state = McpServerState::new().expect("state");
+        let result = handle_tool_call("not_a_real_tool", json!({}), &mut state);
+        assert_eq!(result.unwrap_err(), "Unknown tool: not_a_real_tool");
+    }
+
+    #[test]
+    fn handle_tool_call_reports_invalid_arguments_with_the_underlying_parse_error() {
+        let mut state = McpServerState::new().expect("state");
+        // `request_id` is required by ExecuteRequestArgs but omitted here.
+        let result = handle_tool_call("get_request", json!({}), &mut state);
+        let err = result.unwrap_err();
+        assert!(err.starts_with("Invalid arguments:"), "unexpected error: {}", err);
+    }
+
+    #[test]
+    fn create_request_rejects_a_duplicate_id() {
+        let (_dir, root) = temp_project();
+        let mut state = loaded_state(&root);
+
+        let result = handle_tool_call(
+            "create_request",
+            json!({
+                "id": "hello",
+                "name": "Duplicate",
+                "method": "GET",
+                "url": "https://example.com/dup"
+            }),
+            &mut state,
+        );
+
+        assert_eq!(result.unwrap_err(), "Request hello already exists");
+    }
+
+    #[test]
+    fn create_request_inserts_into_a_nested_folder_when_parent_path_is_given() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().to_string_lossy().to_string();
+        let manifest_content = r#"
+version: "1.0"
+name: test-project
+workspace:
+  active_environment: null
+  globals: []
+  environments: []
+  order:
+    - type: folder
+      name: Folder
+      items: []
+"#;
+        std::fs::write(dir.path().join("firv.yaml"), manifest_content).expect("write manifest");
+        std::fs::create_dir(dir.path().join("requests")).expect("create requests dir");
+        let mut state = loaded_state(&root);
+
+        let create_result = handle_tool_call(
+            "create_request",
+            json!({
+                "id": "nested",
+                "name": "Nested",
+                "method": "GET",
+                "url": "https://example.com/nested",
+                "parent_path": ["Folder"]
+            }),
+            &mut state,
+        )
+        .expect("create should succeed");
+        assert_eq!(create_result["id"], "nested");
+
+        let list_result = handle_tool_call("list_requests", json!({}), &mut state).expect("list should succeed");
+        let requests = list_result["requests"].as_array().expect("requests array");
+        assert!(requests.iter().any(|r| r["id"] == "nested"));
+    }
+
+    #[test]
+    fn create_request_fails_when_the_parent_folder_does_not_exist() {
+        let (_dir, root) = temp_project();
+        let mut state = loaded_state(&root);
+
+        let result = handle_tool_call(
+            "create_request",
+            json!({
+                "id": "orphan",
+                "name": "Orphan",
+                "method": "GET",
+                "url": "https://example.com/orphan",
+                "parent_path": ["Missing Folder"]
+            }),
+            &mut state,
+        );
+
+        assert_eq!(result.unwrap_err(), "Folder 'Missing Folder' not found");
+    }
+
+    #[test]
+    fn delete_request_removes_it_from_the_manifest_order_and_storage() {
+        let (_dir, root) = temp_project();
+        let mut state = loaded_state(&root);
+
+        handle_tool_call("delete_request", json!({ "request_id": "hello" }), &mut state)
+            .expect("delete should succeed");
+
+        let list_result = handle_tool_call("list_requests", json!({}), &mut state).expect("list should succeed");
+        let requests = list_result["requests"].as_array().expect("requests array");
+        assert!(requests.is_empty());
+
+        let get_result = handle_tool_call("get_request", json!({ "request_id": "hello" }), &mut state);
+        assert!(get_result.is_err());
+    }
+
+    #[test]
+    fn duplicate_request_creates_a_copy_with_a_generated_id_and_copy_suffix() {
+        let (_dir, root) = temp_project();
+        let mut state = loaded_state(&root);
+
+        let result = handle_tool_call("duplicate_request", json!({ "request_id": "hello" }), &mut state)
+            .expect("duplicate should succeed");
+        let new_id = result["id"].as_str().expect("id string").to_string();
+        assert_ne!(new_id, "hello");
+
+        let get_result = handle_tool_call("get_request", json!({ "request_id": new_id }), &mut state)
+            .expect("get should succeed");
+        assert_eq!(get_result["request"]["name"], "Hello (copy)");
+    }
+
+    #[test]
+    fn duplicate_request_honors_an_explicit_new_id_and_rejects_a_collision() {
+        let (_dir, root) = temp_project();
+        let mut state = loaded_state(&root);
+
+        let result = handle_tool_call(
+            "duplicate_request",
+            json!({ "request_id": "hello", "new_id": "hello-2" }),
+            &mut state,
+        )
+        .expect("duplicate should succeed");
+        assert_eq!(result["id"], "hello-2");
+
+        let collision = handle_tool_call(
+            "duplicate_request",
+            json!({ "request_id": "hello", "new_id": "hello-2" }),
+            &mut state,
+        );
+        assert_eq!(collision.unwrap_err(), "Request hello-2 already exists");
+    }
+
+    #[test]
+    fn promote_scratchpad_request_moves_it_into_the_workspace_tree_and_removes_it_from_the_scratchpad() {
+        let (_dir, root) = temp_project();
+        let mut state = loaded_state(&root);
+
+        handle_tool_call(
+            "create_scratchpad_request",
+            json!({ "name": "Scratch", "method": "GET", "url": "https://example.com/scratch" }),
+            &mut state,
+        )
+        .expect("create scratchpad request should succeed");
+
+        let scratchpad_list = handle_tool_call("list_scratchpad_requests", json!({}), &mut state)
+            .expect("list should succeed");
+        let scratch_id = scratchpad_list["requests"][0]["id"].as_str().expect("id").to_string();
+
+        handle_tool_call(
+            "promote_scratchpad_request",
+            json!({ "request_id": scratch_id }),
+            &mut state,
+        )
+        .expect("promote should succeed");
+
+        let scratchpad_after = handle_tool_call("list_scratchpad_requests", json!({}), &mut state)
+            .expect("list should succeed");
+        assert!(scratchpad_after["requests"].as_array().unwrap().is_empty());
+
+        let workspace_list = handle_tool_call("list_requests", json!({}), &mut state).expect("list should succeed");
+        let requests = workspace_list["requests"].as_array().expect("requests array");
+        assert!(requests.iter().any(|r| r["id"] == scratch_id));
+    }
+
+    #[test]
+    fn tools_requiring_a_workspace_fail_clearly_when_none_is_loaded() {
+        let mut state = McpServerState::new().expect("state");
+
+        let result = handle_tool_call("create_request", json!({
+            "id": "x",
+            "name": "X",
+            "method": "GET",
+            "url": "https://example.com"
+        }), &mut state);
+
+        assert_eq!(result.unwrap_err(), "No workspace loaded");
+    }
 }

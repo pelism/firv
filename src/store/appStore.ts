@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import { wsClient, type WsConnectionStatus, type WsMessage } from '../lib/wsClient';
 
 export type RequestOrigin = 'workspace' | 'scratchpad';
-export type RequestProtocol = 'http' | 'ws';
+export type RequestProtocol = 'http' | 'ws' | 'flow';
 
 export interface AppState {
   activeRequestId: string | null;

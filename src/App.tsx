@@ -322,7 +322,7 @@ function App() {
               )}
 
               {(() => {
-                const isWsActive = activeRequestId ? requestProtocols[activeRequestId] === 'ws' : false;
+                const isWsActive = activeRequestId ? (requestProtocols[activeRequestId] === 'ws' || requestProtocols[activeRequestId] === 'flow') : false;
                 const editorContent = (
                   <div className="flex-1 overflow-hidden min-h-0 min-w-0 flex flex-col bg-background">
                     {activeRequestId ? (
@@ -355,20 +355,27 @@ function App() {
                     )}
                   </div>
                 );
-                if (isWsActive) {
-                  return <div className="flex-1 min-h-0 flex flex-col">{editorContent}</div>;
-                }
+                // NOTE: `editorContent` renders every open tab (not just the active one) so
+                // each RequestEditor/FlowEditor instance stays mounted across tab switches.
+                // Keeping the same root element (PanelGroup) with the editor as the first
+                // panel in both branches - rather than swapping between a plain <div> and a
+                // <PanelGroup> - avoids remounting all open tabs (and losing unsaved state,
+                // e.g. Flow steps) whenever the active tab's protocol toggles.
                 return (
                   <PanelGroup orientation="vertical">
-                    <Panel defaultSize="60%" minSize="30%" className="flex flex-col">
+                    <Panel defaultSize={isWsActive ? "100%" : "60%"} minSize="30%" className="flex flex-col">
                       {editorContent}
                     </Panel>
-                    <PanelResizeHandle className="h-1 group flex items-center justify-center bg-muted hover:bg-primary/50 cursor-row-resize transition-all dark:bg-zinc-900">
-                      <div className="h-px w-8 bg-border group-hover:bg-white/50 rounded-full" />
-                    </PanelResizeHandle>
-                    <Panel defaultSize="40%" minSize="20%" className="flex flex-col bg-background">
-                      <ResponseViewer key={activeRequestId || 'none'} response={activeRequestId ? responses[activeRequestId] : null} />
-                    </Panel>
+                    {!isWsActive && (
+                      <>
+                        <PanelResizeHandle className="h-1 group flex items-center justify-center bg-muted hover:bg-primary/50 cursor-row-resize transition-all dark:bg-zinc-900">
+                          <div className="h-px w-8 bg-border group-hover:bg-white/50 rounded-full" />
+                        </PanelResizeHandle>
+                        <Panel defaultSize="40%" minSize="20%" className="flex flex-col bg-background">
+                          <ResponseViewer key={activeRequestId || 'none'} response={activeRequestId ? responses[activeRequestId] : null} />
+                        </Panel>
+                      </>
+                    )}
                   </PanelGroup>
                 );
               })()}

@@ -9,7 +9,7 @@ import { useModalStore } from '../store/modalStore';
 import { invoke } from '@tauri-apps/api/core';
 import { OpenApiImportModal } from './OpenApiImportModal';
 import { parseSpec, OpenApiDoc, OpenApiOperationSummary } from '../lib/openapi';
-import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search, Trash2, Settings2, GripVertical, X, MoreVertical, Download, Upload, ChevronsDown, ChevronsUp, Copy } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder as FolderIcon, AlertCircle, Plus, FolderPlus, Search, Trash2, Settings2, GripVertical, X, MoreVertical, Download, Upload, ChevronsDown, ChevronsUp, Copy, Workflow } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { 
   DndContext, 
@@ -70,7 +70,7 @@ const SidebarNode: React.FC<{
   };
 
   const getRequestIds = (item: HydratedSidebarItem): string[] => {
-    if (item.kind.type === 'request' || item.kind.type === 'ws') {
+    if (item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'flow') {
       return [item.kind.id];
     }
     if (item.kind.type === 'folder') {
@@ -176,6 +176,18 @@ const SidebarNode: React.FC<{
     await addItem(newItem, path);
   };
 
+  const handleAddFlow = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    const flowId = crypto.randomUUID();
+    const newItem: HydratedSidebarItem = {
+      id: crypto.randomUUID(),
+      kind: { type: 'flow', id: flowId, name: 'New Flow' }
+    };
+    useSidebarStore.getState().addItemOptimistic(newItem, path);
+    openTab(flowId);
+  };
+
   if (item.kind.type === 'folder') {
     const hasMatchingChildren = item.kind.items.some(child => 
       (child.kind.type !== 'error' ? child.kind.name : '').toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -218,6 +230,13 @@ const SidebarNode: React.FC<{
                   title="Add Subfolder"
                 >
                   <FolderPlus size={14} />
+                </button>
+                <button
+                  onClick={handleAddFlow}
+                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-opacity"
+                  title="Add Flow"
+                >
+                  <Workflow size={14} />
                 </button>
               </>
             )}
@@ -344,6 +363,44 @@ const SidebarNode: React.FC<{
             onClick={handleDelete}
             className="p-1.5 rounded text-gray-500 hover:text-red-500 hover:bg-muted opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
             title="Delete WS Request"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (item.kind.type === 'flow') {
+    const flowId = item.kind.id;
+    const flowName = item.kind.name;
+    const isActive = activeRequestId === flowId;
+    return (
+      <div
+        ref={setNodeRef}
+        className={twMerge(
+          "flex items-center py-2 pl-3 pr-2 my-0.5 rounded-lg cursor-pointer text-sm group transition-all",
+          isActive
+            ? "text-foreground ring-2 ring-primary/20 border border-primary/50"
+            : "text-muted-foreground hover:bg-muted/50 border border-transparent"
+        )}
+        style={{ ...style, paddingLeft: depth > 0 ? paddingLeft + 20 : 12 }}
+        onClick={() => openTab(flowId)}
+      >
+        <div className="flex items-center flex-1 min-w-0">
+          <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-muted-foreground/60">
+            <GripVertical size={12} />
+          </div>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md mr-3 min-w-8 text-center bg-indigo-500/15 text-indigo-500">
+            FLOW
+          </span>
+          <span className="truncate flex-1">{flowName}</span>
+        </div>
+        <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={handleDelete}
+            className="p-1.5 rounded text-gray-500 hover:text-red-500 hover:bg-muted opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
+            title="Delete Flow"
           >
             <Trash2 size={14} />
           </button>
@@ -535,6 +592,20 @@ export const Sidebar: React.FC = () => {
     }
   };
 
+  const handleAddFlow = () => {
+    try {
+      const flowId = crypto.randomUUID();
+      const newItem: HydratedSidebarItem = {
+        id: crypto.randomUUID(),
+        kind: { type: 'flow', id: flowId, name: 'New Flow' }
+      };
+      addItemOptimistic(newItem);
+      openTab(flowId);
+    } catch (err) {
+      console.error("Failed to add flow", err);
+    }
+  };
+
   const handleImportOpenApi = async () => {
     try {
       const { open } = await import('@tauri-apps/plugin-dialog');
@@ -623,6 +694,13 @@ export const Sidebar: React.FC = () => {
                   title="New Workspace Folder"
                 >
                   <FolderPlus size={16} />
+                </button>
+                <button
+                  onClick={handleAddFlow}
+                  className="p-1.5 hover:bg-muted rounded-md text-muted-foreground/80 hover:text-foreground transition-colors"
+                  title="New Flow"
+                >
+                  <Workflow size={16} />
                 </button>
                 <button
                   onClick={() => setWorkspaceSettingsOpen(true)}

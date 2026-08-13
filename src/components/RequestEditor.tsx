@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { KeyValue, type SecretOption } from './editors/KVEditor';
 import type { RequestVariable } from '../types/requestVariable';
-import { useAppStore } from '../store/appStore';
+import { useAppStore, type RequestProtocol } from '../store/appStore';
 import { useSidebarStore } from '../store/sidebarStore';
 import { HydratedSidebarItem } from '../types/hydratedSidebarItem.ts';
 import type { BeforeRunStep } from '../types/beforeRunStep';
@@ -25,6 +25,7 @@ import { RequestEditorCommandBar, type EditorProtocol } from './RequestEditorCom
 import { RequestEditorBodySection } from './RequestEditorBodySection';
 import { RequestEditorTransformsSection } from './RequestEditorTransformsSection';
 import { WsEditor } from './WsEditor';
+import { FlowEditor } from './FlowEditor';
 
 interface RequestEditorProps {
   requestId: string;
@@ -63,7 +64,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const clearScratchpadRequestData = useAppStore(state => state.clearScratchpadRequestData);
   const setRequestOrigin = useAppStore(state => state.setRequestOrigin);
   const clearRequestOrigin = useAppStore(state => state.clearRequestOrigin);
-  const protocol: EditorProtocol = useAppStore(state => state.requestProtocols[requestId] ?? 'http');
+  const protocol: RequestProtocol = useAppStore(state => state.requestProtocols[requestId] ?? 'http');
   const setRequestProtocol = useAppStore(state => state.setRequestProtocol);
   const isDirty = dirtyRequests.has(requestId);
   const scratchpadRequest = scratchpadRequestData[requestId];
@@ -125,15 +126,15 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           const { tree: currentTree, scratchpadTree: currentScratchpad } = useSidebarStore.getState();
           const findKind = (items: HydratedSidebarItem[]): string | null => {
             for (const item of items) {
-              if ((item.kind.type === 'request' || item.kind.type === 'ws') && item.kind.id === requestId)
+              if ((item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'flow') && item.kind.id === requestId)
                 return item.kind.type;
               if (item.kind.type === 'folder') { const found = findKind(item.kind.items); if (found) return found; }
             }
             return null;
           };
           const sidebarKind = findKind(currentTree) ?? findKind(currentScratchpad);
-          if (sidebarKind === 'ws') {
-            setRequestProtocol(requestId, 'ws');
+          if (sidebarKind === 'ws' || sidebarKind === 'flow') {
+            setRequestProtocol(requestId, sidebarKind);
             isHydratingRef.current = false;
             hasHydratedRef.current = true;
             return;
@@ -726,6 +727,10 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       setRequestRunning(requestId, false);
     }
   };
+
+  if (protocol === 'flow') {
+    return <FlowEditor requestId={requestId} />;
+  }
 
   if (protocol === 'ws') {
     return (

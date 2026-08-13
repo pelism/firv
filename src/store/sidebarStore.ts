@@ -100,6 +100,7 @@ interface SidebarState {
   pendingNames: Record<string, string>;
   updateRequestName: (id: string, newName: string) => void;
   renameRequest: (id: string, newName: string) => Promise<void>;
+  setRequestName: (id: string, newName: string) => void;
   addItem: (item: HydratedSidebarItem, parentPath?: string[], isScratchpad?: boolean) => Promise<void>;
   addItemOptimistic: (item: HydratedSidebarItem, parentPath?: string[], isScratchpad?: boolean) => void;
   deleteItem: (path: string[], isScratchpad?: boolean) => Promise<void>;
@@ -146,6 +147,12 @@ const transformToManifestItem = (item: HydratedSidebarItem): any => {
   } else if (item.kind.type === 'ws') {
     return {
       type: 'ws',
+      id: item.kind.id,
+      name: item.kind.name,
+    };
+  } else if (item.kind.type === 'flow') {
+    return {
+      type: 'flow',
       id: item.kind.id,
       name: item.kind.name,
     };
@@ -365,40 +372,51 @@ export const useSidebarStore = create<SidebarState>()(
         }));
       },
       renameRequest: async (id, newName) => {
-        const { tree, scratchpadTree, workspacePath, syncTreeToBackend, clearPendingName } = get();
+        const { workspacePath, syncTreeToBackend, setRequestName } = get();
 
-        const renameInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
-          return items.map(item => {
-            if ((item.kind.type === 'request' || item.kind.type === 'ws') && item.kind.id === id) {
-              return {
-                ...item,
-                kind: {
-                  ...item.kind,
-                  name: newName,
-                }
-              };
-            }
-
-            if (item.kind.type === 'folder') {
-              return {
-                ...item,
-                kind: {
-                  ...item.kind,
-                  items: renameInItems(item.kind.items)
-                }
-              };
-            }
-
-            return item;
-          });
-        };
-
-        set({ tree: renameInItems(tree), scratchpadTree: renameInItems(scratchpadTree) });
-        clearPendingName(id);
+        setRequestName(id, newName);
 
         if (workspacePath) {
-          await syncTreeToBackend(renameInItems(tree));
+          await syncTreeToBackend(get().tree);
         }
+      },
+      setRequestName: (id, newName) => {
+        set((state) => {
+          const renameInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
+            return items.map(item => {
+              if ((item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'flow') && item.kind.id === id) {
+                return {
+                  ...item,
+                  kind: {
+                    ...item.kind,
+                    name: newName,
+                  }
+                };
+              }
+
+              if (item.kind.type === 'folder') {
+                return {
+                  ...item,
+                  kind: {
+                    ...item.kind,
+                    items: renameInItems(item.kind.items)
+                  }
+                };
+              }
+
+              return item;
+            });
+          };
+
+          const newPending = { ...state.pendingNames };
+          delete newPending[id];
+
+          return {
+            tree: renameInItems(state.tree),
+            scratchpadTree: renameInItems(state.scratchpadTree),
+            pendingNames: newPending,
+          };
+        });
       },
       clearPendingName: (id) => {
         set((state) => {
@@ -647,6 +665,16 @@ export const useSidebarStore = create<SidebarState>()(
           return [];
         };
 
+        const getFlowIds = (item: HydratedSidebarItem): string[] => {
+          if (item.kind.type === 'flow') {
+            return [item.kind.id];
+          }
+          if (item.kind.type === 'folder') {
+            return item.kind.items.flatMap(getFlowIds);
+          }
+          return [];
+        };
+
         const itemToDelete = findItemByPath(tree, path);
         if (itemToDelete) {
           const idsToDelete = getRequestIds(itemToDelete);
@@ -655,6 +683,15 @@ export const useSidebarStore = create<SidebarState>()(
               await invoke('delete_request', { workspaceRoot: workspacePath, id });
             } catch (e) {
               console.error(`Failed to delete request file ${id}:`, e);
+            }
+          }
+
+          const flowIdsToDelete = getFlowIds(itemToDelete);
+          for (const id of flowIdsToDelete) {
+            try {
+              await invoke('delete_flow', { workspaceRoot: workspacePath, id });
+            } catch (e) {
+              console.error(`Failed to delete flow file ${id}:`, e);
             }
           }
         }
@@ -1068,7 +1105,7 @@ export const useSidebarStore = create<SidebarState>()(
 
         const findName = (items: HydratedSidebarItem[]): string | null => {
           for (const item of items) {
-            if ((item.kind.type === 'request' || item.kind.type === 'ws') && item.kind.id === id) {
+            if ((item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'flow') && item.kind.id === id) {
               return item.kind.name;
             }
             if (item.kind.type === 'folder') {

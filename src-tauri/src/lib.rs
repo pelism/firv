@@ -16,10 +16,14 @@ pub mod variables;
 mod watcher;
 
 use lifecycle::run_firv_request;
+use lifecycle::run_firv_flow;
 use workspace_context::WorkspaceContext;
 use storage::get_request;
 use storage::update_request;
 use storage::delete_request;
+use storage::get_flow;
+use storage::update_flow;
+use storage::delete_flow;
 use storage::update_manifest_structure;
 use storage::create_workspace;
 use storage::check_workspace_exists;
@@ -215,6 +219,10 @@ pub fn run_with_workspace(cli_workspace_path: Option<String>) {
             get_request,
             update_request,
             delete_request,
+            get_flow,
+            update_flow,
+            delete_flow,
+            run_firv_flow,
             update_manifest_structure,
             create_workspace,
             check_workspace_exists,
