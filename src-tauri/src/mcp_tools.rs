@@ -607,11 +607,7 @@ fn promote_scratchpad_request(arguments: Value, state: &mut McpServerState) -> R
         method: request.method.clone(),
     };
 
-    if args.parent_path.is_empty() {
-        manifest.workspace.order.push(request_item);
-    } else {
-        insert_into_folder(&mut manifest.workspace.order, &args.parent_path, request_item)?;
-    }
+    insert_into_folder(&mut manifest.workspace.order, &args.parent_path, request_item)?;
 
     storage::update_manifest_structure(
         workspace_root.to_string(),
@@ -729,11 +725,7 @@ fn create_request(arguments: Value, state: &mut McpServerState) -> Result<Value,
         method: request.method.clone(),
     };
 
-    if args.parent_path.is_empty() {
-        manifest.workspace.order.push(request_item);
-    } else {
-        insert_into_folder(&mut manifest.workspace.order, &args.parent_path, request_item)?;
-    }
+    insert_into_folder(&mut manifest.workspace.order, &args.parent_path, request_item)?;
 
     storage::update_manifest_structure(
         workspace_root.to_string(),
