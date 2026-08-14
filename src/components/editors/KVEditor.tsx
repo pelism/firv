@@ -134,7 +134,8 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
 
   // Initialize and sync rows, ensuring there's always an empty row at the end
   useEffect(() => {
-    const updatedRows = [...data];
+    const safeData = Array.isArray(data) ? data : [];
+    const updatedRows = [...safeData];
     if (updatedRows.length === 0 || 
         (updatedRows[updatedRows.length - 1].key !== "" || updatedRows[updatedRows.length - 1].value !== "")) {
       updatedRows.push({ id: nextEmptyId, key: "", value: "", enabled: true });

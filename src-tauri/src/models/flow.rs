@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::models::request::ExtractionSource;
+use crate::models::request::{ExtractionSource, KeyValue};
 
 fn default_true() -> bool {
     true
@@ -54,6 +54,12 @@ pub struct FlowStep {
     /// `response_extractions`.
     #[serde(default)]
     pub export_variables: Vec<FlowExtractionRule>,
+    /// Query parameter overrides applied to this step's request at runtime.
+    /// Matching keys replace the request's persisted param (value and enabled
+    /// state); non-matching keys are appended as new params. Disabled overrides
+    /// can suppress persisted params without editing the underlying request.
+    #[serde(default)]
+    pub query_param_overrides: Vec<KeyValue>,
     /// Suppresses this step's own persisted `before_run` chain when run as part
     /// of the flow, without mutating the underlying request.
     #[serde(default)]

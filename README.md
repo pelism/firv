@@ -7,7 +7,9 @@
     A cross-platform desktop application for building, organizing, and executing HTTP requests.
   </p>
   <p>
-[![Release](https://github.com/pelism/firv/actions/workflows/release.yml/badge.svg)](https://github.com/pelism/firv/actions/workflows/release.yml)
+    <a href="https://github.com/pelism/firv/actions/workflows/release.yml">
+      <img src="https://github.com/pelism/firv/actions/workflows/release.yml/badge.svg" alt="Release" />
+    </a>
   </p>
   <p>
     <a href="#features">Features</a> •

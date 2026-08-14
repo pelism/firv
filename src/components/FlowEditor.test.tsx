@@ -16,6 +16,7 @@ const existingFlow = {
       request_id: 'req-1',
       input_variables: [{ key: 'name', value: 'world', enabled: true }],
       export_variables: [{ target: '{{token}}', source: 'response_body_json', pattern: 'token', enabled: true }],
+      query_param_overrides: [],
       skip_before_chain: true,
       skip_on_success_chain: false,
       skip_on_failure_chain: false,
@@ -74,7 +75,7 @@ describe('FlowEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /add step/i }));
 
     fireEvent.change(screen.getByPlaceholderText('local name'), { target: { value: '  greeting  ' } });
-    fireEvent.change(screen.getAllByPlaceholderText('value or {{var}}')[0], { target: { value: 'hello' } });
+    fireEvent.change(screen.getAllByPlaceholderText('value or {{var}}')[1], { target: { value: 'hello' } });
 
     fireEvent.click(screen.getByRole('button', { name: /add export/i }));
     fireEvent.change(screen.getByPlaceholderText('token'), { target: { value: '{{ result }}' } });
@@ -96,6 +97,32 @@ describe('FlowEditor', () => {
     })));
   });
 
+  it('saves query param overrides for a step', async () => {
+    invoke.mockImplementation((name: string) => {
+      if (name === 'get_flow') return Promise.reject(new Error('not found'));
+      if (name === 'update_flow') return Promise.resolve({});
+      return Promise.resolve({});
+    });
+
+    render(<FlowEditor requestId="flow-new" />);
+    await screen.findByText('No steps yet. Add requests to run them in order.');
+
+    fireEvent.click(screen.getByRole('button', { name: /add step/i }));
+
+    fireEvent.change(screen.getByPlaceholderText('param name'), { target: { value: 'type' } });
+    fireEvent.change(screen.getAllByPlaceholderText('value or {{var}}')[0], { target: { value: 'book' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('update_flow', expect.objectContaining({
+      flow: expect.objectContaining({
+        steps: [expect.objectContaining({
+          query_param_overrides: [{ key: 'type', value: 'book', enabled: true, secret_ref: null }],
+        })],
+      }),
+    })));
+  });
+
   it('omits disabled or empty-key input variables when saving', async () => {
     invoke.mockImplementation((name: string) => {
       if (name === 'get_flow') return Promise.reject(new Error('not found'));
@@ -107,7 +134,7 @@ describe('FlowEditor', () => {
     await screen.findByText('No steps yet. Add requests to run them in order.');
 
     fireEvent.click(screen.getByRole('button', { name: /add step/i }));
-    fireEvent.change(screen.getByPlaceholderText('value or {{var}}'), { target: { value: 'orphan value' } });
+    fireEvent.change(screen.getAllByPlaceholderText('value or {{var}}')[1], { target: { value: 'orphan value' } });
 
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
 

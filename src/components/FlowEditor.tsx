@@ -6,6 +6,7 @@ import { useAppStore } from '../store/appStore';
 import { useSidebarStore } from '../store/sidebarStore';
 import { flattenRequestOptions, normalizeExtractionTarget } from './requestEditorUtils';
 import { KVEditor, type KeyValue } from './editors/KVEditor';
+import type { KeyValue as PersistedKeyValue } from '../types/keyValue';
 import type { FirvFlow } from '../types/firvFlow';
 import type { FlowStep } from '../types/flowStep';
 import type { FlowInputVariable } from '../types/flowInputVariable';
@@ -29,6 +30,7 @@ interface FlowStepUI {
   request_id: string;
   input_variables: KeyValue[];
   export_variables: FlowExportRuleUI[];
+  query_param_overrides: KeyValue[];
   skip_before_chain: boolean;
   skip_on_success_chain: boolean;
   skip_on_failure_chain: boolean;
@@ -62,6 +64,31 @@ const keyValuesToInputVariables = (kvs: KeyValue[]): FlowInputVariable[] => {
   return result;
 };
 
+const queryParamOverridesToKeyValues = (overrides: PersistedKeyValue[] | undefined): KeyValue[] =>
+  (overrides || []).map(o => ({
+    id: generateId(),
+    key: o.key,
+    value: o.value,
+    enabled: o.enabled,
+    secretRef: o.secret_ref ?? undefined,
+  }));
+
+const keyValuesToQueryParamOverrides = (kvs: KeyValue[]): PersistedKeyValue[] => {
+  const result: PersistedKeyValue[] = [];
+  for (const kv of kvs) {
+    if (kv.key.trim() === '') {
+      continue;
+    }
+    result.push({
+      key: kv.key.trim(),
+      value: kv.value,
+      enabled: kv.enabled,
+      secret_ref: kv.secretRef ?? null,
+    });
+  }
+  return result;
+};
+
 const exportVariablesToUI = (exports: FlowExtractionRule[] | undefined): FlowExportRuleUI[] =>
   (exports || []).map(ev => ({ localId: generateId(), target: ev.target, source: ev.source, pattern: ev.pattern, enabled: ev.enabled }));
 
@@ -73,6 +100,7 @@ const stepToUI = (step: FlowStep): FlowStepUI => ({
   request_id: step.request_id,
   input_variables: inputVariablesToKeyValues(step.input_variables),
   export_variables: exportVariablesToUI(step.export_variables),
+  query_param_overrides: queryParamOverridesToKeyValues(step.query_param_overrides),
   skip_before_chain: step.skip_before_chain,
   skip_on_success_chain: step.skip_on_success_chain,
   skip_on_failure_chain: step.skip_on_failure_chain,
@@ -82,6 +110,7 @@ const uiToStep = (step: FlowStepUI): FlowStep => ({
   request_id: step.request_id,
   input_variables: keyValuesToInputVariables(step.input_variables),
   export_variables: uiToExportVariables(step.export_variables),
+  query_param_overrides: keyValuesToQueryParamOverrides(step.query_param_overrides),
   skip_before_chain: step.skip_before_chain,
   skip_on_success_chain: step.skip_on_success_chain,
   skip_on_failure_chain: step.skip_on_failure_chain,
@@ -139,6 +168,7 @@ export function FlowEditor({ requestId }: FlowEditorProps) {
       request_id: requestOptions[0]?.id || '',
       input_variables: [],
       export_variables: [],
+      query_param_overrides: [],
       skip_before_chain: false,
       skip_on_success_chain: false,
       skip_on_failure_chain: false,
@@ -334,6 +364,17 @@ export function FlowEditor({ requestId }: FlowEditorProps) {
                 </div>
 
                 <div className="pl-7 space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Query param overrides</label>
+                    <KVEditor
+                      data={step.query_param_overrides}
+                      onChange={kvs => updateStep(step.localId, { query_param_overrides: kvs })}
+                      placeholderKey="param name"
+                      placeholderValue="value or {{var}}"
+                      variableLookup={workspaceGlobals}
+                    />
+                  </div>
+
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Input variables</label>
                     <KVEditor

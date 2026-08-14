@@ -426,6 +426,22 @@ pub async fn execute_flow(
             }
         };
 
+        // Apply flow-scoped query parameter overrides to a mutable copy of the
+        // request. Matching keys replace the persisted param entirely; new keys
+        // are appended. This keeps the persisted request unchanged.
+        let mut request = request;
+        for override_kv in &step.query_param_overrides {
+            let key = override_kv.key.trim();
+            if key.is_empty() {
+                continue;
+            }
+            if let Some(existing) = request.params.iter_mut().find(|p| p.key.trim() == key) {
+                *existing = override_kv.clone();
+            } else {
+                request.params.push(override_kv.clone());
+            }
+        }
+
         // Resolve this step's input variables against the flow context.
         let mut resolver = VariableResolver::from_scopes(&workspace_vars, &environment_vars, &secrets);
         for (k, v) in &carried_vars {
@@ -528,8 +544,8 @@ mod tests {
     use super::*;
     use crate::models::flow::{FlowExtractionRule, FlowInputVariable, FlowStep};
     use crate::models::request::{
-        BeforeRunStep, ChainCondition, ExtractionSource, HttpMethod, RequestBody, RequestChainStep,
-        RequestExtractionRule, RequestTransforms, RequestVariable,
+        BeforeRunStep, ChainCondition, ExtractionSource, HttpMethod, KeyValue, RequestBody,
+        RequestChainStep, RequestExtractionRule, RequestTransforms, RequestVariable,
     };
     use httpmock::prelude::*;
 
@@ -938,6 +954,154 @@ mod tests {
                     key: "name".to_string(),
                     value: "world".to_string(),
                     enabled: true,
+                }],
+                ..Default::default()
+            }],
+        };
+
+        let result = execute_flow(workspace_root, flow, vec![], vec![], HashMap::new())
+            .await
+            .expect("flow should succeed");
+
+        mock.assert();
+        assert!(!result.stopped_early);
+        assert!(result.steps[0].success);
+    }
+
+    #[tokio::test]
+    async fn execute_flow_applies_query_param_overrides_to_enable_and_change_param() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace_root = dir.path().to_string_lossy().to_string();
+        let server = MockServer::start();
+
+        let mock = server.mock(|when, then| {
+            when.method(GET).path("/items").query_param("type", "book");
+            then.status(200).body("ok");
+        });
+
+        write_request(dir.path(), &FirvRequest {
+            id: "list".to_string(),
+            name: "list".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/items", server.base_url()),
+            headers: vec![],
+            params: vec![KeyValue {
+                key: "type".to_string(),
+                value: "all".to_string(),
+                enabled: false,
+                secret_ref: None,
+            }],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+
+        let flow = FirvFlow {
+            id: "flow-params".to_string(),
+            name: "Flow".to_string(),
+            steps: vec![FlowStep {
+                request_id: "list".to_string(),
+                query_param_overrides: vec![KeyValue {
+                    key: "type".to_string(),
+                    value: "book".to_string(),
+                    enabled: true,
+                    secret_ref: None,
+                }],
+                ..Default::default()
+            }],
+        };
+
+        let result = execute_flow(workspace_root, flow, vec![], vec![], HashMap::new())
+            .await
+            .expect("flow should succeed");
+
+        mock.assert();
+        assert!(!result.stopped_early);
+        assert!(result.steps[0].success);
+    }
+
+    #[tokio::test]
+    async fn execute_flow_can_disable_query_param_via_override() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace_root = dir.path().to_string_lossy().to_string();
+        let server = MockServer::start();
+
+        let mock = server.mock(|when, then| {
+            when.method(GET).path("/items");
+            then.status(200).body("ok");
+        });
+
+        write_request(dir.path(), &FirvRequest {
+            id: "list".to_string(),
+            name: "list".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/items", server.base_url()),
+            headers: vec![],
+            params: vec![KeyValue {
+                key: "type".to_string(),
+                value: "book".to_string(),
+                enabled: true,
+                secret_ref: None,
+            }],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+
+        let flow = FirvFlow {
+            id: "flow-disable".to_string(),
+            name: "Flow".to_string(),
+            steps: vec![FlowStep {
+                request_id: "list".to_string(),
+                query_param_overrides: vec![KeyValue {
+                    key: "type".to_string(),
+                    value: "".to_string(),
+                    enabled: false,
+                    secret_ref: None,
+                }],
+                ..Default::default()
+            }],
+        };
+
+        let result = execute_flow(workspace_root, flow, vec![], vec![], HashMap::new())
+            .await
+            .expect("flow should succeed");
+
+        mock.assert();
+        assert!(!result.stopped_early);
+        assert!(result.steps[0].success);
+    }
+
+    #[tokio::test]
+    async fn execute_flow_appends_new_query_param_via_override() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace_root = dir.path().to_string_lossy().to_string();
+        let server = MockServer::start();
+
+        let mock = server.mock(|when, then| {
+            when.method(GET).path("/items").query_param("type", "book");
+            then.status(200).body("ok");
+        });
+
+        write_request(dir.path(), &FirvRequest {
+            id: "list".to_string(),
+            name: "list".to_string(),
+            method: HttpMethod::GET,
+            url: format!("{}/items", server.base_url()),
+            headers: vec![],
+            params: vec![],
+            body: RequestBody::None,
+            transforms: RequestTransforms::default(),
+        });
+
+        let flow = FirvFlow {
+            id: "flow-add".to_string(),
+            name: "Flow".to_string(),
+            steps: vec![FlowStep {
+                request_id: "list".to_string(),
+                query_param_overrides: vec![KeyValue {
+                    key: "type".to_string(),
+                    value: "book".to_string(),
+                    enabled: true,
+                    secret_ref: None,
                 }],
                 ..Default::default()
             }],
