@@ -46,6 +46,15 @@ fn serialize_form_pairs(pairs: &[(String, String)]) -> String {
         .join("&")
 }
 
+fn redacted_preview(resolver: &VariableResolver, value: &str) -> String {
+    let redacted = resolver.redact_secrets(value);
+    if redacted.len() > 80 {
+        format!("{}...", &redacted[..80])
+    } else {
+        redacted
+    }
+}
+
 #[async_recursion::async_recursion]
 async fn run_request_step_by_id(
     workspace_root: &str,
@@ -203,9 +212,11 @@ pub async fn execute_chain_with_skip(
     }
 
     let start_time = Instant::now();
-    let logs = Vec::new();
+    let mut logs = Vec::new();
     let mut script_errors = Vec::new();
     let workspace_vars_for_chain = workspace_vars.clone();
+
+    logs.push(format!("Executing request '{}'", request.id));
     let environment_vars_for_chain = environment_vars.clone();
 
     // Setup variable resolver
@@ -221,9 +232,22 @@ pub async fn execute_chain_with_skip(
         resolver.request_vars.insert(key.trim().to_string(), value.clone());
     }
 
+    let seeded_count = request.transforms.request_variables.len() + overrides.len();
+    if seeded_count > 0 {
+        logs.push(format!("Seeded {} request-scoped variable(s)", seeded_count));
+    }
+
     let mut before_run_results = Vec::new();
 
     // --- Before-run chain ---
+    if skip_before_chain {
+        logs.push("Skipping before-run chain".to_string());
+    } else if request.transforms.before_run.is_empty() {
+        logs.push("No before-run steps".to_string());
+    } else {
+        logs.push(format!("Running {} before-run step(s)", request.transforms.before_run.len()));
+    }
+
     if !skip_before_chain {
         for step in &request.transforms.before_run {
             if let Some(summary) = run_before_run_step(
@@ -265,10 +289,25 @@ pub async fn execute_chain_with_skip(
         }
     }
 
+    logs.push(format!("Rendered {:?} {}", hydrated_info.method, resolver.redact_secrets(&hydrated_info.url)));
+    if let Some(body) = &hydrated_info.body {
+        logs.push(format!("Request body: {}", body));
+    } else {
+        logs.push("No request body".to_string());
+    }
+
     // Stage 3: Network Execution
     let firv_resp = match run_request(prepared_request).await {
-        Ok(response) => Some(response),
+        Ok(response) => {
+            logs.push(format!(
+                "Network returned status {} in {} ms ({} bytes)",
+                response.status, response.time_ms, response.size_bytes
+            ));
+            logs.push(format!("Response body: {}", response.body));
+            Some(response)
+        }
         Err(e) => {
+            logs.push(format!("Network request failed: {}", e));
             script_errors.push(format!("Network request failed: {}", e));
             None
         }
@@ -279,12 +318,19 @@ pub async fn execute_chain_with_skip(
         for rule in &request.transforms.response_extractions {
             match resolver.apply_extraction_rule(rule, &resp.body) {
                 Ok(Some(value)) => {
+                    logs.push(format!(
+                        "Extracted '{}' = '{}'",
+                        rule.target,
+                        redacted_preview(&resolver, &value)
+                    ));
                     resolver.request_vars.insert(rule.target.clone(), value);
                 }
                 Ok(None) => {
+                    logs.push(format!("Extraction '{}' returned no value", rule.target));
                     script_errors.push(format!("Extraction '{}' returned no value", rule.target));
                 }
                 Err(err) => {
+                    logs.push(format!("Extraction '{}' failed", rule.target));
                     script_errors.push(err);
                 }
             }
@@ -294,6 +340,14 @@ pub async fn execute_chain_with_skip(
     let total_time = start_time.elapsed().as_millis() as u64;
 
     let mut chained_results = Vec::new();
+
+    if request.transforms.chain_steps.is_empty() {
+        logs.push("No chained steps configured".to_string());
+    } else if firv_resp.is_none() {
+        logs.push("Skipping chained steps because the request failed".to_string());
+    } else {
+        logs.push(format!("Evaluating {} chained step(s)", request.transforms.chain_steps.len()));
+    }
 
     if let Some(resp) = &firv_resp {
         for step in &request.transforms.chain_steps {
@@ -338,6 +392,8 @@ pub async fn execute_chain_with_skip(
         hydrated_info.body = Some(resolver.redact_secrets(body));
     }
 
+    logs.push(format!("Finished request '{}' in {} ms", request.id, total_time));
+
     Ok(LifecycleResult {
         final_request: hydrated_info,
         response: firv_resp,
@@ -374,6 +430,7 @@ pub struct FlowStepResult {
     pub status: Option<u16>,
     pub execution_time_ms: u64,
     pub error: Option<String>,
+    pub logs: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -403,7 +460,13 @@ pub async fn execute_flow(
     let mut carried_vars: HashMap<String, String> = HashMap::new();
     let mut stopped_early = false;
 
-    for step in &flow.steps {
+    for (step_index, step) in flow.steps.iter().enumerate() {
+        let mut step_logs = Vec::new();
+        step_logs.push(format!("Step {}: executing '{}'", step_index + 1, step.request_id));
+        if !carried_vars.is_empty() {
+            step_logs.push(format!("Carried {} variable(s) into step", carried_vars.len()));
+        }
+
         let request_path = Path::new(&workspace_root)
             .join("requests")
             .join(format!("{}.yaml", step.request_id));
@@ -414,12 +477,14 @@ pub async fn execute_flow(
         {
             Some(req) => req,
             None => {
+                step_logs.push(format!("Request '{}' could not be found or parsed", step.request_id));
                 step_results.push(FlowStepResult {
                     request_id: step.request_id.clone(),
                     success: false,
                     status: None,
                     execution_time_ms: 0,
                     error: Some(format!("Request '{}' could not be found or parsed", step.request_id)),
+                    logs: step_logs,
                 });
                 stopped_early = true;
                 break;
@@ -430,6 +495,7 @@ pub async fn execute_flow(
         // request. Matching keys replace the persisted param entirely; new keys
         // are appended. This keeps the persisted request unchanged.
         let mut request = request;
+        let mut applied_overrides = 0;
         for override_kv in &step.query_param_overrides {
             let key = override_kv.key.trim();
             if key.is_empty() {
@@ -440,6 +506,10 @@ pub async fn execute_flow(
             } else {
                 request.params.push(override_kv.clone());
             }
+            applied_overrides += 1;
+        }
+        if applied_overrides > 0 {
+            step_logs.push(format!("Applied {} query param override(s)", applied_overrides));
         }
 
         // Resolve this step's input variables against the flow context.
@@ -449,6 +519,7 @@ pub async fn execute_flow(
         }
 
         let mut step_overrides = carried_vars.clone();
+        let mut input_keys = Vec::new();
         for iv in &step.input_variables {
             if !iv.enabled {
                 continue;
@@ -459,6 +530,10 @@ pub async fn execute_flow(
             }
             let resolved = resolver.resolve_string(&iv.value);
             step_overrides.insert(key.to_string(), resolved);
+            input_keys.push(key.to_string());
+        }
+        if !input_keys.is_empty() {
+            step_logs.push(format!("Resolved input variable(s): {}", input_keys.join(", ")));
         }
 
         let result = execute_chain_with_skip(
@@ -479,6 +554,8 @@ pub async fn execute_flow(
             Ok(lifecycle) => {
                 let status = lifecycle.response.as_ref().map(|r| r.status);
                 let success = status.map(|s| s < 400).unwrap_or(false);
+
+                step_logs.extend(lifecycle.logs);
 
                 for (key, value) in lifecycle.variables {
                     carried_vars.insert(key, value);
@@ -501,13 +578,28 @@ pub async fn execute_flow(
                         };
                         match export_resolver.apply_extraction_rule(&rule, &resp.body) {
                             Ok(Some(value)) => {
-                                carried_vars.insert(ev.target.clone(), value);
+                                carried_vars.insert(ev.target.clone(), value.clone());
+                                step_logs.push(format!("Exported '{}' to flow context", ev.target));
                             }
-                            Ok(None) => {}
-                            Err(_) => {}
+                            Ok(None) => {
+                                step_logs.push(format!("Export '{}' returned no value", ev.target));
+                            }
+                            Err(_) => {
+                                step_logs.push(format!("Export '{}' failed", ev.target));
+                            }
                         }
                     }
                 }
+
+                if success {
+                    step_logs.push(format!("Step succeeded with status {}", status.unwrap_or(0)));
+                } else if let Some(err) = lifecycle.script_errors.first() {
+                    step_logs.push(format!("Step failed: {}", err));
+                } else if let Some(status) = status {
+                    step_logs.push(format!("Step failed with status {}", status));
+                }
+
+                step_logs.push(format!("Carried {} variable(s) forward", carried_vars.len()));
 
                 step_results.push(FlowStepResult {
                     request_id: step.request_id.clone(),
@@ -515,6 +607,7 @@ pub async fn execute_flow(
                     status,
                     execution_time_ms: lifecycle.execution_time_ms,
                     error: if success { None } else { lifecycle.script_errors.first().cloned() },
+                    logs: step_logs,
                 });
 
                 if !success {
@@ -523,12 +616,14 @@ pub async fn execute_flow(
                 }
             }
             Err(err) => {
+                step_logs.push(format!("Step failed: {}", err));
                 step_results.push(FlowStepResult {
                     request_id: step.request_id.clone(),
                     success: false,
                     status: None,
                     execution_time_ms: 0,
                     error: Some(err),
+                    logs: step_logs,
                 });
                 stopped_early = true;
                 break;

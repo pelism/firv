@@ -145,11 +145,11 @@ describe('FlowEditor', () => {
     })));
   });
 
-  it('runs the flow and displays per-step results', async () => {
+  it('runs the flow and displays per-step results with a trace', async () => {
     invoke.mockImplementation((name: string) => {
       if (name === 'get_flow') return Promise.resolve(existingFlow);
       if (name === 'run_firv_flow') return Promise.resolve({
-        steps: [{ request_id: 'req-1', success: true, status: 200, execution_time_ms: 42, error: null }],
+        steps: [{ request_id: 'req-1', success: true, status: 200, execution_time_ms: 42, error: null, logs: ['Step 1: executing req-1', 'Network returned status 200 in 5 ms (12 bytes)'] }],
         stopped_early: false,
       });
       return Promise.resolve({});
@@ -162,5 +162,6 @@ describe('FlowEditor', () => {
 
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('run_firv_flow', expect.objectContaining({ workspaceRoot: '/workspace' })));
     await screen.findByText(/Status 200/);
+    await waitFor(() => expect(screen.getByText('Trace (2)')).toBeInTheDocument());
   });
 });

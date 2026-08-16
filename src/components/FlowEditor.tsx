@@ -42,6 +42,7 @@ interface FlowStepResult {
   status: number | null;
   execution_time_ms: number;
   error: string | null;
+  logs?: string[];
 }
 
 interface FlowResult {
@@ -451,12 +452,26 @@ export function FlowEditor({ requestId }: FlowEditorProps) {
                 </div>
 
                 {result && (
-                  <div className={twMerge(
-                    "mt-2 pl-7 text-[11px] flex items-center gap-2",
-                    result.success ? "text-emerald-600" : "text-red-500"
-                  )}>
-                    {result.status !== null ? `Status ${result.status}` : 'No response'} · {result.execution_time_ms}ms
-                    {result.error && <span className="opacity-80">· {result.error}</span>}
+                  <div className="mt-2 pl-7 space-y-1">
+                    <div className={twMerge(
+                      "text-[11px] flex items-center gap-2",
+                      result.success ? "text-emerald-600" : "text-red-500"
+                    )}>
+                      {result.status !== null ? `Status ${result.status}` : 'No response'} · {result.execution_time_ms}ms
+                      {result.error && <span className="opacity-80">· {result.error}</span>}
+                    </div>
+                    {result.logs && result.logs.length > 0 && (
+                      <details className="group">
+                        <summary className="text-[11px] text-muted-foreground cursor-pointer select-none">
+                          Trace ({result.logs.length})
+                        </summary>
+                        <div className="mt-1 space-y-0.5 font-mono text-[10px] text-foreground/70">
+                          {result.logs.map((log, i) => (
+                            <div key={i} className="whitespace-pre-wrap">{log}</div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
                   </div>
                 )}
               </div>
