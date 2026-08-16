@@ -15,7 +15,7 @@ describe('useSidebarStore renameRequest', () => {
       tree: [],
       scratchpadTree: [],
       pendingNames: {},
-      projectPath: '/workspace',
+      workspacePath: '/workspace',
       workspaceName: 'workspace',
     } as any);
 
@@ -58,7 +58,7 @@ describe('useSidebarStore renameRequest', () => {
     expect(invoke).toHaveBeenCalledWith(
       'update_manifest_structure',
       expect.objectContaining({
-        projectRoot: '/workspace',
+        workspaceRoot: '/workspace',
         workspace: expect.objectContaining({
           order: [
             expect.objectContaining({

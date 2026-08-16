@@ -1,12 +1,24 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Trash2, FileText, Table } from 'lucide-react';
+import { Trash2, FileText, Table, KeyRound, ChevronDown } from 'lucide-react';
+import { twMerge } from 'tailwind-merge';
 import { getVariableHoverTitleAtPoint, type VariableLookup } from '../../lib/variableHover';
+import { useSecretModalStore } from '../../store/secretModalStore';
 
 export interface KeyValue {
   id: string;
   key: string;
   value: string;
   enabled: boolean;
+  /** Id of a secret in the workspace's secret store. When set, the effective
+   * value is resolved from that secret instead of `value` (which is left empty).
+   * Referencing by id (rather than name) means renaming a secret never breaks
+   * rows that reference it. */
+  secretRef?: string;
+}
+
+export interface SecretOption {
+  id: string;
+  name: string;
 }
 
 interface KVEditorProps {
@@ -16,7 +28,28 @@ interface KVEditorProps {
   placeholderValue?: string;
   uniqueEnabledKeys?: boolean;
   variableLookup?: VariableLookup;
+  /** Enables the secret-reference toggle on each row. Requires `secretOptions` and
+   * `onCreateSecret` to be provided. */
+  secretsEnabled?: boolean;
+  /** Secrets already defined for the current workspace (id + name). */
+  secretOptions?: SecretOption[];
+  /** Creates a new secret and returns its generated id. Should resolve once the
+   * secret store has been updated so the row can be linked to it. */
+  onCreateSecret?: (name: string, value: string) => Promise<string>;
+  /** When set (e.g. an environment name), suggested secret names are prefixed
+   * with this value (`{prefix}_{key}`) instead of just the row's key. */
+  secretNamePrefix?: string;
 }
+
+const slugifyForSecretName = (value: string) =>
+  value.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
+
+const dedupeSecretName = (name: string, existing: string[]): string => {
+  if (!existing.includes(name)) return name;
+  let i = 2;
+  while (existing.includes(`${name}_${i}`)) i++;
+  return `${name}_${i}`;
+};
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
@@ -77,18 +110,32 @@ const HighlightedInput = ({ value, onChange, onKeyDown, placeholder, inputRef, o
   );
 };
 
-export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderValue = "Value", uniqueEnabledKeys = false, variableLookup = {} }: KVEditorProps) {
+export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderValue = "Value", uniqueEnabledKeys = false, variableLookup = {}, secretsEnabled = false, secretOptions = [], onCreateSecret, secretNamePrefix }: KVEditorProps) {
   const [rows, setRows] = useState<KeyValue[]>([]);
   const [nextEmptyId, setNextEmptyId] = useState(generateId());
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [hoverState, setHoverState] = useState<{ [rowId: string]: { title: string; left: number } | null }>({});
+  const [secretPickerRowId, setSecretPickerRowId] = useState<string | null>(null);
   const valueInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const keyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const secretPopoverRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!secretPickerRowId) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (secretPopoverRef.current && !secretPopoverRef.current.contains(e.target as Node)) {
+        setSecretPickerRowId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [secretPickerRowId]);
 
   // Initialize and sync rows, ensuring there's always an empty row at the end
   useEffect(() => {
-    const updatedRows = [...data];
+    const safeData = Array.isArray(data) ? data : [];
+    const updatedRows = [...safeData];
     if (updatedRows.length === 0 || 
         (updatedRows[updatedRows.length - 1].key !== "" || updatedRows[updatedRows.length - 1].value !== "")) {
       updatedRows.push({ id: nextEmptyId, key: "", value: "", enabled: true });
@@ -96,7 +143,7 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
     
     // Check if deep equal to avoid infinite loops if parents just pass a new array ref
     const isSame = rows.length === updatedRows.length && rows.every((r, i) => 
-      r.key === updatedRows[i].key && r.value === updatedRows[i].value && r.enabled === updatedRows[i].enabled && r.id === updatedRows[i].id
+      r.key === updatedRows[i].key && r.value === updatedRows[i].value && r.enabled === updatedRows[i].enabled && r.id === updatedRows[i].id && r.secretRef === updatedRows[i].secretRef
     );
     
     if (!isSame) {
@@ -194,6 +241,69 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
     onChange(newPairs);
   };
 
+  const NEW_SECRET_OPTION = '__new_secret__';
+
+  const handleSecretSelect = async (index: number, selection: string) => {
+    if (selection === '') {
+      updateRow(index, { secretRef: undefined });
+      setSecretPickerRowId(null);
+      return;
+    }
+
+    if (selection === NEW_SECRET_OPTION) {
+      const row = rows[index];
+      if (!onCreateSecret) return;
+      const existingNames = secretOptions.map(o => o.name);
+
+      const suggestedBase = secretNamePrefix
+        ? `${slugifyForSecretName(secretNamePrefix)}_${slugifyForSecretName(row.key)}`
+        : slugifyForSecretName(row.key);
+      const suggested = dedupeSecretName(suggestedBase, existingNames);
+
+      const result = await useSecretModalStore.getState().openSecretModal({
+        title: 'New Secret',
+        description: 'Stored locally outside your workspace files, referenced by name across variables in this workspace.',
+        initialName: suggested,
+        existingNames,
+      });
+      if (!result) return;
+
+      try {
+        const id = await onCreateSecret(result.name, result.value);
+        updateRow(index, { secretRef: id, value: '' });
+        setSecretPickerRowId(null);
+      } catch (err) {
+        console.error('Failed to create secret', err);
+      }
+      return;
+    }
+
+    updateRow(index, { secretRef: selection, value: '' });
+    setSecretPickerRowId(null);
+  };
+
+  const toggleSecretPicker = (row: KeyValue) => {
+    const index = rows.findIndex(r => r.id === row.id);
+    if (row.secretRef) {
+      updateRow(index, { secretRef: undefined });
+      setSecretPickerRowId(null);
+      return;
+    }
+
+    if (secretPickerRowId === row.id) {
+      setSecretPickerRowId(null);
+      return;
+    }
+
+    // Skip straight to secret creation when there's nothing to pick from yet.
+    if (secretOptions.length === 0 && onCreateSecret) {
+      handleSecretSelect(index, NEW_SECRET_OPTION);
+      return;
+    }
+
+    setSecretPickerRowId(row.id);
+  };
+
   const handleValueMouseMove = (rowId: string, value: string, event: React.MouseEvent<HTMLInputElement>) => {
     const title = getVariableHoverTitleAtPoint(value, variableLookup, event.currentTarget, event.clientX, event.clientY);
     if (!title) {
@@ -243,16 +353,76 @@ export function KVEditor({ data, onChange, placeholderKey = "Key", placeholderVa
                 placeholder={placeholderKey}
                 className="flex-1 bg-transparent border border-border rounded px-3 py-1.5 font-mono text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
               />
-              <HighlightedInput
-                inputRef={(el: HTMLInputElement | null) => { valueInputRefs.current[index] = el; }}
-                value={row.value}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateRow(index, { value: e.target.value })}
-                onKeyDown={(e: React.KeyboardEvent) => handleKeyDown(e, index, 'value')}
-                placeholder={placeholderValue}
-                onMouseMove={(e: React.MouseEvent<HTMLInputElement>) => handleValueMouseMove(row.id, row.value, e)}
-                onMouseLeave={() => setHoverState(prev => ({ ...prev, [row.id]: null }))}
-                tooltip={hoverState[row.id]}
-              />
+              {row.secretRef || secretPickerRowId === row.id ? (
+                <div
+                  className="relative flex-1"
+                  ref={secretPickerRowId === row.id ? secretPopoverRef : undefined}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSecretPickerRowId(prev => (prev === row.id ? null : row.id))}
+                    className="flex w-full items-center justify-between gap-2 bg-transparent border border-border rounded px-3 py-1.5 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
+                  >
+                    <span className="truncate">{row.secretRef ? `🔒 ${secretOptions.find(o => o.id === row.secretRef)?.name ?? 'Unknown secret'}` : 'Choose a secret...'}</span>
+                    <ChevronDown size={14} className={twMerge('shrink-0 transition-transform text-muted-foreground', secretPickerRowId === row.id && 'rotate-180')} />
+                  </button>
+                  {secretPickerRowId === row.id && (
+                    <div className="absolute left-0 top-full z-50 mt-1 w-full min-w-[10rem] rounded-md border border-border bg-popover shadow-md overflow-hidden py-1">
+                      {row.secretRef && (
+                        <button
+                          type="button"
+                          onClick={() => handleSecretSelect(index, '')}
+                          className="flex w-full items-center px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-primary/15 hover:text-primary"
+                        >
+                          Use plain text value instead
+                        </button>
+                      )}
+                      {secretOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => handleSecretSelect(index, option.id)}
+                          className={twMerge(
+                            'flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-mono transition-colors hover:bg-primary/15 hover:text-primary border-l-2 border-transparent',
+                            option.id === row.secretRef ? 'bg-primary/10 border-primary' : ''
+                          )}
+                        >
+                          🔒 {option.name}
+                        </button>
+                      ))}
+                      {onCreateSecret && (
+                        <button
+                          type="button"
+                          onClick={() => handleSecretSelect(index, NEW_SECRET_OPTION)}
+                          className="flex w-full items-center px-3 py-2 text-left text-xs font-bold text-primary transition-colors hover:bg-primary/15"
+                        >
+                          + New secret...
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <HighlightedInput
+                  inputRef={(el: HTMLInputElement | null) => { valueInputRefs.current[index] = el; }}
+                  value={row.value}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateRow(index, { value: e.target.value })}
+                  onKeyDown={(e: React.KeyboardEvent) => handleKeyDown(e, index, 'value')}
+                  placeholder={placeholderValue}
+                  onMouseMove={(e: React.MouseEvent<HTMLInputElement>) => handleValueMouseMove(row.id, row.value, e)}
+                  onMouseLeave={() => setHoverState(prev => ({ ...prev, [row.id]: null }))}
+                  tooltip={hoverState[row.id]}
+                />
+              )}
+              {secretsEnabled && (
+                <button
+                  onClick={() => toggleSecretPicker(row)}
+                  className={`p-1.5 rounded opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40 transition-colors ${row.secretRef ? 'text-amber-500 hover:text-amber-600' : 'text-gray-500 hover:text-foreground hover:bg-muted'}`}
+                  title={row.secretRef ? 'Backed by a secret (click to use a plain text value instead)' : 'Use a secret for this value'}
+                >
+                  <KeyRound className="w-4 h-4" />
+                </button>
+              )}
               <button
                 onClick={() => deleteRow(index)}
                 className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-muted rounded opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"

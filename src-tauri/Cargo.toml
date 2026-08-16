@@ -1,9 +1,14 @@
 [package]
 name = "firv"
-version = "1.0.0-alpha"
+version = "2.0.0-alpha"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
+default-run = "firv"
+
+[[bin]]
+name = "firv-cli"
+path = "src/bin/firv_cli.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -23,7 +28,7 @@ tauri-plugin-opener = "2.5.4"
 tauri-plugin-updater = "2.10.1"
 tauri-plugin-process = "2.3.1"
 serde = { version = "1", features = ["derive"] }
-ts-rs = "12.0.1"
+ts-rs = { version = "12.0.1", features = ["no-serde-warnings"] }
 serde_yaml = "0.9.34"
 serde_json = "1.0"
 reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
@@ -40,11 +45,13 @@ tauri-plugin-clipboard-manager = "2"
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = "0.3"
 tonic = { version = "0.12", features = ["tls", "tls-roots"] }
-prost = "0.13"
-prost-reflect = { version = "0.14", features = ["serde"] }
-protox = "0.7"
+url = "2.5"
+urlencoding = "2.1"
+clap = { version = "4.5", features = ["derive"] }
+dirs = "5.0"
 tokio-stream = "0.1"
 async-stream = "0.3"
 
 [dev-dependencies]
 httpmock = "0.7"
+tempfile = "3"

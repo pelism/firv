@@ -22,7 +22,7 @@ describe('RequestEditor transforms section', () => {
     invoke.mockReset();
     useAppStore.getState().reset();
     useSidebarStore.setState({
-      projectPath: '/workspace',
+      workspacePath: '/workspace',
       tree: [{ kind: { type: 'request', id: 'req-2', name: 'Other', method: 'GET' } } as any],
       pendingNames: {},
       workspaceName: 'workspace',

@@ -22,7 +22,7 @@ describe('RequestEditor integration', () => {
     invoke.mockReset();
     useAppStore.getState().reset();
     useSidebarStore.setState({
-      projectPath: '/workspace',
+      workspacePath: '/workspace',
       tree: [],
       pendingNames: {},
       workspaceName: 'workspace',

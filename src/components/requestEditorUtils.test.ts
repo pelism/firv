@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  extractRequestVariableNamesFromSources,
+  filterRequestVariablesInUse,
+  getUnresolvedRequestVariableNames,
   getFormattedAuthorizationHeader,
   getFormattedBody,
   getFormattedRequest,
@@ -77,8 +80,38 @@ describe('requestEditorUtils', () => {
         response_extractions: [{ target: 'token', source: 'response_body_json', pattern: '$.token' }],
         before_run: [{ request_id: 'req-2' }],
         chain_steps: [{ when: 'on_failure', next_request_id: 'req-3' }],
+        request_variables: [],
       },
     });
+  });
+
+  it('includes request variables referenced in the URL, headers, params, or body', () => {
+    expect(
+      getFormattedRequest({
+        requestId: 'req-1',
+        requestName: 'Folder/Req',
+        method: 'POST',
+        url: 'https://example.test/{{bookid}}',
+        headers: [{ key: 'X-Token', value: '{{token}}', enabled: true }],
+        authorization: { mode: 'none', value: '' },
+        params: [],
+        bodyMode: 'raw',
+        body: '{{unused}}',
+        formBody: [],
+        templateText: '',
+        extractions: [],
+        beforeRunChain: [],
+        chainSteps: [],
+        requestVariables: [
+          { key: 'bookid', value: '123', secret_ref: null },
+          { key: 'token', value: '', secret_ref: 'secret-1' },
+          { key: 'stale', value: 'x', secret_ref: null },
+        ],
+      }).transforms.request_variables
+    ).toEqual([
+      { key: 'bookid', value: '123', secret_ref: null },
+      { key: 'token', value: '', secret_ref: 'secret-1' },
+    ]);
   });
 
   it('normalizes extraction targets', () => {
@@ -144,6 +177,77 @@ describe('requestEditorUtils', () => {
       { key: 'X-Test', value: '1', enabled: true },
       { key: 'Authorization', value: 'Bearer {{token}}', enabled: true },
     ]);
+  });
+
+  it('detects request variable names across url, headers, params, and body', () => {
+    expect(
+      extractRequestVariableNamesFromSources({
+        url: 'https://example.test/{{bookid}}',
+        headers: [{ key: 'X-Token', value: 'Bearer {{token}}', enabled: true }],
+        params: [{ key: 'q', value: '{{query}}', enabled: true }],
+        body: '{"id":"{{bookid}}"}',
+        formBody: [{ key: 'f', value: '{{formVar}}', enabled: true }],
+      })
+    ).toEqual(['bookid', 'token', 'query', 'formVar']);
+  });
+
+  it('detects request variable names in the authorization value', () => {
+    expect(
+      extractRequestVariableNamesFromSources({
+        url: 'https://example.test',
+        authorization: '{{authToken}}',
+      })
+    ).toEqual(['authToken']);
+  });
+
+  it('includes variables referenced only in the authorization field when formatting requests', () => {
+    expect(
+      getFormattedRequest({
+        requestId: 'req-1',
+        requestName: 'Folder/Req',
+        method: 'GET',
+        url: 'https://example.test',
+        headers: [],
+        authorization: { mode: 'bearer', value: '{{authToken}}' },
+        params: [],
+        bodyMode: 'none',
+        body: '',
+        formBody: [],
+        templateText: '',
+        extractions: [],
+        beforeRunChain: [],
+        chainSteps: [],
+        requestVariables: [{ key: 'authToken', value: 'abc123', secret_ref: null }],
+      }).transforms.request_variables
+    ).toEqual([{ key: 'authToken', value: 'abc123', secret_ref: null }]);
+  });
+
+  it('flags request variables with no default, override, workspace global, or chain source as unresolved', () => {
+    const requestVariables = [
+      { key: 'hasDefault', value: 'x', secret_ref: null },
+      { key: 'hasSecret', value: '', secret_ref: 'secret-1' },
+      { key: 'bare', value: '', secret_ref: null },
+      { key: 'fromChain', value: '', secret_ref: null },
+    ];
+    expect(
+      getUnresolvedRequestVariableNames(
+        { url: 'https://example.test/{{hasDefault}}/{{hasSecret}}/{{bare}}/{{fromChain}}/{{hasOverride}}/{{isGlobal}}' },
+        { isglobal: 'g' },
+        requestVariables,
+        { hasOverride: 'temp' },
+        ['fromChain'],
+      )
+    ).toEqual(['bare']);
+  });
+
+  it('filters request variables to only those still in use across all sources', () => {
+    const requestVariables = [
+      { key: 'bookid', value: '1', secret_ref: null },
+      { key: 'stale', value: '2', secret_ref: null },
+    ];
+    expect(
+      filterRequestVariablesInUse({ url: 'https://example.test/{{bookid}}' }, requestVariables)
+    ).toEqual([{ key: 'bookid', value: '1', secret_ref: null }]);
   });
 
   it('flattens request options', () => {

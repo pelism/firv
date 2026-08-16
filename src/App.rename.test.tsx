@@ -60,7 +60,7 @@ beforeEach(() => {
     ],
     scratchpadTree: [],
     pendingNames: {},
-    projectPath: '/workspace',
+    workspacePath: '/workspace',
     workspaceName: 'workspace',
     renameRequest,
   } as any);

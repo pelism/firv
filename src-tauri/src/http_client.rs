@@ -39,14 +39,54 @@ pub struct PreparedRequest {
     pub body: PreparedBody,
 }
 
+/// Append enabled query parameters to a rendered URL. Existing query strings are
+/// preserved; new params are URL-encoded and appended. If `url` cannot be parsed,
+/// a best-effort fallback concatenation is returned.
+fn append_query_params(url: &str, params: &[(String, String)]) -> String {
+    if params.is_empty() {
+        return url.to_string();
+    }
+
+    if let Ok(mut parsed) = url::Url::parse(url) {
+        {
+            let mut pairs = parsed.query_pairs_mut();
+            for (key, value) in params {
+                pairs.append_pair(key, value);
+            }
+        }
+        return parsed.to_string();
+    }
+
+    // Fallback for unparseable URLs: simple concatenation with urlencoding.
+    let separator = if url.contains('?') { "&" } else { "?" };
+    let encoded: Vec<String> = params
+        .iter()
+        .map(|(k, v)| format!("{}={}", urlencoding::encode(k), urlencoding::encode(v)))
+        .collect();
+    format!("{}{}{}", url, separator, encoded.join("&"))
+}
+
 pub fn prepare_request(request: &FirvRequest, resolver: &mut VariableResolver) -> PreparedRequest {
     let url = resolver.render_liquid(&request.url).unwrap_or_else(|_| resolver.resolve_string(&request.url));
+
+    let query_params: Vec<(String, String)> = request
+        .params
+        .iter()
+        .filter(|kv| kv.enabled)
+        .map(|kv| {
+            let key = resolver.render_liquid(&kv.key).unwrap_or_else(|_| resolver.resolve_string(&kv.key));
+            let value = resolver.resolve_key_value(kv);
+            (key, value)
+        })
+        .filter(|(key, _)| !key.trim().is_empty())
+        .collect();
+    let url = append_query_params(&url, &query_params);
 
     let mut headers = HashMap::new();
     for kv in &request.headers {
         if kv.enabled {
             let res_key = resolver.render_liquid(&kv.key).unwrap_or_else(|_| resolver.resolve_string(&kv.key));
-            let res_val = resolver.render_liquid(&kv.value).unwrap_or_else(|_| resolver.resolve_string(&kv.value));
+            let res_val = resolver.resolve_key_value(kv);
             headers.insert(res_key, res_val);
         }
     }
@@ -63,7 +103,7 @@ pub fn prepare_request(request: &FirvRequest, resolver: &mut VariableResolver) -
             for field in fields {
                 if field.enabled {
                     let res_key = resolver.render_liquid(&field.key).unwrap_or_else(|_| resolver.resolve_string(&field.key));
-                    let res_val = resolver.render_liquid(&field.value).unwrap_or_else(|_| resolver.resolve_string(&field.value));
+                    let res_val = resolver.resolve_key_value(field);
                     form_pairs.push((res_key, res_val));
                 }
             }
@@ -155,6 +195,7 @@ mod tests {
                 key: "Authorization".to_string(),
                 value: "Bearer {{token}}".to_string(),
                 enabled: true,
+                secret_ref: None,
             }],
             params: vec![],
             body,
@@ -193,11 +234,13 @@ mod tests {
                 key: "first_name".to_string(),
                 value: "{{name}}".to_string(),
                 enabled: true,
+                secret_ref: None,
             },
             KeyValue {
                 key: "disabled".to_string(),
                 value: "{{token}}".to_string(),
                 enabled: false,
+                secret_ref: None,
             },
         ]));
         let mut resolver = resolver_with_values();
@@ -215,5 +258,83 @@ mod tests {
         assert!(trace.iter().any(|entry| entry.key == "name"));
         assert!(trace.iter().any(|entry| entry.key == "token"));
         assert!(!trace.iter().any(|entry| entry.key == "disabled"));
+    }
+
+    #[test]
+    fn prepare_request_appends_enabled_params_to_url() {
+        let mut request = base_request(RequestBody::None);
+        request.url = "https://example.com/items".to_string();
+        request.params = vec![
+            KeyValue {
+                key: "page".to_string(),
+                value: "1".to_string(),
+                enabled: true,
+                secret_ref: None,
+            },
+            KeyValue {
+                key: "limit".to_string(),
+                value: "10".to_string(),
+                enabled: true,
+                secret_ref: None,
+            },
+            KeyValue {
+                key: "hidden".to_string(),
+                value: "x".to_string(),
+                enabled: false,
+                secret_ref: None,
+            },
+        ];
+        let mut resolver = VariableResolver::new();
+
+        let prepared = prepare_request(&request, &mut resolver);
+
+        let parsed = url::Url::parse(&prepared.url).unwrap();
+        let query: Vec<_> = parsed
+            .query_pairs()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        assert!(query.contains(&("page".to_string(), "1".to_string())));
+        assert!(query.contains(&("limit".to_string(), "10".to_string())));
+        assert!(!query.iter().any(|(k, _)| k == "hidden"));
+    }
+
+    #[test]
+    fn prepare_request_preserves_existing_query_string() {
+        let mut request = base_request(RequestBody::None);
+        request.url = "https://example.com/items?existing=true".to_string();
+        request.params = vec![KeyValue {
+            key: "page".to_string(),
+            value: "1".to_string(),
+            enabled: true,
+            secret_ref: None,
+        }];
+        let mut resolver = VariableResolver::new();
+
+        let prepared = prepare_request(&request, &mut resolver);
+
+        let parsed = url::Url::parse(&prepared.url).unwrap();
+        let query: Vec<_> = parsed
+            .query_pairs()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        assert!(query.contains(&("existing".to_string(), "true".to_string())));
+        assert!(query.contains(&("page".to_string(), "1".to_string())));
+    }
+
+    #[test]
+    fn prepare_request_encodes_param_key_and_value() {
+        let mut request = base_request(RequestBody::None);
+        request.url = "https://example.com/items".to_string();
+        request.params = vec![KeyValue {
+            key: "a key".to_string(),
+            value: "a value&more".to_string(),
+            enabled: true,
+            secret_ref: None,
+        }];
+        let mut resolver = VariableResolver::new();
+
+        let prepared = prepare_request(&request, &mut resolver);
+
+        assert!(prepared.url.contains("a+key=a+value%26more") || prepared.url.contains("a%20key=a%20value%26more"));
     }
 }

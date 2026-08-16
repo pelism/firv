@@ -21,7 +21,7 @@ describe('RequestEditor body section', () => {
   beforeEach(() => {
     invoke.mockReset();
     useAppStore.getState().reset();
-    useSidebarStore.setState({ projectPath: '/workspace', tree: [], pendingNames: {}, workspaceName: 'workspace' } as any);
+    useSidebarStore.setState({ workspacePath: '/workspace', tree: [], pendingNames: {}, workspaceName: 'workspace' } as any);
     invoke.mockImplementation((name: string) => {
       if (name === 'get_request') return Promise.resolve(baseRequest);
       if (name === 'get_manifest') return Promise.resolve({ workspace: { globals: [] } });
@@ -53,6 +53,52 @@ describe('RequestEditor body section', () => {
     fireEvent.change(jsonViewSelect, { target: { value: 'Preview' } });
 
     await waitFor(() => expect(screen.getByText(/"hello": "world"/)).toBeInTheDocument());
+  });
+
+  it('shows read-only pre-request template preview when JSON body is empty', async () => {
+    invoke.mockImplementation((name: string) => {
+      if (name === 'get_request') {
+        return Promise.resolve({
+          ...baseRequest,
+          body: { mode: 'json', data: '' },
+          transforms: { pre_request_template: '{"id":"{{uuid}}"}', response_extractions: [], before_run: [], chain_steps: [] },
+        });
+      }
+      if (name === 'get_manifest') return Promise.resolve({ workspace: { globals: [] } });
+      return Promise.resolve({});
+    });
+
+    const { container } = render(<RequestEditor requestId="req-1" />);
+    await screen.findByRole('button', { name: 'GET' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'body' }));
+    await waitFor(() => expect(screen.getByText(/Pre-request Template Output/i)).toBeInTheDocument());
+    expect(screen.getByText(/Read-only/i)).toBeInTheDocument();
+    await waitFor(() => {
+      const editorContent = container.querySelector('.cm-content');
+      expect(editorContent?.textContent).toContain('{"id":"{{uuid}}"}');
+    });
+  });
+
+  it('does not show template preview when a JSON body is present', async () => {
+    invoke.mockImplementation((name: string) => {
+      if (name === 'get_request') {
+        return Promise.resolve({
+          ...baseRequest,
+          body: { mode: 'json', data: '{"hello":"world"}' },
+          transforms: { pre_request_template: '{"other":"value"}', response_extractions: [], before_run: [], chain_steps: [] },
+        });
+      }
+      if (name === 'get_manifest') return Promise.resolve({ workspace: { globals: [] } });
+      return Promise.resolve({});
+    });
+
+    render(<RequestEditor requestId="req-1" />);
+    await screen.findByRole('button', { name: 'GET' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'body' }));
+    await waitFor(() => expect(screen.getByText(/JSON Body/i)).toBeInTheDocument());
+    expect(screen.queryByText(/Pre-request Template Output/i)).not.toBeInTheDocument();
   });
 
   it('shows cancel while a request is running and cancels it', async () => {

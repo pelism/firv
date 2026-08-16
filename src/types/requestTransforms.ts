@@ -2,5 +2,14 @@
 import type { BeforeRunStep } from "./beforeRunStep";
 import type { RequestChainStep } from "./requestChainStep";
 import type { RequestExtractionRule } from "./requestExtractionRule";
+import type { RequestVariable } from "./requestVariable";
 
-export type RequestTransforms = { pre_request_template: string | null, response_extractions: Array<RequestExtractionRule>, before_run: Array<BeforeRunStep>, chain_steps: Array<RequestChainStep>, };
+export type RequestTransforms = { pre_request_template: string | null, response_extractions: Array<RequestExtractionRule>, before_run: Array<BeforeRunStep>, chain_steps: Array<RequestChainStep>, 
+/**
+ * Named placeholders (e.g. `bookid` for a URL like `/books/{{bookid}}`, or any
+ * `{{name}}` used in headers/params/body) with a persisted default value.
+ * Resolved with the highest precedence of any variable scope, and may be
+ * overridden per-execution (see `overrides` on `execute_chain`) without
+ * mutating workspace globals or environment variables.
+ */
+request_variables: Array<RequestVariable>, };

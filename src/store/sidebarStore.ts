@@ -9,10 +9,11 @@ import { HydratedTree } from "../types/hydratedTree.ts";
 import {KeyValue} from "../types/keyValue.ts";
 import { WorkspaceEnvironment } from "../types/environment.ts";
 import { normalizeVariableLookup } from '../lib/variableHover';
+import { buildFirvRequest, OpenApiDoc, OpenApiOperationSummary } from '../lib/openapi';
 
 export const SCRATCHPAD_WORKSPACE_KEY = '__scratchpad__';
 
-const getWorkspaceKey = (projectPath?: string) => projectPath || SCRATCHPAD_WORKSPACE_KEY;
+const getWorkspaceKey = (workspacePath?: string) => workspacePath || SCRATCHPAD_WORKSPACE_KEY;
 
 const buildWorkspaceVariableLookup = (manifest: any): Record<string, string> => {
   const globals = normalizeVariableLookup(manifest?.workspace?.globals);
@@ -82,11 +83,11 @@ const addItemToPath = (items: HydratedSidebarItem[], path: string[], itemToInser
 interface SidebarState {
   tree: HydratedSidebarItem[];
   scratchpadTree: HydratedSidebarItem[];
-  projectPath: string;
+  workspacePath: string;
   workspaceName: string;
   activeMenu: string;
   setActiveMenu: (menu: string) => void;
-  setProjectPath: (path: string) => void;
+  setWorkspacePath: (path: string) => void;
   setWorkspaceName: (name: string) => void;
   isWorkspaceSettingsOpen: boolean;
   setWorkspaceSettingsOpen: (open: boolean) => void;
@@ -99,6 +100,7 @@ interface SidebarState {
   pendingNames: Record<string, string>;
   updateRequestName: (id: string, newName: string) => void;
   renameRequest: (id: string, newName: string) => Promise<void>;
+  setRequestName: (id: string, newName: string) => void;
   addItem: (item: HydratedSidebarItem, parentPath?: string[], isScratchpad?: boolean) => Promise<void>;
   addItemOptimistic: (item: HydratedSidebarItem, parentPath?: string[], isScratchpad?: boolean) => void;
   deleteItem: (path: string[], isScratchpad?: boolean) => Promise<void>;
@@ -108,6 +110,7 @@ interface SidebarState {
   exportWorkspace: () => Promise<void>;
   importFirvExport: () => Promise<void>;
   importPostmanCollection: () => Promise<void>;
+  importOpenApiSpec: (doc: OpenApiDoc, selected: OpenApiOperationSummary[]) => Promise<void>;
   loadOrphans: () => Promise<void>;
   getRequestName: (id: string) => string;
   clearPendingName: (id: string) => void;
@@ -147,6 +150,12 @@ const transformToManifestItem = (item: HydratedSidebarItem): any => {
       id: item.kind.id,
       name: item.kind.name,
     };
+  } else if (item.kind.type === 'flow') {
+    return {
+      type: 'flow',
+      id: item.kind.id,
+      name: item.kind.name,
+    };
   } else if (item.kind.type === 'grpc') {
     return {
       type: 'grpc',
@@ -166,7 +175,7 @@ export const useSidebarStore = create<SidebarState>()(
       workspaceGlobals: {},
       workspaceEnvironments: [],
       activeWorkspaceEnvironmentId: '',
-      projectPath: '', // Default or replace with dynamic project path
+      workspacePath: '', // Default or replace with dynamic workspace path
       workspaceName: '',
       activeMenu: 'workspace',
       isWorkspaceSettingsOpen: false,
@@ -174,20 +183,20 @@ export const useSidebarStore = create<SidebarState>()(
       isAppSettingsOpen: false,
       setAppSettingsOpen: (open) => set({ isAppSettingsOpen: open }),
       setActiveMenu: (activeMenu) => set({ activeMenu }),
-      setProjectPath: (path) => {
-        set({ projectPath: path, workspaceGlobals: {}, workspaceEnvironments: [], activeWorkspaceEnvironmentId: '' });
+      setWorkspacePath: (path) => {
+        set({ workspacePath: path, workspaceGlobals: {}, workspaceEnvironments: [], activeWorkspaceEnvironmentId: '' });
         void get().fetchSidebar();
       },
       setWorkspaceName: (workspaceName) => set({ workspaceName }),
       fetchSidebar: async () => {
-        const { projectPath } = get();
-        if (!projectPath) return;
+        const { workspacePath } = get();
+        if (!workspacePath) return;
         try {
-          const tree: HydratedTree = await invoke('get_hydrated_sidebar', { projectPath });
+          const tree: HydratedTree = await invoke('get_hydrated_sidebar', { workspacePath });
           
           // Also fetch manifest to get the workspace name
           try {
-            const manifest: any = await invoke('get_manifest', { projectPath });
+            const manifest: any = await invoke('get_manifest', { workspacePath });
             const workspaceEnvironments = buildWorkspaceEnvironments(manifest);
             const activeWorkspaceEnvironmentId = manifest?.workspace?.active_environment || '';
             if (manifest && manifest.name) {
@@ -199,7 +208,7 @@ export const useSidebarStore = create<SidebarState>()(
               });
             } else {
               // Fallback to directory name if name is missing in manifest
-              const dirName = projectPath.split(/[/\\]/).filter(Boolean).pop() || '';
+              const dirName = workspacePath.split(/[/\\]/).filter(Boolean).pop() || '';
               set({
                 workspaceName: dirName,
                 workspaceGlobals: buildWorkspaceVariableLookup(manifest),
@@ -210,7 +219,7 @@ export const useSidebarStore = create<SidebarState>()(
           } catch (me) {
             console.error('Failed to fetch manifest for name:', me);
             // Fallback to directory name if manifest fetch fails
-            const dirName = projectPath.split(/[/\\]/).filter(Boolean).pop() || '';
+            const dirName = workspacePath.split(/[/\\]/).filter(Boolean).pop() || '';
             set({ workspaceName: dirName, workspaceGlobals: {}, workspaceEnvironments: [], activeWorkspaceEnvironmentId: '' });
           }
           
@@ -333,12 +342,12 @@ export const useSidebarStore = create<SidebarState>()(
         }
       },
       syncTreeToBackend: async (newTree) => {
-        const { projectPath } = get();
-        if (!projectPath) return;
+        const { workspacePath } = get();
+        if (!workspacePath) return;
         
         // Check if manifest exists before trying to sync
         try {
-          const exists = await invoke<boolean>('check_workspace_exists', { projectRoot: projectPath });
+          const exists = await invoke<boolean>('check_workspace_exists', { workspaceRoot: workspacePath });
           if (!exists) return;
         } catch (e) {
           return;
@@ -349,10 +358,10 @@ export const useSidebarStore = create<SidebarState>()(
         
         try {
           // Get existing manifest to preserve globals/scripts
-          const manifest: any = await invoke('get_manifest', { projectPath });
+          const manifest: any = await invoke('get_manifest', { workspacePath });
           
           await invoke('update_manifest_structure', {
-            projectRoot: projectPath,
+            workspaceRoot: workspacePath,
             workspace: { 
               ...manifest.workspace,
               order 
@@ -369,40 +378,51 @@ export const useSidebarStore = create<SidebarState>()(
         }));
       },
       renameRequest: async (id, newName) => {
-        const { tree, scratchpadTree, projectPath, syncTreeToBackend, clearPendingName } = get();
+        const { workspacePath, syncTreeToBackend, setRequestName } = get();
 
-        const renameInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
-          return items.map(item => {
-            if ((item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'grpc') && item.kind.id === id) {
-              return {
-                ...item,
-                kind: {
-                  ...item.kind,
-                  name: newName,
-                }
-              };
-            }
+        setRequestName(id, newName);
 
-            if (item.kind.type === 'folder') {
-              return {
-                ...item,
-                kind: {
-                  ...item.kind,
-                  items: renameInItems(item.kind.items)
-                }
-              };
-            }
-
-            return item;
-          });
-        };
-
-        set({ tree: renameInItems(tree), scratchpadTree: renameInItems(scratchpadTree) });
-        clearPendingName(id);
-
-        if (projectPath) {
-          await syncTreeToBackend(renameInItems(tree));
+        if (workspacePath) {
+          await syncTreeToBackend(get().tree);
         }
+      },
+      setRequestName: (id, newName) => {
+        set((state) => {
+          const renameInItems = (items: HydratedSidebarItem[]): HydratedSidebarItem[] => {
+            return items.map(item => {
+              if ((item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'flow' || item.kind.type === 'grpc') && item.kind.id === id) {
+                return {
+                  ...item,
+                  kind: {
+                    ...item.kind,
+                    name: newName,
+                  }
+                };
+              }
+
+              if (item.kind.type === 'folder') {
+                return {
+                  ...item,
+                  kind: {
+                    ...item.kind,
+                    items: renameInItems(item.kind.items)
+                  }
+                };
+              }
+
+              return item;
+            });
+          };
+
+          const newPending = { ...state.pendingNames };
+          delete newPending[id];
+
+          return {
+            tree: renameInItems(state.tree),
+            scratchpadTree: renameInItems(state.scratchpadTree),
+            pendingNames: newPending,
+          };
+        });
       },
       clearPendingName: (id) => {
         set((state) => {
@@ -469,11 +489,11 @@ export const useSidebarStore = create<SidebarState>()(
       expandedStateHydrated: false,
       setWorkspaceGlobals: (globals) => set({ workspaceGlobals: normalizeVariableLookup(globals) }),
       setWorkspaceActiveEnvironment: async (environmentId) => {
-        const { projectPath } = get();
-        if (!projectPath) return;
+        const { workspacePath } = get();
+        if (!workspacePath) return;
 
         try {
-          const manifest: any = await invoke('get_manifest', { projectPath });
+          const manifest: any = await invoke('get_manifest', { workspacePath });
           const updatedWorkspace = {
             ...manifest.workspace,
             active_environment: environmentId || null,
@@ -482,7 +502,7 @@ export const useSidebarStore = create<SidebarState>()(
           set({ activeWorkspaceEnvironmentId: environmentId || '' });
 
           await invoke('update_manifest_structure', {
-            projectRoot: projectPath,
+            workspaceRoot: workspacePath,
             workspace: updatedWorkspace,
             name: manifest.name || null,
           });
@@ -565,13 +585,13 @@ export const useSidebarStore = create<SidebarState>()(
         });
       },
       addItemOptimistic: (newItem, parentPath, isScratchpad) => {
-        const { tree, scratchpadTree, projectPath } = get();
+        const { tree, scratchpadTree, workspacePath } = get();
         const itemWithId = {
           ...newItem,
           id: newItem.id || crypto.randomUUID()
         };
 
-        if (isScratchpad || !projectPath) {
+        if (isScratchpad || !workspacePath) {
           set({ scratchpadTree: [...scratchpadTree, itemWithId] });
           return;
         }
@@ -584,13 +604,13 @@ export const useSidebarStore = create<SidebarState>()(
         set({ tree: addItemToPath(tree, parentPath, itemWithId) });
       },
       addItem: async (newItem, parentPath, isScratchpad) => {
-        const { tree, scratchpadTree, syncTreeToBackend, projectPath } = get();
+        const { tree, scratchpadTree, syncTreeToBackend, workspacePath } = get();
         const itemWithId = {
           ...newItem,
           id: newItem.id || crypto.randomUUID()
         };
 
-        if (isScratchpad || !projectPath) {
+        if (isScratchpad || !workspacePath) {
           set({ scratchpadTree: [...scratchpadTree, itemWithId] });
           return;
         }
@@ -607,7 +627,7 @@ export const useSidebarStore = create<SidebarState>()(
         await syncTreeToBackend(newTree);
       },
       deleteItem: async (path, isScratchpad) => {
-        const { tree, scratchpadTree, projectPath, syncTreeToBackend } = get();
+        const { tree, scratchpadTree, workspacePath, syncTreeToBackend } = get();
 
         const deleteFromItems = (items: HydratedSidebarItem[], currentPath: string[]): HydratedSidebarItem[] => {
           const [targetName, ...remainingPath] = currentPath;
@@ -625,7 +645,7 @@ export const useSidebarStore = create<SidebarState>()(
           });
         };
 
-        if (isScratchpad || !projectPath) {
+        if (isScratchpad || !workspacePath) {
           set({ scratchpadTree: deleteFromItems(scratchpadTree, path) });
           return;
         }
@@ -651,14 +671,33 @@ export const useSidebarStore = create<SidebarState>()(
           return [];
         };
 
+        const getFlowIds = (item: HydratedSidebarItem): string[] => {
+          if (item.kind.type === 'flow') {
+            return [item.kind.id];
+          }
+          if (item.kind.type === 'folder') {
+            return item.kind.items.flatMap(getFlowIds);
+          }
+          return [];
+        };
+
         const itemToDelete = findItemByPath(tree, path);
         if (itemToDelete) {
           const idsToDelete = getRequestIds(itemToDelete);
           for (const id of idsToDelete) {
             try {
-              await invoke('delete_request', { projectRoot: projectPath, id });
+              await invoke('delete_request', { workspaceRoot: workspacePath, id });
             } catch (e) {
               console.error(`Failed to delete request file ${id}:`, e);
+            }
+          }
+
+          const flowIdsToDelete = getFlowIds(itemToDelete);
+          for (const id of flowIdsToDelete) {
+            try {
+              await invoke('delete_flow', { workspaceRoot: workspacePath, id });
+            } catch (e) {
+              console.error(`Failed to delete flow file ${id}:`, e);
             }
           }
         }
@@ -668,15 +707,15 @@ export const useSidebarStore = create<SidebarState>()(
         await syncTreeToBackend(newTree);
       },
       ensureWorkspace: async () => {
-        const { projectPath, fetchSidebar } = get();
+        const { workspacePath, fetchSidebar } = get();
         
         try {
-          const exists = await invoke<boolean>('check_workspace_exists', { projectRoot: projectPath });
+          const exists = await invoke<boolean>('check_workspace_exists', { workspaceRoot: workspacePath });
           if (exists) return true;
 
           const name = await useModalStore.getState().openModal({
             title: "Create Workspace",
-            description: "Your project does not have a workspace yet. Enter a name to create one.",
+            description: "Your request does not have a workspace yet. Enter a name to create one.",
             placeholder: "Workspace Name"
           });
           if (!name) return false;
@@ -690,8 +729,8 @@ export const useSidebarStore = create<SidebarState>()(
 
           if (!selected || Array.isArray(selected)) return false;
 
-          await invoke('create_workspace', { projectRoot: selected, name });
-          set({ projectPath: selected, workspaceName: name });
+          await invoke('create_workspace', { workspaceRoot: selected, name });
+          set({ workspacePath: selected, workspaceName: name });
           await fetchSidebar();
           return true;
         } catch (e) {
@@ -716,8 +755,8 @@ export const useSidebarStore = create<SidebarState>()(
 
           if (!selected || Array.isArray(selected)) return;
 
-          await invoke('create_workspace', { projectRoot: selected, name });
-          set({ projectPath: selected, workspaceName: name });
+          await invoke('create_workspace', { workspaceRoot: selected, name });
+          set({ workspacePath: selected, workspaceName: name });
           await get().fetchSidebar();
           await get().loadOrphans();
         } catch (e) {
@@ -741,9 +780,9 @@ export const useSidebarStore = create<SidebarState>()(
 
           const pathParts = selected.split(/[/\\]/);
           pathParts.pop();
-          const projectPath = pathParts.join('/');
+          const workspacePath = pathParts.join('/');
 
-          set({ projectPath });
+          set({ workspacePath });
           await get().fetchSidebar();
           await get().loadOrphans();
         } catch (e) {
@@ -751,8 +790,8 @@ export const useSidebarStore = create<SidebarState>()(
         }
       },
       exportWorkspace: async () => {
-        const { projectPath, workspaceName } = get();
-        if (!projectPath) {
+        const { workspacePath, workspaceName } = get();
+        if (!workspacePath) {
           console.error('No workspace open. Please open a workspace first.');
           return;
         }
@@ -767,14 +806,14 @@ export const useSidebarStore = create<SidebarState>()(
 
           if (!selected) return;
 
-          await invoke('export_workspace', { projectRoot: projectPath, outputPath: selected });
+          await invoke('export_workspace', { workspaceRoot: workspacePath, outputPath: selected });
         } catch (e) {
           console.error('Failed to export workspace:', e);
         }
       },
       importFirvExport: async () => {
-        const { projectPath } = get();
-        if (!projectPath) {
+        const { workspacePath } = get();
+        if (!workspacePath) {
           console.error('No workspace open. Please open a workspace first.');
           return;
         }
@@ -789,7 +828,7 @@ export const useSidebarStore = create<SidebarState>()(
 
           if (!selected || Array.isArray(selected)) return;
 
-          await invoke('import_firv_export', { projectRoot: projectPath, inputPath: selected });
+          await invoke('import_firv_export', { workspaceRoot: workspacePath, inputPath: selected });
           await get().fetchSidebar();
           await get().loadOrphans();
         } catch (e) {
@@ -797,8 +836,8 @@ export const useSidebarStore = create<SidebarState>()(
         }
       },
       importPostmanCollection: async () => {
-        const { projectPath, workspaceName: currentWorkspaceName } = get();
-        if (!projectPath) {
+        const { workspacePath, workspaceName: currentWorkspaceName } = get();
+        if (!workspacePath) {
           console.error("No workspace open. Please open a workspace first.");
           return;
         }
@@ -821,7 +860,7 @@ export const useSidebarStore = create<SidebarState>()(
           const content = await readTextFile(selected);
           const collection = JSON.parse(content);
 
-          const projectRoot = projectPath;
+          const workspaceRoot = workspacePath;
           
           const requestsToSave: any[] = [];
 
@@ -905,11 +944,11 @@ export const useSidebarStore = create<SidebarState>()(
 
           // 1. Save all requests
           for (const req of requestsToSave) {
-            await invoke('update_request', { projectRoot, request: req });
+            await invoke('update_request', { workspaceRoot, request: req });
           }
 
           // 2. Fetch current manifest to append to it
-          const currentManifest: any = await invoke('get_manifest', { projectPath });
+          const currentManifest: any = await invoke('get_manifest', { workspacePath });
           if (!currentManifest || !currentManifest.workspace) {
             console.error("Invalid manifest structure during Postman import");
             return;
@@ -928,7 +967,7 @@ export const useSidebarStore = create<SidebarState>()(
           // 3. Update manifest with new order and globals
 
           await invoke('update_manifest_structure', {
-            projectRoot,
+            workspaceRoot,
             workspace: {
               ...currentManifest.workspace,
               order: newOrder,
@@ -944,12 +983,99 @@ export const useSidebarStore = create<SidebarState>()(
           console.error("Failed to import Postman collection:", e);
         }
       },
-      loadOrphans: async () => {
-        const { projectPath, tree, addItem } = get();
-        if (!projectPath) return;
+      importOpenApiSpec: async (doc, selected) => {
+        const { workspacePath, workspaceName: currentWorkspaceName } = get();
+        if (!workspacePath) {
+          console.error("No workspace open. Please open a workspace first.");
+          return;
+        }
+        if (selected.length === 0) return;
 
         try {
-          const result: HydratedTree = await invoke('get_hydrated_sidebar', { projectPath });
+          const workspaceRoot = workspacePath;
+          const requestsToSave: any[] = [];
+          const folderItems = new Map<string, any[]>();
+          const rootItems: any[] = [];
+
+          for (const op of selected) {
+            const id = crypto.randomUUID();
+            const built = buildFirvRequest(doc, op.path, op.method, op);
+
+            requestsToSave.push({
+              id,
+              name: built.name,
+              method: built.method,
+              url: built.url,
+              headers: built.headers,
+              params: built.params,
+              body: built.body,
+              transforms: { request_variables: built.requestVariables },
+            });
+
+            const sidebarItem = {
+              type: 'request',
+              id,
+              name: built.name,
+              method: built.method,
+            };
+
+            const tag = op.tags[0];
+            if (tag) {
+              if (!folderItems.has(tag)) folderItems.set(tag, []);
+              folderItems.get(tag)!.push(sidebarItem);
+            } else {
+              rootItems.push(sidebarItem);
+            }
+          }
+
+          for (const req of requestsToSave) {
+            await invoke('update_request', { workspaceRoot, request: req });
+          }
+
+          const currentManifest: any = await invoke('get_manifest', { workspacePath });
+          if (!currentManifest || !currentManifest.workspace) {
+            console.error("Invalid manifest structure during OpenAPI import");
+            return;
+          }
+
+          let newOrder = [...(currentManifest.workspace.order || [])];
+
+          for (const [tag, items] of folderItems.entries()) {
+            const existingFolderIndex = newOrder.findIndex((item: any) => item.type === 'folder' && item.name === tag);
+            if (existingFolderIndex >= 0) {
+              newOrder = newOrder.map((item: any, index: number) =>
+                index === existingFolderIndex
+                  ? { ...item, items: [...item.items, ...items] }
+                  : item
+              );
+            } else {
+              newOrder.push({ type: 'folder', name: tag, items });
+            }
+          }
+
+          newOrder = [...newOrder, ...rootItems];
+
+          await invoke('update_manifest_structure', {
+            workspaceRoot,
+            workspace: {
+              ...currentManifest.workspace,
+              order: newOrder,
+            },
+            name: currentWorkspaceName || undefined
+          });
+
+          await get().fetchSidebar();
+          await get().loadOrphans();
+        } catch (e) {
+          console.error("Failed to import OpenAPI spec:", e);
+        }
+      },
+      loadOrphans: async () => {
+        const { workspacePath, tree, addItem } = get();
+        if (!workspacePath) return;
+
+        try {
+          const result: HydratedTree = await invoke('get_hydrated_sidebar', { workspacePath });
           if (result.orphans && result.orphans.length > 0) {
             for (const orphanId of result.orphans) {
               // Check if already in tree to be safe
@@ -962,7 +1088,7 @@ export const useSidebarStore = create<SidebarState>()(
 
               if (!exists(tree)) {
                 // Get the request details to have a better name if possible
-                const request: any = await invoke('get_request', { projectRoot: projectPath, id: orphanId });
+                const request: any = await invoke('get_request', { workspaceRoot: workspacePath, id: orphanId });
                 await addItem({
                   id: crypto.randomUUID(),
                   kind: { 
@@ -985,7 +1111,7 @@ export const useSidebarStore = create<SidebarState>()(
 
         const findName = (items: HydratedSidebarItem[]): string | null => {
           for (const item of items) {
-            if ((item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'grpc') && item.kind.id === id) {
+            if ((item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'flow' || item.kind.type === 'grpc') && item.kind.id === id) {
               return item.kind.name;
             }
             if (item.kind.type === 'folder') {
@@ -1019,7 +1145,7 @@ export const useSidebarStore = create<SidebarState>()(
 
         set({ 
           tree: [], 
-          projectPath: '', 
+          workspacePath: '', 
           workspaceName: '',
           isWorkspaceSettingsOpen: false,
           workspaceGlobals: {},
@@ -1033,7 +1159,7 @@ export const useSidebarStore = create<SidebarState>()(
       name: 'firv-sidebar-storage',
       partialize: (state) => ({ 
         scratchpadTree: state.scratchpadTree,
-        projectPath: state.projectPath,
+        workspacePath: state.workspacePath,
         workspaceName: state.workspaceName,
         workspaceEnvironments: state.workspaceEnvironments,
         activeWorkspaceEnvironmentId: state.activeWorkspaceEnvironmentId,

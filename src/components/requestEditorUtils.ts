@@ -3,6 +3,8 @@ import type { BeforeRunStep } from '../types/beforeRunStep';
 import type { RequestExtractionRule } from '../types/requestExtractionRule';
 import type { RequestChainStep } from '../types/requestChainStep';
 import type { KeyValue } from '../types/keyValue';
+import type { RequestVariable } from '../types/requestVariable';
+import { normalizeVariableKey, type VariableLookup } from '../lib/variableHover';
 
 export interface RequestOption {
   id: string;
@@ -42,6 +44,9 @@ export const getTransformsState = (
   extractions: RequestExtractionRule[],
   beforeRunChain: BeforeRunStep[],
   chainSteps: RequestChainStep[],
+  url: string = '',
+  requestVariables: RequestVariable[] = [],
+  sources: VariableDetectionSources = {},
 ) => ({
   pre_request_template: templateText,
   response_extractions: extractions.map(rule => ({
@@ -50,9 +55,84 @@ export const getTransformsState = (
   })),
   before_run: beforeRunChain.map(step => ({ request_id: step.request_id })),
   chain_steps: chainSteps.map(step => ({ when: step.when, next_request_id: step.next_request_id })),
+  request_variables: filterRequestVariablesInUse({ url, ...sources }, requestVariables).map(({ key, value, secret_ref }) => ({ key, value, secret_ref: secret_ref ?? null })),
 });
 
 export const normalizeExtractionTarget = (target: string) => target.replace(/^\{\{\s*/, '').replace(/\s*\}\}$/, '').trim();
+
+const REQUEST_VARIABLE_REGEX = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g;
+
+/** Returns the distinct `{{name}}` placeholder names found in a string, in order of first appearance. */
+export const extractRequestVariableNames = (text: string): string[] => {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  let match: RegExpExecArray | null;
+  REQUEST_VARIABLE_REGEX.lastIndex = 0;
+  while ((match = REQUEST_VARIABLE_REGEX.exec(text))) {
+    if (!seen.has(match[1])) {
+      seen.add(match[1]);
+      names.push(match[1]);
+    }
+  }
+  return names;
+};
+
+export interface VariableDetectionSources {
+  url?: string;
+  headers?: KeyValue[];
+  params?: KeyValue[];
+  body?: string;
+  formBody?: KeyValue[];
+  authorization?: string;
+}
+
+/** Concatenates every text source (URL, headers, params, body, form body, authorization) a request variable's
+ * `{{name}}` placeholder might appear in, so detection isn't limited to the URL alone. */
+const collectVariableDetectionText = (sources: VariableDetectionSources): string =>
+  [
+    sources.url ?? '',
+    ...(sources.headers ?? []).map(h => h.value),
+    ...(sources.params ?? []).map(p => p.value),
+    sources.body ?? '',
+    ...(sources.formBody ?? []).map(f => f.value),
+    sources.authorization ?? '',
+  ].join('\n');
+
+/** Returns the distinct `{{name}}` placeholder names found anywhere across the given sources (URL, headers, params, body, form body, authorization), in order of first appearance. */
+export const extractRequestVariableNamesFromSources = (sources: VariableDetectionSources): string[] =>
+  extractRequestVariableNames(collectVariableDetectionText(sources));
+
+/** Keeps only the request-variable rows whose name is still referenced somewhere in the given sources, so stale entries don't accumulate. */
+export const filterRequestVariablesInUse = (sources: VariableDetectionSources, requestVariables: RequestVariable[]): RequestVariable[] => {
+  const names = new Set(extractRequestVariableNamesFromSources(sources));
+  return requestVariables.filter(rv => names.has(rv.key));
+};
+
+/** Returns the names of detected request variables that have no way of resolving to a value: no
+ * matching workspace global/environment variable, no secret-backed or plain-text default, no
+ * per-run temporary override, and no before-run chain step supplying it. Used to warn the user
+ * (e.g. on the Transforms tab) that a `{{name}}` placeholder will be sent literally. */
+export const getUnresolvedRequestVariableNames = (
+  sources: VariableDetectionSources,
+  workspaceGlobals: VariableLookup,
+  requestVariables: RequestVariable[],
+  runOverrides: Record<string, string>,
+  beforeRunSuppliedVariableNames: string[] = [],
+): string[] => {
+  const detected = extractRequestVariableNamesFromSources(sources).filter(
+    name => workspaceGlobals[normalizeVariableKey(name)] === undefined
+  );
+  const suppliedByChain = new Set(beforeRunSuppliedVariableNames.map(normalizeVariableKey));
+
+  return detected.filter(name => {
+    if (suppliedByChain.has(normalizeVariableKey(name))) return false;
+    const requestVariable = requestVariables.find(rv => rv.key === name);
+    if (requestVariable?.secret_ref) return false;
+    if (requestVariable?.value?.trim()) return false;
+    if (runOverrides[name]?.trim()) return false;
+    return true;
+  });
+};
 
 export const getFormattedBody = (bodyMode: 'none' | 'form' | 'json' | 'raw', body: string, formBody: KeyValue[]) => {
   if (bodyMode === 'none') return { mode: 'none' as const };
@@ -94,6 +174,7 @@ export const getFormattedRequest = (args: {
   extractions: RequestExtractionRule[];
   beforeRunChain: BeforeRunStep[];
   chainSteps: RequestChainStep[];
+  requestVariables?: RequestVariable[];
 }) => ({
   id: args.requestId,
   name: args.requestName,
@@ -114,6 +195,7 @@ export const getFormattedRequest = (args: {
     })),
     before_run: args.beforeRunChain.filter(step => step.request_id.trim()),
     chain_steps: args.chainSteps.filter(step => step.next_request_id.trim()),
+    request_variables: filterRequestVariablesInUse({ url: args.url, headers: args.headers, params: args.params, body: args.body, formBody: args.formBody, authorization: args.authorization.value }, args.requestVariables ?? []).map(({ key, value, secret_ref }) => ({ key, value, secret_ref: secret_ref ?? null })),
   }
 });
 

@@ -16,7 +16,7 @@ interface RequestEditorCommandBarProps {
   onRun: () => void;
   isRunning: boolean;
   isDirty: boolean;
-  projectPath: string;
+  workspacePath: string;
   validationError: string | null;
   isScratchpadRequest: boolean;
   workspaceGlobals: VariableLookup;
@@ -34,7 +34,7 @@ export function RequestEditorCommandBar({
   onRun,
   isRunning,
   isDirty,
-  projectPath,
+  workspacePath,
   validationError,
   isScratchpadRequest,
   workspaceGlobals,
@@ -125,7 +125,7 @@ export function RequestEditorCommandBar({
             </button>
             {methodOpen && (
               <div className="absolute left-0 top-full z-50 mt-1 min-w-[5.5rem] rounded-md border border-border bg-popover shadow-md overflow-hidden py-1">
-                {['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].map(m => (
+                {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].map(m => (
                   <button
                     key={m}
                     onClick={() => { onMethodChange(m); setMethodOpen(false); }}
@@ -173,18 +173,18 @@ export function RequestEditorCommandBar({
               'flex items-center gap-2 px-4 py-1.5 rounded-lg text-primary-foreground font-bold text-sm transition-all shadow-md active:scale-95',
               showMoveToWorkspace
                 ? 'bg-primary hover:bg-primary/90 shadow-primary/30'
-                : projectPath
+                : workspacePath
                   ? (isDirty ? 'bg-primary hover:bg-primary/90 shadow-primary/30' : 'bg-muted-foreground cursor-default')
                   : 'bg-primary hover:bg-primary/90 shadow-primary/30'
             )}
-            title={showMoveToWorkspace ? 'Move to Workspace' : (projectPath ? 'Save to Workspace (Ctrl+S)' : 'Move to Workspace')}
+            title={showMoveToWorkspace ? 'Move to Workspace' : (workspacePath ? 'Save to Workspace (Ctrl+S)' : 'Move to Workspace')}
           >
             {showMoveToWorkspace ? (
               <>
                 <FolderPlus size={18} />
                 <span className="text-[10px] font-bold uppercase tracking-wider">Move to Workspace</span>
               </>
-            ) : !projectPath ? (
+            ) : !workspacePath ? (
               <>
                 <FolderPlus size={18} />
                 <span className="text-[10px] font-bold uppercase tracking-wider">Move to Workspace</span>

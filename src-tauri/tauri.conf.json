@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "firv",
-  "version": "1.0.0-alpha",
+  "version": "2.0.0",
   "identifier": "com.pelism.firv",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -27,21 +27,19 @@
   "bundle": {
     "active": true,
     "targets": [
-      "msi",
+      "nsis",
       "deb",
       "appimage"
     ],
-    "windows": {
-      "wix": {
-        "language": "en-US"
-      }
-    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "externalBin": [
+      "binaries/firv-cli"
     ],
     "createUpdaterArtifacts": true
   },

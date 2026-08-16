@@ -14,10 +14,12 @@ import { X } from "lucide-react";
 import logo from "./assets/icons/firv-logo.png";
 import { twMerge } from "tailwind-merge";
 import { InputModal } from "./components/InputModal";
+import { SecretModal } from "./components/SecretModal";
 import { WindowControls } from "./components/WindowControls";
 import { useNativeContextMenu } from "./hooks/useNativeContextMenu";
-import { runDailyUpdateCheck, runUpdateFlow } from "./lib/updaterClient";
+import { runDailyUpdateCheck, installUpdate } from "./lib/updaterClient";
 import { UpdatePrompt } from "./components/UpdatePrompt";
+import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 
 function App() {
@@ -31,7 +33,8 @@ function App() {
   const requestOrigins = useAppStore(state => state.requestOrigins);
   const responses = useAppStore(state => state.responses);
   const requestProtocols = useAppStore(state => state.requestProtocols);
-  const projectPath = useSidebarStore(state => state.projectPath);
+  const workspacePath = useSidebarStore(state => state.workspacePath);
+  const setWorkspacePath = useSidebarStore(state => state.setWorkspacePath);
   const workspaceEnvironments = useSidebarStore(state => state.workspaceEnvironments);
   const activeWorkspaceEnvironmentId = useSidebarStore(state => state.activeWorkspaceEnvironmentId);
   const setWorkspaceActiveEnvironment = useSidebarStore(state => state.setWorkspaceActiveEnvironment);
@@ -65,7 +68,7 @@ function App() {
   });
   const defaultMainLayout: Layout = { workspace: 30, requestEditor: 70 };
   const mainLayout = storedMainLayout ?? defaultMainLayout;
-  const showWorkspaceEnvironmentFooter = Boolean(projectPath);
+  const showWorkspaceEnvironmentFooter = Boolean(workspacePath);
 
   useEffect(() => {
     if (editingTabId && editInputRef.current) {
@@ -73,6 +76,24 @@ function App() {
       editInputRef.current.select();
     }
   }, [editingTabId]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    listen<string>("cli-workspace-path", event => {
+      if (event.payload && event.payload !== workspacePath) {
+        setWorkspacePath(event.payload);
+      }
+    }).then(listener => {
+      unlisten = listener;
+    });
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [workspacePath, setWorkspacePath]);
 
   useEffect(() => {
     let isMounted = true;
@@ -101,7 +122,7 @@ function App() {
     setUpdateError(null);
 
     try {
-      await runUpdateFlow();
+      await installUpdate();
       setPendingUpdate(null);
       setIsInstallingUpdate(false);
     } catch (error) {
@@ -122,7 +143,7 @@ function App() {
   };
 
   const handleEnvironmentChange = async (environmentId: string) => {
-    if (!projectPath) return;
+    if (!workspacePath) return;
 
     setIsUpdatingEnvironment(true);
     try {
@@ -207,6 +228,7 @@ function App() {
 
       <div className="flex-1 overflow-hidden relative flex">
         <InputModal />
+        <SecretModal />
         {pendingUpdate?.available && (
           <UpdatePrompt
             version={pendingUpdate.version}
@@ -300,8 +322,8 @@ function App() {
               )}
 
               {(() => {
-                const isWsActive = activeRequestId ? requestProtocols[activeRequestId] === 'ws' : false;
-                const isGrpcActive = activeRequestId ? requestProtocols[activeRequestId] === 'grpc' : false;
+                const isWsActive = activeRequestId ? (requestProtocols[activeRequestId] === 'ws' || requestProtocols[activeRequestId] === 'flow') : false;
+                const isGrpcActive = activeRequestId ? (requestProtocols[activeRequestId] === 'grpc' || requestProtocols[activeRequestId] === 'flow') : false;
                 const editorContent = (
                   <div className="flex-1 overflow-hidden min-h-0 min-w-0 flex flex-col bg-background">
                     {activeRequestId ? (
@@ -334,20 +356,27 @@ function App() {
                     )}
                   </div>
                 );
-                if (isWsActive || isGrpcActive) {
-                  return <div className="flex-1 min-h-0 flex flex-col">{editorContent}</div>;
-                }
+                // NOTE: `editorContent` renders every open tab (not just the active one) so
+                // each RequestEditor/FlowEditor instance stays mounted across tab switches.
+                // Keeping the same root element (PanelGroup) with the editor as the first
+                // panel in both branches - rather than swapping between a plain <div> and a
+                // <PanelGroup> - avoids remounting all open tabs (and losing unsaved state,
+                // e.g. Flow steps) whenever the active tab's protocol toggles.
                 return (
                   <PanelGroup orientation="vertical">
-                    <Panel defaultSize="60%" minSize="30%" className="flex flex-col">
+                    <Panel defaultSize={isWsActive || isGrpcActive ? "100%" : "60%"} minSize="30%" className="flex flex-col">
                       {editorContent}
                     </Panel>
-                    <PanelResizeHandle className="h-1 group flex items-center justify-center bg-muted hover:bg-primary/50 cursor-row-resize transition-all dark:bg-zinc-900">
-                      <div className="h-px w-8 bg-border group-hover:bg-white/50 rounded-full" />
-                    </PanelResizeHandle>
-                    <Panel defaultSize="40%" minSize="20%" className="flex flex-col bg-background">
-                      <ResponseViewer key={activeRequestId || 'none'} response={activeRequestId ? responses[activeRequestId] : null} />
-                    </Panel>
+                    {!isWsActive && !isGrpcActive && (
+                      <>
+                        <PanelResizeHandle className="h-1 group flex items-center justify-center bg-muted hover:bg-primary/50 cursor-row-resize transition-all dark:bg-zinc-900">
+                          <div className="h-px w-8 bg-border group-hover:bg-white/50 rounded-full" />
+                        </PanelResizeHandle>
+                        <Panel defaultSize="40%" minSize="20%" className="flex flex-col bg-background">
+                          <ResponseViewer key={activeRequestId || 'none'} response={activeRequestId ? responses[activeRequestId] : null} />
+                        </Panel>
+                      </>
+                    )}
                   </PanelGroup>
                 );
               })()}

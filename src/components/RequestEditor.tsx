@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { KeyValue } from './editors/KVEditor';
-import { useAppStore } from '../store/appStore';
+import { KeyValue, type SecretOption } from './editors/KVEditor';
+import type { RequestVariable } from '../types/requestVariable';
+import { useAppStore, type RequestProtocol } from '../store/appStore';
 import { useSidebarStore } from '../store/sidebarStore';
 import { HydratedSidebarItem } from '../types/hydratedSidebarItem.ts';
 import type { BeforeRunStep } from '../types/beforeRunStep';
@@ -15,12 +16,16 @@ import {
   getHydratedFormBodySnapshot,
   getTransformsState,
   normalizeBodyMode,
+  normalizeExtractionTarget,
+  filterRequestVariablesInUse,
+  getUnresolvedRequestVariableNames,
   type RequestAuthorizationState,
 } from './requestEditorUtils';
 import { RequestEditorCommandBar, type EditorProtocol } from './RequestEditorCommandBar';
 import { RequestEditorBodySection } from './RequestEditorBodySection';
 import { RequestEditorTransformsSection } from './RequestEditorTransformsSection';
 import { WsEditor } from './WsEditor';
+import { FlowEditor } from './FlowEditor';
 import { GrpcEditor } from './GrpcEditor';
 
 interface RequestEditorProps {
@@ -43,6 +48,11 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const [extractions, setExtractions] = useState<RequestExtractionRule[]>([]);
   const [beforeRunChain, setBeforeRunChain] = useState<BeforeRunStep[]>([]);
   const [chainSteps, setChainSteps] = useState<RequestChainStep[]>([]);
+  const [requestVariables, setRequestVariables] = useState<RequestVariable[]>([]);
+  const [runOverrides, setRunOverrides] = useState<Record<string, string>>({});
+  const [workspaceId, setWorkspaceId] = useState<string>('');
+  const [secretOptions, setSecretOptions] = useState<SecretOption[]>([]);
+  const [beforeRunSuppliedVariableNames, setBeforeRunSuppliedVariableNames] = useState<string[]>([]);
   const [showChainPicker, setShowChainPicker] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [bodyErrorLine, setBodyErrorLine] = useState<number | null>(null);
@@ -55,14 +65,14 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
   const clearScratchpadRequestData = useAppStore(state => state.clearScratchpadRequestData);
   const setRequestOrigin = useAppStore(state => state.setRequestOrigin);
   const clearRequestOrigin = useAppStore(state => state.clearRequestOrigin);
-  const protocol: EditorProtocol = useAppStore(state => state.requestProtocols[requestId] ?? 'http');
+  const protocol: RequestProtocol = useAppStore(state => state.requestProtocols[requestId] ?? 'http');
   const setRequestProtocol = useAppStore(state => state.setRequestProtocol);
   const isDirty = dirtyRequests.has(requestId);
   const scratchpadRequest = scratchpadRequestData[requestId];
   const requestOrigin = requestOrigins[requestId] ?? (scratchpadRequest ? 'scratchpad' : 'workspace');
   const {
     syncTreeToBackend, 
-    projectPath, 
+    workspacePath, 
     ensureWorkspace, 
     getRequestName, 
     pendingNames,
@@ -92,44 +102,47 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     return !!findRequestInItems(sidebarScratchpadTree, requestId) || requestOrigin === 'scratchpad';
   }, [requestId, requestOrigin, sidebarScratchpadTree]);
 
+  const hasUnresolvedRequestVariables = useMemo(() => {
+    return getUnresolvedRequestVariableNames(
+      { url, headers, params, body, formBody, authorization: authorization.value },
+      workspaceGlobals,
+      requestVariables,
+      runOverrides,
+      beforeRunSuppliedVariableNames,
+    ).length > 0;
+  }, [url, headers, params, body, formBody, authorization, workspaceGlobals, requestVariables, runOverrides, beforeRunSuppliedVariableNames]);
+
   const handleProtocolChange = (p: EditorProtocol) => {
     setRequestProtocol(requestId, p);
     if (p === 'http') setDirty(requestId, false);
-    if (p === 'grpc') setDirty(requestId, false);
   };
 
   // Hydration
   useEffect(() => {
     async function loadRequest() {
-      if (projectPath) {
+      if (workspacePath) {
         try {
           isHydratingRef.current = true;
 
           const { tree: currentTree, scratchpadTree: currentScratchpad } = useSidebarStore.getState();
           const findKind = (items: HydratedSidebarItem[]): string | null => {
             for (const item of items) {
-              if ((item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'grpc') && item.kind.id === requestId)
+              if ((item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'flow' || item.kind.type === 'grpc') && item.kind.id === requestId)
                 return item.kind.type;
               if (item.kind.type === 'folder') { const found = findKind(item.kind.items); if (found) return found; }
             }
             return null;
           };
           const sidebarKind = findKind(currentTree) ?? findKind(currentScratchpad);
-          if (sidebarKind === 'ws') {
-            setRequestProtocol(requestId, 'ws');
-            isHydratingRef.current = false;
-            hasHydratedRef.current = true;
-            return;
-          }
-          if (sidebarKind === 'grpc') {
-            setRequestProtocol(requestId, 'grpc');
+          if (sidebarKind === 'ws' || sidebarKind === 'flow' || sidebarKind == 'grpc') {
+            setRequestProtocol(requestId, sidebarKind);
             isHydratingRef.current = false;
             hasHydratedRef.current = true;
             return;
           }
 
           const req: any = await invoke('get_request', {
-            projectRoot: projectPath,
+            workspaceRoot: workspacePath,
             id: requestId,
           });
           setMethod(req.method || 'GET');
@@ -189,12 +202,18 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
               response_extractions: req.transforms?.response_extractions || [],
               before_run: req.transforms?.before_run?.map((step: any) => ({ request_id: step.request_id })) || [],
               chain_steps: req.transforms?.chain_steps?.map((step: any) => ({ when: step.when, next_request_id: step.next_request_id })) || [],
+              request_variables: filterRequestVariablesInUse(
+                { url: req.url || '', headers: req.headers || [], params: req.params || [], body: getHydratedBodySnapshot(req.body), formBody: getHydratedFormBodySnapshot(req.body) },
+                req.transforms?.request_variables || [],
+              ),
             },
           };
           setTemplateText(req.transforms?.pre_request_template || '');
           setExtractions(req.transforms?.response_extractions || []);
           setBeforeRunChain((req.transforms?.before_run || []).map((step: any) => ({ request_id: step.request_id })));
           setChainSteps(req.transforms?.chain_steps || []);
+          setRequestVariables(req.transforms?.request_variables || []);
+          setRunOverrides({});
           savedStateRef.current = initialState;
           hasHydratedRef.current = true;
           if (requestOrigin === 'scratchpad') {
@@ -238,12 +257,15 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         setExtractions(req.transforms?.response_extractions || []);
         setBeforeRunChain(req.transforms?.before_run?.map((step: any) => ({ request_id: step.request_id })) || []);
         setChainSteps(req.transforms?.chain_steps?.map((step: any) => ({ when: step.when, next_request_id: step.next_request_id })) || []);
+        setRequestVariables(req.transforms?.request_variables || []);
+        setRunOverrides({});
         savedStateRef.current = {
           transforms: req.transforms || {
             pre_request_template: '',
             response_extractions: [],
             before_run: [],
             chain_steps: [],
+            request_variables: [],
           },
           method: req.method || 'GET',
           url: req.url || '',
@@ -260,7 +282,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         return;
       }
 
-      if (!projectPath) {
+      if (!workspacePath) {
         // Wait for workspace rehydration before deciding whether this is a scratchpad request.
         return;
       }
@@ -279,6 +301,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           response_extractions: [],
           before_run: [],
           chain_steps: [],
+          request_variables: [],
         },
       };
       hasHydratedRef.current = true;
@@ -286,11 +309,13 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       setExtractions([]);
       setBeforeRunChain([]);
       setChainSteps([]);
+      setRequestVariables([]);
+      setRunOverrides({});
       setDirty(requestId, true); // Mark as dirty since it doesn't exist on disk
       isHydratingRef.current = false;
     }
     loadRequest();
-  }, [requestId, projectPath, scratchpadRequest, getRequestName, setDirty, clearScratchpadRequestData]);
+  }, [requestId, workspacePath, scratchpadRequest, getRequestName, setDirty, clearScratchpadRequestData]);
 
   const addChainStep = (placement?: 'before' | 'on_success' | 'on_failure') => {
     const selected = placement;
@@ -327,6 +352,87 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     setFormBody(current => current.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   };
 
+  const updateRequestVariableDefault = (name: string, value: string) => {
+    setRequestVariables(current => {
+      const existing = current.find(rv => rv.key === name);
+      if (existing) {
+        return current.map(rv => (rv.key === name ? { ...rv, value, secret_ref: null } : rv));
+      }
+      return [...current, { key: name, value, secret_ref: null }];
+    });
+  };
+
+  const updateRequestVariableSecretRef = (name: string, secretId: string | undefined) => {
+    setRequestVariables(current => {
+      const existing = current.find(rv => rv.key === name);
+      if (existing) {
+        return current.map(rv => (rv.key === name ? { ...rv, value: '', secret_ref: secretId ?? null } : rv));
+      }
+      return [...current, { key: name, value: '', secret_ref: secretId ?? null }];
+    });
+  };
+
+  const refreshSecrets = async (id: string) => {
+    try {
+      const options = await invoke<SecretOption[]>('list_secrets', { workspaceId: id });
+      setSecretOptions(options);
+    } catch (err) {
+      console.error('Failed to load secrets', err);
+    }
+  };
+
+  const handleCreateSecret = async (secretName: string, value: string): Promise<string> => {
+    if (!workspaceId) throw new Error('No workspace loaded');
+    const id = await invoke<string>('create_secret_value', { workspaceId, name: secretName, value });
+    await refreshSecrets(workspaceId);
+    return id;
+  };
+
+  const updateRunOverride = (name: string, value: string) => {
+    setRunOverrides(current => ({ ...current, [name]: value }));
+  };
+
+  useEffect(() => {
+    if (!workspacePath) return;
+    (async () => {
+      try {
+        const manifest: any = await invoke('get_manifest', { workspacePath });
+        if (manifest.workspace_id) {
+          setWorkspaceId(manifest.workspace_id);
+          await refreshSecrets(manifest.workspace_id);
+        }
+      } catch (err) {
+        console.error('Failed to load workspace secrets', err);
+      }
+    })();
+  }, [workspacePath]);
+
+  // Variables produced by response_extractions on the "before run" request are merged into
+  // this request's variables at execution time and take precedence over any default set here
+  // (see execute_chain_with_overrides), so they shouldn't be flagged as unresolved.
+  useEffect(() => {
+    const beforeRequestId = beforeRunChain[0]?.request_id;
+    if (!workspacePath || !beforeRequestId) {
+      setBeforeRunSuppliedVariableNames([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const beforeRequest: any = await invoke('get_request', {
+          workspaceRoot: workspacePath,
+          id: beforeRequestId,
+        });
+        if (cancelled) return;
+        const targets = (beforeRequest?.transforms?.response_extractions || []).map((rule: any) => normalizeExtractionTarget(rule.target));
+        setBeforeRunSuppliedVariableNames(targets);
+      } catch (err) {
+        if (!cancelled) setBeforeRunSuppliedVariableNames([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [workspacePath, beforeRunChain]);
+
   useEffect(() => {
     const handleGlobalKeydown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -362,10 +468,10 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       bodyMode,
       body,
       formBody: formBody.map(item => ({ key: item.key, value: item.value, enabled: item.enabled })),
-      transforms: getTransformsState(templateText, extractions, beforeRunChain, chainSteps),
+      transforms: getTransformsState(templateText, extractions, beforeRunChain, chainSteps, url, requestVariables, { headers, params, body, formBody, authorization: authorization.value }),
     };
 
-    if (!projectPath) {
+    if (!workspacePath) {
       // Do not infer scratchpad state during workspace startup rehydration.
       // If this tab was restored from a workspace, persisting it here would
       // contaminate scratchpad storage and cause future launches to hydrate
@@ -399,10 +505,11 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     extractions,
     beforeRunChain,
     chainSteps,
+    requestVariables,
     requestId,
     setDirty,
     pendingNames,
-    projectPath,
+    workspacePath,
     requestOrigin,
     scratchpadRequest,
   ]);
@@ -423,6 +530,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       extractions,
       beforeRunChain,
       chainSteps,
+      requestVariables,
     });
   };
 
@@ -440,8 +548,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
     const ok = await ensureWorkspace();
     if (!ok) return;
 
-    // After ensureWorkspace, the projectPath might have changed, so we MUST get the latest state
-    const { projectPath: currentPath, tree: currentTree } = useSidebarStore.getState();
+    // After ensureWorkspace, the workspacePath might have changed, so we MUST get the latest state
+    const { workspacePath: currentPath, tree: currentTree } = useSidebarStore.getState();
 
     try {
       const pendingName = pendingNames[requestId];
@@ -507,12 +615,12 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
 
       if (isWs) {
         await invoke('update_ws_request', {
-          projectRoot: currentPath || '.',
+          workspaceRoot: currentPath || '.',
           request: { id: requestId, name: requestName, url, headers: headers.map(h => ({ key: h.key, value: h.value, enabled: h.enabled })) }
         });
       } else {
         await invoke('update_request', {
-          projectRoot: currentPath || '.',
+          workspaceRoot: currentPath || '.',
           request: buildFormattedRequest()
         });
       }
@@ -553,7 +661,8 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           pre_request_template: templateText,
           response_extractions: extractions,
           before_run: beforeRunChain.map(step => ({ request_id: step.request_id })),
-          chain_steps: chainSteps.map(step => ({ when: step.when, next_request_id: step.next_request_id }))
+          chain_steps: chainSteps.map(step => ({ when: step.when, next_request_id: step.next_request_id })),
+          request_variables: filterRequestVariablesInUse({ url, headers, params, body, formBody, authorization: authorization.value }, requestVariables),
         }
       };
       setDirty(requestId, false);
@@ -593,26 +702,14 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         }
       }
       
-      let workspaceVars: Array<{ key: string; value: string; enabled: boolean }> = [];
-      let environmentVars: Array<{ key: string; value: string; enabled: boolean }> = [];
-      if (projectPath) {
-        try {
-          const manifest: any = await invoke('get_manifest', { projectPath });
-          workspaceVars = Array.isArray(manifest?.workspace?.globals) ? manifest.workspace.globals : [];
-          const activeEnvironmentId = manifest?.workspace?.active_environment;
-          const environments = Array.isArray(manifest?.workspace?.environments) ? manifest.workspace.environments : [];
-          const activeEnvironment = environments.find((environment: any) => environment?.id === activeEnvironmentId);
-          environmentVars = Array.isArray(activeEnvironment?.variables) ? activeEnvironment.variables : [];
-        } catch (err) {
-          console.error(`Warning: Could not load workspace manifest: ${err}`);
-        }
-      }
+      const overrides = Object.fromEntries(
+        Object.entries(runOverrides).filter(([, value]) => value.trim() !== '')
+      );
 
       const result: any = await invoke('run_firv_request', {
-        projectRoot: projectPath || '.',
+        workspaceRoot: workspacePath || '.',
         request: buildFormattedRequest(),
-        workspaceVars,
-        environmentVars,
+        overrides,
       });
 
       setResponse(requestId, {
@@ -631,6 +728,10 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
       setRequestRunning(requestId, false);
     }
   };
+
+  if (protocol === 'flow') {
+    return <FlowEditor requestId={requestId} />;
+  }
 
   if (protocol === 'ws') {
     return (
@@ -665,7 +766,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
         onRun={handleRun}
         isRunning={isRunning}
         isDirty={isDirty}
-        projectPath={projectPath}
+        workspacePath={workspacePath}
         validationError={validationError}
         isScratchpadRequest={isScratchpadRequest}
         workspaceGlobals={workspaceGlobals}
@@ -678,11 +779,17 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
               key={tab}
               onClick={() => setActiveTab(tab as any)}
               className={twMerge(
-                'px-4 py-1.5 text-xs font-semibold transition-all uppercase tracking-tight border-b-2',
+                'relative px-4 py-1.5 text-xs font-semibold transition-all uppercase tracking-tight border-b-2',
                 activeTab === tab ? 'text-foreground border-primary' : 'text-muted-foreground hover:text-foreground border-transparent'
               )}
             >
               {tab}
+              {tab === 'transforms' && hasUnresolvedRequestVariables && (
+                <span
+                  title="At least one request variable has no default, temporary value, or chain to supply it."
+                  className="absolute top-1 right-1.5 h-1.5 w-1.5 rounded-full bg-amber-500"
+                />
+              )}
             </button>
           ))}
         </div>
@@ -708,6 +815,20 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
               requestOptions={requestOptions}
               getRequestName={getRequestName}
               workspaceGlobals={workspaceGlobals}
+              url={url}
+              headers={headers}
+              params={params}
+              body={body}
+              formBody={formBody}
+              authorization={authorization.value}
+              requestVariables={requestVariables}
+              beforeRunSuppliedVariableNames={beforeRunSuppliedVariableNames}
+              onUpdateRequestVariableDefault={updateRequestVariableDefault}
+              onUpdateRequestVariableSecretRef={updateRequestVariableSecretRef}
+              secretOptions={secretOptions}
+              onCreateSecret={handleCreateSecret}
+              runOverrides={runOverrides}
+              onUpdateRunOverride={updateRunOverride}
             />
           </div>
         </div>
@@ -732,6 +853,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
           onUpdateFormField={updateFormField}
           bodyErrorLine={bodyErrorLine}
           workspaceGlobals={workspaceGlobals}
+          templateText={templateText}
         />
       )}
     </div>

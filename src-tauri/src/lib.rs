@@ -3,6 +3,12 @@ mod hydration;
 mod lifecycle;
 mod models;
 mod http_client;
+pub mod mcp_server;
+mod mcp_tools;
+mod workspace_context;
+mod request_engine;
+mod scratchpad;
+pub mod secrets;
 mod storage;
 mod ws_client;
 mod grpc_client;
@@ -10,11 +16,15 @@ mod grpc_client;
 pub mod variables;
 mod watcher;
 
-use models::FirvManifest;
 use lifecycle::run_firv_request;
+use lifecycle::run_firv_flow;
+use workspace_context::WorkspaceContext;
 use storage::get_request;
 use storage::update_request;
 use storage::delete_request;
+use storage::get_flow;
+use storage::update_flow;
+use storage::delete_flow;
 use storage::update_manifest_structure;
 use storage::create_workspace;
 use storage::check_workspace_exists;
@@ -24,12 +34,13 @@ use storage::get_ws_request;
 use storage::update_ws_request;
 use storage::get_grpc_request;
 use storage::update_grpc_request;
+use secrets::{create_secret_value, delete_secret_value, get_secret_value, list_secrets, rename_secret_value, set_secret_value};
 use ws_client::{ws_connect, ws_disconnect, ws_send, WsConnectionRegistry};
 use grpc_client::{grpc_call, grpc_connect, grpc_send, grpc_disconnect, GrpcConnectionRegistry};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
-use tauri::{Manager, PhysicalPosition, PhysicalSize, WindowEvent};
+use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent};
 use tokio::sync::oneshot;
 
 pub struct RequestCancellationState(pub Mutex<Option<oneshot::Sender<()>>>);
@@ -58,6 +69,16 @@ fn load_window_state(app: &tauri::AppHandle) -> Option<WindowState> {
     serde_json::from_str(&content).ok()
 }
 
+/// Windows reports a window's position as (-32000, -32000) while it is
+/// minimized. If that sentinel value (or any other far-off-screen position)
+/// was ever persisted, restoring it verbatim would place the window where
+/// the user can never see or interact with it again. Guard against that by
+/// rejecting clearly invalid saved geometry.
+fn is_valid_window_state(state: &WindowState) -> bool {
+    const MIN_COORD: i32 = -10_000;
+    state.x > MIN_COORD && state.y > MIN_COORD && state.width > 0 && state.height > 0
+}
+
 fn save_window_state(app: &tauri::AppHandle, state: &WindowState) -> Result<(), String> {
     let path = window_state_path(app)?;
     if let Some(parent) = path.parent() {
@@ -72,37 +93,15 @@ fn save_window_state(app: &tauri::AppHandle, state: &WindowState) -> Result<(), 
 }
 
 #[tauri::command]
-async fn get_hydrated_sidebar(project_path: String) -> Result<hydration::HydratedTree, String> {
-    let path = std::path::PathBuf::from(project_path);
+async fn get_hydrated_sidebar(workspace_path: String) -> Result<hydration::HydratedTree, String> {
+    let path = std::path::PathBuf::from(workspace_path);
     hydration::hydrate_manifest(&path).await
 }
 
 #[tauri::command]
-fn get_manifest(project_path: String) -> Result<FirvManifest, String> {
-    let path = std::path::PathBuf::from(&project_path).join("firv.yaml");
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read manifest at {}: {}", path.display(), e))?;
-    serde_yaml::from_str(&content)
-        .map_err(|e| format!("Failed to parse manifest at {}: {}", path.display(), e))
-}
-
-#[tauri::command]
-fn load_project(path: String) -> Result<FirvManifest, String> {
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-
-    let manifest: FirvManifest = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
-
-    Ok(manifest)
-}
-
-#[tauri::command]
-async fn execute_request(
-    request: models::FirvRequest,
-    resolver: Option<variables::VariableResolver>,
-) -> Result<http_client::FirvResponse, String> {
-    let mut resolver = resolver.unwrap_or_default();
-    let prepared = http_client::prepare_request(&request, &mut resolver);
-    http_client::run_request(prepared).await
+fn get_manifest(workspace_path: String) -> Result<crate::models::FirvManifest, String> {
+    let workspace = WorkspaceContext::load(workspace_path)?;
+    Ok(workspace.manifest().clone())
 }
 
 #[tauri::command]
@@ -115,13 +114,19 @@ fn cancel_firv_request(state: tauri::State<'_, RequestCancellationState>) -> Res
 }
 
 #[tauri::command]
-fn start_project_watcher(app: tauri::AppHandle, path: String) -> Result<(), String> {
+fn start_workspace_watcher(app: tauri::AppHandle, path: String) -> Result<(), String> {
     let path_buf = std::path::PathBuf::from(path);
     watcher::start_watching(app, path_buf)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    run_with_workspace(None)
+}
+
+pub fn run_with_workspace(cli_workspace_path: Option<String>) {
+    let cli_workspace_path = cli_workspace_path.map(std::sync::Arc::new);
+    let cli_workspace_path_for_setup = cli_workspace_path.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -132,7 +137,16 @@ pub fn run() {
         .manage(RequestCancellationState(Mutex::new(None)))
         .manage(WsConnectionRegistry::new())
         .manage(GrpcConnectionRegistry::new())
-        .setup(|app| {
+        .setup(move |app| {
+            if let Some(path) = cli_workspace_path_for_setup.as_ref() {
+                let path = (**path).clone();
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    let _ = app_handle.emit("cli-workspace-path", path);
+                });
+            }
+
             let edit_menu = SubmenuBuilder::new(app, "Edit")
                 .undo()
                 .redo()
@@ -147,11 +161,13 @@ pub fn run() {
 
             if let Some(window) = app.get_webview_window("main") {
                 if let Some(state) = load_window_state(app.handle()) {
-                    if state.maximized {
-                        let _ = window.maximize();
-                    } else {
-                        let _ = window.set_size(PhysicalSize::new(state.width, state.height));
-                        let _ = window.set_position(PhysicalPosition::new(state.x, state.y));
+                    if is_valid_window_state(&state) {
+                        if state.maximized {
+                            let _ = window.maximize();
+                        } else {
+                            let _ = window.set_size(PhysicalSize::new(state.width, state.height));
+                            let _ = window.set_position(PhysicalPosition::new(state.x, state.y));
+                        }
                     }
                 }
 
@@ -159,6 +175,10 @@ pub fn run() {
                 let window_for_events = window.clone();
                 window.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { .. } = event {
+                        let is_minimized = window_for_events.is_minimized().unwrap_or(false);
+                        if is_minimized {
+                            return;
+                        }
                         if let Ok(maximized) = window_for_events.is_maximized() {
                             let state = if maximized {
                                 let size = window_for_events.inner_size().ok();
@@ -197,15 +217,17 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_manifest,
-            load_project,
-            execute_request,
             cancel_firv_request,
             run_firv_request,
-            start_project_watcher,
+            start_workspace_watcher,
             get_hydrated_sidebar,
             get_request,
             update_request,
             delete_request,
+            get_flow,
+            update_flow,
+            delete_flow,
+            run_firv_flow,
             update_manifest_structure,
             create_workspace,
             check_workspace_exists,
@@ -216,7 +238,13 @@ pub fn run() {
             ws_connect,
             ws_send,
             ws_disconnect,
-            get_grpc_request,
+            list_secrets,
+            create_secret_value,
+            get_secret_value,
+            set_secret_value,
+            rename_secret_value,
+            delete_secret_value,
+	    get_grpc_request,
             update_grpc_request,
             grpc_call,
             grpc_connect,
