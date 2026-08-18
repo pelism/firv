@@ -1,5 +1,5 @@
 use crate::models::request::{KeyValue, RequestVariable};
-use crate::models::{manifest::{FirvManifest, SidebarItem, Workspace}, FirvRequest, WsRequest};
+use crate::models::{manifest::{FirvManifest, SidebarItem, Workspace}, FirvFlow, FirvRequest, GrpcRequest, WsRequest};
 use crate::secrets;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -194,6 +194,8 @@ fn collect_request_ids(items: &[SidebarItem], request_ids: &mut Vec<String>) {
             SidebarItem::Folder { items, .. } => collect_request_ids(items, request_ids),
             SidebarItem::Request { id, .. } => request_ids.push(id.clone()),
             SidebarItem::Ws { .. } => {}
+            SidebarItem::Flow { .. } => {}
+            SidebarItem::Grpc { .. } => {}
         }
     }
 }
@@ -296,8 +298,8 @@ pub fn update_ws_request(workspace_root: String, request: WsRequest) -> Result<(
 }
 
 #[tauri::command]
-pub fn get_grpc_request(project_root: String, id: String) -> Result<GrpcRequest, String> {
-    let target_path = Path::new(&project_root).join("requests").join(format!("{}.yaml", id));
+pub fn get_grpc_request(workspace_root: String, id: String) -> Result<GrpcRequest, String> {
+    let target_path = Path::new(&workspace_root).join("requests").join(format!("{}.yaml", id));
     let content = std::fs::read_to_string(&target_path)
         .map_err(|e| format!("Failed to read grpc request {}: {}", id, e))?;
     serde_yaml::from_str(&content)
@@ -305,12 +307,12 @@ pub fn get_grpc_request(project_root: String, id: String) -> Result<GrpcRequest,
 }
 
 #[tauri::command]
-pub fn update_grpc_request(project_root: String, request: GrpcRequest) -> Result<(), String> {
+pub fn update_grpc_request(workspace_root: String, request: GrpcRequest) -> Result<(), String> {
     if request.id.is_empty() {
         return Err("Validation failed: GrpcRequest is missing an ID".to_string());
     }
 
-    let root_path = Path::new(&project_root);
+    let root_path = Path::new(&workspace_root);
     let requests_dir = root_path.join("requests");
 
     if !requests_dir.exists() {

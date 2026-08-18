@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use bytes::Buf;
 use futures_util::StreamExt;
-use prost::bytes::Buf;
 use prost::Message as ProstMessage;
 use prost_reflect::{DescriptorPool, DynamicMessage, MessageDescriptor};
 use tauri::{AppHandle, Emitter};
@@ -304,9 +304,18 @@ pub async fn grpc_connect(
         let tonic_req = Request::new(outbound);
 
         let mut client = tonic::client::Grpc::new(channel);
-        if client.ready().await.is_err() {
-            let _ = app_clone.emit(&format!("grpc_error_{}", id_clone), "Channel not ready");
-            return;
+        tokio::select! {
+            ready_result = client.ready() => {
+                if ready_result.is_err() {
+                    let _ = app_clone.emit(&format!("grpc_error_{}", id_clone), "Channel not ready");
+                    let _ = app_clone.emit(&format!("grpc_closed_{}", id_clone), ());
+                    return;
+                }
+            }
+            _ = &mut cancel_rx => {
+                let _ = app_clone.emit(&format!("grpc_closed_{}", id_clone), ());
+                return;
+            }
         }
 
         match request.streaming_mode {

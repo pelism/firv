@@ -134,7 +134,7 @@ export function RequestEditor({ requestId }: RequestEditorProps) {
             return null;
           };
           const sidebarKind = findKind(currentTree) ?? findKind(currentScratchpad);
-          if (sidebarKind === 'ws' || sidebarKind === 'flow' || sidebarKind == 'grpc') {
+          if (sidebarKind === 'ws' || sidebarKind === 'flow' || sidebarKind === 'grpc') {
             setRequestProtocol(requestId, sidebarKind);
             isHydratingRef.current = false;
             hasHydratedRef.current = true;

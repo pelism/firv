@@ -5,7 +5,7 @@ import { FolderOpen, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useSidebarStore } from '../store/sidebarStore';
 import { grpcClient } from '../lib/grpcClient';
-import type { GrpcStreamingMode } from '../types/grpcRequest';
+import type { GrpcStreamingMode } from '../types/grpcStreamingMode';
 import { RequestEditorCommandBar, type EditorProtocol } from './RequestEditorCommandBar';
 import { KVEditor, type KeyValue } from './editors/KVEditor';
 
@@ -16,7 +16,7 @@ interface ServiceMethod {
 
 function parseServicesFromProto(proto: string): ServiceMethod[] {
   const results: ServiceMethod[] = [];
-  const serviceRegex = /service\s+(\w+)\s*\{([^}]*)\}/gs;
+  const serviceRegex = /service\s+(\w+)\s*\{([^}]*)}/gs;
   const rpcRegex = /rpc\s+(\w+)\s*\(/g;
   let sm: RegExpExecArray | null;
   while ((sm = serviceRegex.exec(proto)) !== null) {
@@ -50,8 +50,9 @@ export function GrpcEditor({ requestId, initialUrl, onProtocolChange }: GrpcEdit
   const savedStateRef = useRef<any>(null);
   const hasHydratedRef = useRef(false);
   const isHydratingRef = useRef(false);
+  const unlistenRef = useRef<(() => void)[]>([]);
 
-  const { projectPath, syncTreeToBackend, ensureWorkspace, getRequestName, clearPendingName, pendingNames } = useSidebarStore();
+  const { workspacePath, syncTreeToBackend, ensureWorkspace, getRequestName, clearPendingName, pendingNames } = useSidebarStore();
   const { setDirty, dirtyRequests, setGrpcStatus, appendGrpcMessage, clearGrpcMessages, grpcConnections } = useAppStore();
   const isDirty = dirtyRequests.has(requestId);
   const grpcConn = grpcConnections[requestId];
@@ -66,11 +67,18 @@ export function GrpcEditor({ requestId, initialUrl, onProtocolChange }: GrpcEdit
   }, [protoSource]);
 
   useEffect(() => {
+    return () => {
+      unlistenRef.current.forEach(u => u());
+      unlistenRef.current = [];
+    };
+  }, []);
+
+  useEffect(() => {
     async function load() {
-      if (!projectPath) return;
+      if (!workspacePath) return;
       try {
         isHydratingRef.current = true;
-        const req: any = await invoke('get_grpc_request', { projectRoot: projectPath, id: requestId });
+        const req: any = await invoke('get_grpc_request', { workspaceRoot: workspacePath, id: requestId });
         setUrl(req.url || '');
         setProtoSource(req.proto_source || '');
         setService(req.service || '');
@@ -97,7 +105,7 @@ export function GrpcEditor({ requestId, initialUrl, onProtocolChange }: GrpcEdit
       }
     }
     load();
-  }, [requestId, projectPath]);
+  }, [requestId, workspacePath]);
 
   useEffect(() => {
     if (!hasHydratedRef.current || isHydratingRef.current) return;
@@ -120,7 +128,7 @@ export function GrpcEditor({ requestId, initialUrl, onProtocolChange }: GrpcEdit
   const handleSave = useCallback(async () => {
     const ok = await ensureWorkspace();
     if (!ok) return;
-    const { projectPath: currentPath, tree: currentTree } = useSidebarStore.getState();
+    const { workspacePath: currentPath, tree: currentTree } = useSidebarStore.getState();
     const requestName = pendingNames[requestId] || getRequestName(requestId) || 'New gRPC Request';
 
     try {
@@ -155,7 +163,7 @@ export function GrpcEditor({ requestId, initialUrl, onProtocolChange }: GrpcEdit
       }
 
       await invoke('update_grpc_request', {
-        projectRoot: currentPath || '.',
+        workspaceRoot: currentPath || '.',
         request: {
           id: requestId,
           name: requestName,
@@ -220,14 +228,20 @@ export function GrpcEditor({ requestId, initialUrl, onProtocolChange }: GrpcEdit
       if (isStreaming) {
         await grpcClient.disconnect(requestId);
         setGrpcStatus(requestId, 'disconnected');
+        unlistenRef.current.forEach(u => u());
+        unlistenRef.current = [];
       } else {
         setGrpcStatus(requestId, 'connecting');
-        const unlisten = [
+        unlistenRef.current = [
           await grpcClient.onMessage(requestId, (data) => {
             appendGrpcMessage(requestId, { direction: 'in', data, timestamp_ms: Date.now() });
             setGrpcStatus(requestId, 'connected');
           }),
-          await grpcClient.onClosed(requestId, () => setGrpcStatus(requestId, 'disconnected')),
+          await grpcClient.onClosed(requestId, () => {
+            setGrpcStatus(requestId, 'disconnected');
+            unlistenRef.current.forEach(u => u());
+            unlistenRef.current = [];
+          }),
           await grpcClient.onError(requestId, (msg) => {
             appendGrpcMessage(requestId, { direction: 'in', data: `Error: ${msg}`, timestamp_ms: Date.now() });
             setGrpcStatus(requestId, 'error');
@@ -237,7 +251,8 @@ export function GrpcEditor({ requestId, initialUrl, onProtocolChange }: GrpcEdit
           await grpcClient.connect(requestId, request);
           setGrpcStatus(requestId, 'connected');
         } catch (err: any) {
-          for (const u of unlisten) u();
+          unlistenRef.current.forEach(u => u());
+          unlistenRef.current = [];
           appendGrpcMessage(requestId, { direction: 'in', data: String(err), timestamp_ms: Date.now() });
           setGrpcStatus(requestId, 'error');
         }
@@ -264,8 +279,8 @@ export function GrpcEditor({ requestId, initialUrl, onProtocolChange }: GrpcEdit
         onRun={handleInvoke}
         isRunning={isRunning}
         isDirty={isDirty}
-        projectPath={projectPath}
-        isWsConnected={isStreaming}
+        workspacePath={workspacePath}
+        isStreamConnected={grpcConn?.status === 'connected'}
         isScratchpadRequest={false}
         workspaceGlobals={{}}
         validationError={null}

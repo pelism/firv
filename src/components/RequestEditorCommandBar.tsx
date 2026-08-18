@@ -20,7 +20,7 @@ interface RequestEditorCommandBarProps {
   validationError: string | null;
   isScratchpadRequest: boolean;
   workspaceGlobals: VariableLookup;
-  isWsConnected?: boolean;
+  isStreamConnected?: boolean;
 }
 
 export function RequestEditorCommandBar({
@@ -38,7 +38,7 @@ export function RequestEditorCommandBar({
   validationError,
   isScratchpadRequest,
   workspaceGlobals,
-  isWsConnected = false,
+  isStreamConnected = false,
 }: RequestEditorCommandBarProps) {
   const showMoveToWorkspace = isScratchpadRequest;
   const [urlHover, setUrlHover] = useState<{ title: string; left: number } | null>(null);
@@ -217,24 +217,24 @@ export function RequestEditorCommandBar({
                 'flex items-center gap-2 px-4 py-1.5 rounded-lg text-primary-foreground font-bold text-sm transition-all shadow-md active:scale-95 disabled:opacity-60',
                 'bg-primary hover:bg-primary/90 shadow-primary/30'
               )}
-              title={isWsConnected ? 'Disconnect' : 'Connect'}
+              title={isStreamConnected ? 'Disconnect' : 'Connect'}
             >
-              {isWsConnected ? <Unplug size={16} /> : <Plug size={16} className={isRunning ? 'animate-pulse' : ''} />}
-              {isRunning ? 'Connecting…' : isWsConnected ? 'Disconnect' : 'Connect'}
+              {isStreamConnected ? <Unplug size={16} /> : <Plug size={16} className={isRunning ? 'animate-pulse' : ''} />}
+              {isRunning ? 'Connecting…' : isStreamConnected ? 'Disconnect' : 'Connect'}
             </button>
           )}
           {protocol === 'grpc' && (
             <button
               onClick={onRun}
-              disabled={isRunning}
+              disabled={isRunning && !isStreamConnected}
               className={twMerge(
                 'flex items-center gap-2 px-4 py-1.5 rounded-lg text-primary-foreground font-bold text-sm transition-all shadow-md active:scale-95 disabled:opacity-60',
                 'bg-primary hover:bg-primary/90 shadow-primary/30'
               )}
-              title={isWsConnected ? 'Disconnect' : 'Send / Connect'}
+              title={isStreamConnected ? 'Disconnect' : isRunning ? 'Connecting…' : 'Send / Connect'}
             >
-              {isWsConnected ? <Unplug size={16} /> : <Plug size={16} className={isRunning ? 'animate-pulse' : ''} />}
-              {isRunning ? 'Running…' : isWsConnected ? 'Disconnect' : 'Invoke'}
+              {isStreamConnected ? <Unplug size={16} /> : <Plug size={16} className={isRunning ? 'animate-pulse' : ''} />}
+              {isStreamConnected ? 'Disconnect' : isRunning ? 'Connecting…' : 'Invoke'}
             </button>
           )}
         </div>

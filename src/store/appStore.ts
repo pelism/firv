@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { wsClient, type WsConnectionStatus, type WsMessage } from '../lib/wsClient';
-import type { GrpcConnectionStatus, GrpcMessage } from '../lib/grpcClient';
+import { grpcClient, type GrpcConnectionStatus, type GrpcMessage } from '../lib/grpcClient';
 
 export type RequestOrigin = 'workspace' | 'scratchpad';
-export type RequestProtocol = 'http' | 'ws' | 'grpc';
+export type RequestProtocol = 'http' | 'ws' | 'flow' | 'grpc';
 
 export interface AppState {
   activeRequestId: string | null;
@@ -54,9 +54,12 @@ export const useAppStore = create<AppState>()(
         return { activeRequestId: id };
       }),
       closeTab: (id) => {
-        const { wsConnections } = get();
+        const { wsConnections, grpcConnections } = get();
         if (wsConnections[id]?.status === 'connected' || wsConnections[id]?.status === 'connecting') {
           wsClient.disconnect(id).catch(() => {});
+        }
+        if (grpcConnections[id]?.status === 'connected' || grpcConnections[id]?.status === 'connecting') {
+          grpcClient.disconnect(id).catch(() => {});
         }
         set((state) => {
           const newTabs = state.openTabs.filter(t => t !== id);
