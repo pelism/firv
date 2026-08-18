@@ -1,5 +1,5 @@
 use crate::models::request::{KeyValue, RequestVariable};
-use crate::models::{manifest::{FirvManifest, SidebarItem, Workspace}, FirvFlow, FirvRequest, WsRequest};
+use crate::models::{manifest::{FirvManifest, SidebarItem, Workspace}, FirvFlow, FirvRequest, GrpcRequest, WsRequest};
 use crate::secrets;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -195,6 +195,7 @@ fn collect_request_ids(items: &[SidebarItem], request_ids: &mut Vec<String>) {
             SidebarItem::Request { id, .. } => request_ids.push(id.clone()),
             SidebarItem::Ws { .. } => {}
             SidebarItem::Flow { .. } => {}
+            SidebarItem::Grpc { .. } => {}
         }
     }
 }
@@ -282,6 +283,33 @@ pub fn get_ws_request(workspace_root: String, id: String) -> Result<WsRequest, S
 pub fn update_ws_request(workspace_root: String, request: WsRequest) -> Result<(), String> {
     if request.id.is_empty() {
         return Err("Validation failed: WsRequest is missing an ID".to_string());
+    }
+
+    let root_path = Path::new(&workspace_root);
+    let requests_dir = root_path.join("requests");
+
+    if !requests_dir.exists() {
+        std::fs::create_dir_all(&requests_dir)
+            .map_err(|e| format!("Failed to create requests directory: {}", e))?;
+    }
+
+    let target_path = requests_dir.join(format!("{}.yaml", request.id));
+    save_atomic(target_path, &request)
+}
+
+#[tauri::command]
+pub fn get_grpc_request(workspace_root: String, id: String) -> Result<GrpcRequest, String> {
+    let target_path = Path::new(&workspace_root).join("requests").join(format!("{}.yaml", id));
+    let content = std::fs::read_to_string(&target_path)
+        .map_err(|e| format!("Failed to read grpc request {}: {}", id, e))?;
+    serde_yaml::from_str(&content)
+        .map_err(|e| format!("Failed to parse grpc request {}: {}", id, e))
+}
+
+#[tauri::command]
+pub fn update_grpc_request(workspace_root: String, request: GrpcRequest) -> Result<(), String> {
+    if request.id.is_empty() {
+        return Err("Validation failed: GrpcRequest is missing an ID".to_string());
     }
 
     let root_path = Path::new(&workspace_root);

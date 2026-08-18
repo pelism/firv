@@ -155,7 +155,7 @@ export function WsEditor({ requestId, initialUrl, onProtocolChange }: WsEditorPr
         onSave={handleSave}
         onRun={isConnected ? handleDisconnect : handleConnect}
         isRunning={isConnecting}
-        isWsConnected={isConnected}
+        isStreamConnected={isConnected}
         isDirty={isDirty}
         workspacePath={workspacePath ?? ''}
         validationError={null}

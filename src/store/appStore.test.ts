@@ -94,4 +94,30 @@ describe('useAppStore closeTab', () => {
     expect(invoke).not.toHaveBeenCalled();
     expect(useAppStore.getState().wsConnections).toEqual({});
   });
+
+  it('disconnects an open grpc connection and clears it when its tab is closed', () => {
+    useAppStore.setState({
+      openTabs: ['grpc-1'],
+      activeRequestId: 'grpc-1',
+      grpcConnections: { 'grpc-1': { status: 'connected', messages: [] } },
+    } as any);
+
+    useAppStore.getState().closeTab('grpc-1');
+
+    expect(invoke).toHaveBeenCalledWith('grpc_disconnect', { id: 'grpc-1' });
+    expect(useAppStore.getState().grpcConnections).toEqual({});
+  });
+
+  it('does not attempt to disconnect a grpc connection that is already disconnected', () => {
+    useAppStore.setState({
+      openTabs: ['grpc-1'],
+      activeRequestId: 'grpc-1',
+      grpcConnections: { 'grpc-1': { status: 'disconnected', messages: [] } },
+    } as any);
+
+    useAppStore.getState().closeTab('grpc-1');
+
+    expect(invoke).not.toHaveBeenCalled();
+    expect(useAppStore.getState().grpcConnections).toEqual({});
+  });
 });

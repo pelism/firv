@@ -37,6 +37,10 @@ pub enum SidebarKind {
         id: String,
         name: String,
     },
+    Grpc {
+        id: String,
+        name: String,
+    },
     Error {
         id: String,
         name: String,
@@ -143,6 +147,14 @@ async fn hydrate_item(
             HydratedSidebarItem {
                 id: internal_id,
                 kind: SidebarKind::Flow { id, name },
+            }
+        }
+	SidebarItem::Grpc { id, name } => {
+            found_ids.insert(id.clone());
+
+            HydratedSidebarItem {
+                id: internal_id,
+                kind: SidebarKind::Grpc { id, name },
             }
         }
     }

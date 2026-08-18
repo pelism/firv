@@ -105,4 +105,3 @@ jobs:
           tagName: v__VERSION__
           releaseName: "firv v__VERSION__"
           releaseId: ${{ needs.prepare-release.outputs.release_id }}
-

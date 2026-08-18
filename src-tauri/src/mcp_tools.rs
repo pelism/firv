@@ -649,6 +649,7 @@ pub(crate) fn collect_request_ids(items: &[SidebarItem]) -> Vec<String> {
             SidebarItem::Ws { id, .. } => ids.push(id.clone()),
             SidebarItem::Folder { items: children, .. } => ids.extend(collect_request_ids(children)),
             SidebarItem::Flow { .. } => {}
+            SidebarItem::Grpc { .. } => {}
         }
     }
     ids

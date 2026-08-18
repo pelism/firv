@@ -11,6 +11,7 @@ mod scratchpad;
 pub mod secrets;
 mod storage;
 mod ws_client;
+mod grpc_client;
 
 pub mod variables;
 mod watcher;
@@ -31,8 +32,11 @@ use storage::export_workspace;
 use storage::import_firv_export;
 use storage::get_ws_request;
 use storage::update_ws_request;
+use storage::get_grpc_request;
+use storage::update_grpc_request;
 use secrets::{create_secret_value, delete_secret_value, get_secret_value, list_secrets, rename_secret_value, set_secret_value};
 use ws_client::{ws_connect, ws_disconnect, ws_send, WsConnectionRegistry};
+use grpc_client::{grpc_call, grpc_connect, grpc_send, grpc_disconnect, GrpcConnectionRegistry};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
@@ -132,6 +136,7 @@ pub fn run_with_workspace(cli_workspace_path: Option<String>) {
         .manage(watcher::WatcherHandle(Mutex::new(None)))
         .manage(RequestCancellationState(Mutex::new(None)))
         .manage(WsConnectionRegistry::new())
+        .manage(GrpcConnectionRegistry::new())
         .setup(move |app| {
             if let Some(path) = cli_workspace_path_for_setup.as_ref() {
                 let path = (**path).clone();
@@ -238,7 +243,13 @@ pub fn run_with_workspace(cli_workspace_path: Option<String>) {
             get_secret_value,
             set_secret_value,
             rename_secret_value,
-            delete_secret_value
+            delete_secret_value,
+	    get_grpc_request,
+            update_grpc_request,
+            grpc_call,
+            grpc_connect,
+            grpc_send,
+            grpc_disconnect
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

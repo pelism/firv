@@ -70,7 +70,7 @@ const SidebarNode: React.FC<{
   };
 
   const getRequestIds = (item: HydratedSidebarItem): string[] => {
-    if (item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'flow') {
+    if (item.kind.type === 'request' || item.kind.type === 'ws') {
       return [item.kind.id];
     }
     if (item.kind.type === 'folder') {
@@ -401,6 +401,44 @@ const SidebarNode: React.FC<{
             onClick={handleDelete}
             className="p-1.5 rounded text-gray-500 hover:text-red-500 hover:bg-muted opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
             title="Delete Flow"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (item.kind.type === 'grpc') {
+    const grpcId = item.kind.id;
+    const grpcName = item.kind.name;
+    const isActive = activeRequestId === grpcId;
+    return (
+      <div
+        ref={setNodeRef}
+        className={twMerge(
+          "flex items-center py-2 pl-3 pr-2 my-0.5 rounded-lg cursor-pointer text-sm group transition-all",
+          isActive
+            ? "text-foreground ring-2 ring-primary/20 border border-primary/50"
+            : "text-muted-foreground hover:bg-muted/50 border border-transparent"
+        )}
+        style={{ ...style, paddingLeft: depth > 0 ? paddingLeft + 20 : 12 }}
+        onClick={() => openTab(grpcId)}
+      >
+        <div className="flex items-center flex-1 min-w-0">
+          <div {...attributes} {...listeners} className="p-1 mr-1 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-muted-foreground/60">
+            <GripVertical size={12} />
+          </div>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md mr-3 min-w-8 text-center bg-blue-500/15 text-blue-500">
+            gRPC
+          </span>
+          <span className="truncate flex-1">{grpcName}</span>
+        </div>
+        <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={handleDelete}
+            className="p-1.5 rounded text-gray-500 hover:text-red-500 hover:bg-muted opacity-80 group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
+            title="Delete gRPC Request"
           >
             <Trash2 size={14} />
           </button>

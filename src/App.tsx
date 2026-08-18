@@ -159,7 +159,7 @@ function App() {
     for (const item of items) {
       if (item.kind.type === 'error') continue;
       const path = currentPath ? `${currentPath} / ${item.kind.name}` : item.kind.name;
-      if ((item.kind.type === 'request' || item.kind.type === 'ws') && item.kind.id === id) {
+      if ((item.kind.type === 'request' || item.kind.type === 'ws' || item.kind.type === 'grpc') && item.kind.id === id) {
         return path;
       }
       if (item.kind.type === 'folder' && item.kind.items) {
@@ -323,6 +323,7 @@ function App() {
 
               {(() => {
                 const isWsActive = activeRequestId ? (requestProtocols[activeRequestId] === 'ws' || requestProtocols[activeRequestId] === 'flow') : false;
+                const isGrpcActive = activeRequestId ? (requestProtocols[activeRequestId] === 'grpc' || requestProtocols[activeRequestId] === 'flow') : false;
                 const editorContent = (
                   <div className="flex-1 overflow-hidden min-h-0 min-w-0 flex flex-col bg-background">
                     {activeRequestId ? (
@@ -363,10 +364,10 @@ function App() {
                 // e.g. Flow steps) whenever the active tab's protocol toggles.
                 return (
                   <PanelGroup orientation="vertical">
-                    <Panel defaultSize={isWsActive ? "100%" : "60%"} minSize="30%" className="flex flex-col">
+                    <Panel defaultSize={isWsActive || isGrpcActive ? "100%" : "60%"} minSize="30%" className="flex flex-col">
                       {editorContent}
                     </Panel>
-                    {!isWsActive && (
+                    {!isWsActive && !isGrpcActive && (
                       <>
                         <PanelResizeHandle className="h-1 group flex items-center justify-center bg-muted hover:bg-primary/50 cursor-row-resize transition-all dark:bg-zinc-900">
                           <div className="h-px w-8 bg-border group-hover:bg-white/50 rounded-full" />
