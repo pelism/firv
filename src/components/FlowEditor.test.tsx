@@ -14,6 +14,7 @@ const existingFlow = {
   steps: [
     {
       request_id: 'req-1',
+      enabled: true,
       input_variables: [{ key: 'name', value: 'world', enabled: true }],
       export_variables: [{ target: '{{token}}', source: 'response_body_json', pattern: 'token', enabled: true }],
       query_param_overrides: [],
@@ -163,5 +164,25 @@ describe('FlowEditor', () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('run_firv_flow', expect.objectContaining({ workspaceRoot: '/workspace' })));
     await screen.findByText(/Status 200/);
     await waitFor(() => expect(screen.getByText('Trace (2)')).toBeInTheDocument());
+  });
+
+  it('toggles a step off and saves the disabled state', async () => {
+    render(<FlowEditor requestId="flow-1" />);
+    await screen.findByDisplayValue('Existing Flow');
+
+    const toggle = screen.getByRole('switch', { name: /step enabled/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('update_flow', expect.objectContaining({
+      workspaceRoot: '/workspace',
+      flow: expect.objectContaining({
+        id: 'flow-1',
+        steps: [expect.objectContaining({ request_id: 'req-1', enabled: false })],
+      }),
+    })));
   });
 });

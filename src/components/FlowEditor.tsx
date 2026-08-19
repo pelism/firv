@@ -28,6 +28,7 @@ interface FlowExportRuleUI {
 interface FlowStepUI {
   localId: string;
   request_id: string;
+  enabled: boolean;
   input_variables: KeyValue[];
   export_variables: FlowExportRuleUI[];
   query_param_overrides: KeyValue[];
@@ -99,6 +100,7 @@ const uiToExportVariables = (exports: FlowExportRuleUI[]): FlowExtractionRule[] 
 const stepToUI = (step: FlowStep): FlowStepUI => ({
   localId: generateId(),
   request_id: step.request_id,
+  enabled: step.enabled,
   input_variables: inputVariablesToKeyValues(step.input_variables),
   export_variables: exportVariablesToUI(step.export_variables),
   query_param_overrides: queryParamOverridesToKeyValues(step.query_param_overrides),
@@ -109,6 +111,7 @@ const stepToUI = (step: FlowStep): FlowStepUI => ({
 
 const uiToStep = (step: FlowStepUI): FlowStep => ({
   request_id: step.request_id,
+  enabled: step.enabled,
   input_variables: keyValuesToInputVariables(step.input_variables),
   export_variables: uiToExportVariables(step.export_variables),
   query_param_overrides: keyValuesToQueryParamOverrides(step.query_param_overrides),
@@ -167,6 +170,7 @@ export function FlowEditor({ requestId }: FlowEditorProps) {
     setSteps(current => [...current, {
       localId: generateId(),
       request_id: requestOptions[0]?.id || '',
+      enabled: true,
       input_variables: [],
       export_variables: [],
       query_param_overrides: [],
@@ -292,9 +296,27 @@ export function FlowEditor({ requestId }: FlowEditorProps) {
           {steps.map((step, index) => {
             const result = getStepResult(index);
             return (
-              <div key={step.localId} className="border border-border rounded-xl bg-card p-3">
+              <div key={step.localId} className={twMerge("border border-border rounded-xl bg-card p-3", !step.enabled && "opacity-60")}>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-[10px] font-bold text-muted-foreground w-5 text-center">{index + 1}</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={step.enabled}
+                    title={step.enabled ? 'Step enabled' : 'Step disabled'}
+                    onClick={() => updateStep(step.localId, { enabled: !step.enabled })}
+                    className={twMerge(
+                      'relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors',
+                      step.enabled ? 'bg-primary' : 'bg-muted-foreground/30'
+                    )}
+                  >
+                    <span
+                      className={twMerge(
+                        'pointer-events-none absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform',
+                        step.enabled ? 'translate-x-3' : 'translate-x-0'
+                      )}
+                    />
+                  </button>
                   <select
                     value={step.request_id}
                     onChange={e => updateStep(step.localId, { request_id: e.target.value })}

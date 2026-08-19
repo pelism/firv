@@ -39,11 +39,15 @@ pub struct FlowExtractionRule {
     pub enabled: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, TS, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, TS, Clone)]
 #[serde(default)]
 #[ts(export, export_to = "flowStep.ts")]
 pub struct FlowStep {
     pub request_id: String,
+    /// Whether this step should run when the flow is executed. When disabled,
+    /// the step is skipped and a placeholder success result is emitted.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
     /// Variables passed into this step before it runs. The `value` may
     /// reference variables produced by earlier steps with `{{var}}` syntax.
     /// Alias `overrides` preserves flow files saved before this rename.
@@ -72,6 +76,21 @@ pub struct FlowStep {
     /// as part of the flow, without mutating the underlying request.
     #[serde(default)]
     pub skip_on_failure_chain: bool,
+}
+
+impl Default for FlowStep {
+    fn default() -> Self {
+        Self {
+            request_id: String::new(),
+            enabled: true,
+            input_variables: Vec::new(),
+            export_variables: Vec::new(),
+            query_param_overrides: Vec::new(),
+            skip_before_chain: false,
+            skip_on_success_chain: false,
+            skip_on_failure_chain: false,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, TS, Clone)]

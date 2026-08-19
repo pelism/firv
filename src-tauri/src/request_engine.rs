@@ -461,6 +461,18 @@ pub async fn execute_flow(
     let mut stopped_early = false;
 
     for (step_index, step) in flow.steps.iter().enumerate() {
+        if !step.enabled {
+            step_results.push(FlowStepResult {
+                request_id: step.request_id.clone(),
+                success: true,
+                status: None,
+                execution_time_ms: 0,
+                error: None,
+                logs: vec![format!("Step {}: skipped (disabled)", step_index + 1)],
+            });
+            continue;
+        }
+
         let mut step_logs = Vec::new();
         step_logs.push(format!("Step {}: executing '{}'", step_index + 1, step.request_id));
         if !carried_vars.is_empty() {
@@ -1016,6 +1028,61 @@ mod tests {
         assert!(!result.stopped_early);
         assert_eq!(result.steps.len(), 2);
         assert!(result.steps.iter().all(|s| s.success));
+    }
+
+    #[tokio::test]
+    async fn execute_flow_skips_disabled_steps_and_continues() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace_root = dir.path().to_string_lossy().to_string();
+        let server = MockServer::start();
+
+        let first_mock = server.mock(|when, then| {
+            when.method(GET).path("/first");
+            then.status(200).body("ok");
+        });
+        let skipped_mock = server.mock(|when, then| {
+            when.method(GET).path("/skipped");
+            then.status(200).body("ok");
+        });
+        let third_mock = server.mock(|when, then| {
+            when.method(GET).path("/third");
+            then.status(200).body("ok");
+        });
+
+        for id in ["first", "skipped", "third"] {
+            write_request(dir.path(), &FirvRequest {
+                id: id.to_string(),
+                name: id.to_string(),
+                method: HttpMethod::GET,
+                url: format!("{}/{}", server.base_url(), id),
+                headers: vec![],
+                params: vec![],
+                body: RequestBody::None,
+                transforms: RequestTransforms::default(),
+            });
+        }
+
+        let flow = FirvFlow {
+            id: "flow-skip".to_string(),
+            name: "Flow".to_string(),
+            steps: vec![
+                FlowStep { request_id: "first".to_string(), ..Default::default() },
+                FlowStep { request_id: "skipped".to_string(), enabled: false, ..Default::default() },
+                FlowStep { request_id: "third".to_string(), ..Default::default() },
+            ],
+        };
+
+        let result = execute_flow(workspace_root, flow, vec![], vec![], HashMap::new())
+            .await
+            .expect("flow should succeed");
+
+        first_mock.assert();
+        skipped_mock.assert_hits(0);
+        third_mock.assert();
+        assert!(!result.stopped_early);
+        assert_eq!(result.steps.len(), 3);
+        assert!(result.steps.iter().all(|s| s.success));
+        assert!(result.steps[1].logs.iter().any(|l| l.contains("skipped")));
     }
 
     #[tokio::test]

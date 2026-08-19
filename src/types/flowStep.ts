@@ -5,6 +5,11 @@ import type { KeyValue } from "./keyValue";
 
 export type FlowStep = { request_id: string, 
 /**
+ * Whether this step should run when the flow is executed. When disabled,
+ * the step is skipped and a placeholder success result is emitted.
+ */
+enabled: boolean, 
+/**
  * Variables passed into this step before it runs. The `value` may
  * reference variables produced by earlier steps with `{{var}}` syntax.
  * Alias `overrides` preserves flow files saved before this rename.
