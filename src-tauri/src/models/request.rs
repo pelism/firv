@@ -57,10 +57,19 @@ mod tests {
         assert_eq!(HttpMethod::GET.to_reqwest_method(), reqwest::Method::GET);
         assert_eq!(HttpMethod::POST.to_reqwest_method(), reqwest::Method::POST);
         assert_eq!(HttpMethod::PUT.to_reqwest_method(), reqwest::Method::PUT);
-        assert_eq!(HttpMethod::DELETE.to_reqwest_method(), reqwest::Method::DELETE);
-        assert_eq!(HttpMethod::PATCH.to_reqwest_method(), reqwest::Method::PATCH);
+        assert_eq!(
+            HttpMethod::DELETE.to_reqwest_method(),
+            reqwest::Method::DELETE
+        );
+        assert_eq!(
+            HttpMethod::PATCH.to_reqwest_method(),
+            reqwest::Method::PATCH
+        );
         assert_eq!(HttpMethod::HEAD.to_reqwest_method(), reqwest::Method::HEAD);
-        assert_eq!(HttpMethod::OPTIONS.to_reqwest_method(), reqwest::Method::OPTIONS);
+        assert_eq!(
+            HttpMethod::OPTIONS.to_reqwest_method(),
+            reqwest::Method::OPTIONS
+        );
     }
 }
 

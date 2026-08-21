@@ -19,7 +19,10 @@ pub struct VariableTraceEntry {
     pub source: String,
 }
 
-fn extract_json_path<'a>(value: &'a serde_json::Value, path: &str) -> Option<&'a serde_json::Value> {
+fn extract_json_path<'a>(
+    value: &'a serde_json::Value,
+    path: &str,
+) -> Option<&'a serde_json::Value> {
     if path.is_empty() {
         return Some(value);
     }
@@ -107,11 +110,17 @@ impl VariableResolver {
         Self::default()
     }
 
-    pub fn from_scopes(globals: &[KeyValue], environment: &[KeyValue], secrets: &HashMap<String, String>) -> Self {
+    pub fn from_scopes(
+        globals: &[KeyValue],
+        environment: &[KeyValue],
+        secrets: &HashMap<String, String>,
+    ) -> Self {
         let mut resolver = Self::new();
         resolver.secrets = secrets.clone();
-        resolver.globals = Self::collect_enabled_variables(globals, secrets, &mut resolver.secret_keys);
-        resolver.environment = Self::collect_enabled_variables(environment, secrets, &mut resolver.secret_keys);
+        resolver.globals =
+            Self::collect_enabled_variables(globals, secrets, &mut resolver.secret_keys);
+        resolver.environment =
+            Self::collect_enabled_variables(environment, secrets, &mut resolver.secret_keys);
         resolver
     }
 
@@ -138,7 +147,11 @@ impl VariableResolver {
 
             let normalized_key = Self::normalize_key(key);
 
-            match variable.secret_ref.as_deref().filter(|s| !s.trim().is_empty()) {
+            match variable
+                .secret_ref
+                .as_deref()
+                .filter(|s| !s.trim().is_empty())
+            {
                 Some(secret_id) => {
                     secret_keys.insert(normalized_key.clone());
                     let value = secrets.get(secret_id).cloned().unwrap_or_default();
@@ -165,7 +178,8 @@ impl VariableResolver {
             }
             value
         } else {
-            self.render_liquid(&kv.value).unwrap_or_else(|_| self.resolve_string(&kv.value))
+            self.render_liquid(&kv.value)
+                .unwrap_or_else(|_| self.resolve_string(&kv.value))
         }
     }
 
@@ -221,7 +235,8 @@ impl VariableResolver {
 
     fn record_used_keys_from_input(&mut self, input: &str) {
         for caps in TEMPLATE_REGEX.captures_iter(input) {
-            self.used_variable_keys.insert(Self::normalize_key(&caps[1]));
+            self.used_variable_keys
+                .insert(Self::normalize_key(&caps[1]));
         }
     }
 
@@ -252,7 +267,8 @@ impl VariableResolver {
     pub fn trace(&self) -> Vec<VariableTraceEntry> {
         let mut entries = Vec::new();
         let mut entry_indexes: HashMap<String, usize> = HashMap::new();
-        let should_include = |key: &str| self.used_variable_keys.contains(&Self::normalize_key(key));
+        let should_include =
+            |key: &str| self.used_variable_keys.contains(&Self::normalize_key(key));
         let redact = |key: &str, value: &str| -> String {
             if self.secret_keys.contains(&Self::normalize_key(key)) {
                 REDACTED_SECRET_PLACEHOLDER.to_string()
@@ -328,9 +344,7 @@ impl VariableResolver {
 
     pub fn render_liquid(&mut self, input: &str) -> Result<String, String> {
         self.record_used_keys_from_input(input);
-        let template = LIQUID_PARSER
-            .parse(input)
-            .map_err(|e| e.to_string())?;
+        let template = LIQUID_PARSER.parse(input).map_err(|e| e.to_string())?;
         let mut globals = Object::new();
         for (key, value) in self.merge() {
             globals.insert(key.into(), Value::scalar(value));
@@ -338,23 +352,44 @@ impl VariableResolver {
         template.render(&globals).map_err(|e| e.to_string())
     }
 
-    pub fn apply_extraction_rule(&mut self, rule: &RequestExtractionRule, response_body: &str) -> Result<Option<String>, String> {
+    pub fn apply_extraction_rule(
+        &mut self,
+        rule: &RequestExtractionRule,
+        response_body: &str,
+    ) -> Result<Option<String>, String> {
         match rule.source {
             ExtractionSource::ResponseBodyRaw => {
                 if rule.pattern.is_empty() {
-                    return Err(format!("Extraction rule '{}' has an empty raw pattern", rule.target));
+                    return Err(format!(
+                        "Extraction rule '{}' has an empty raw pattern",
+                        rule.target
+                    ));
                 }
                 if let Some(start) = response_body.find(&rule.pattern) {
-                    return Ok(Some(response_body[start..start + rule.pattern.len()].to_string()));
+                    return Ok(Some(
+                        response_body[start..start + rule.pattern.len()].to_string(),
+                    ));
                 }
-                Err(format!("Raw extraction '{}' did not match any substring", rule.target))
+                Err(format!(
+                    "Raw extraction '{}' did not match any substring",
+                    rule.target
+                ))
             }
             ExtractionSource::ResponseBodyJson => {
-                let parsed: serde_json::Value = serde_json::from_str(response_body)
-                    .map_err(|e| format!("JSON extraction '{}' could not parse response body: {}", rule.target, e))?;
+                let parsed: serde_json::Value =
+                    serde_json::from_str(response_body).map_err(|e| {
+                        format!(
+                            "JSON extraction '{}' could not parse response body: {}",
+                            rule.target, e
+                        )
+                    })?;
                 let path = rule.pattern.trim_start_matches("$").trim_start_matches('.');
-                let value = extract_json_path(&parsed, path)
-                    .ok_or_else(|| format!("JSON extraction '{}' could not resolve path '{}'", rule.target, rule.pattern))?;
+                let value = extract_json_path(&parsed, path).ok_or_else(|| {
+                    format!(
+                        "JSON extraction '{}' could not resolve path '{}'",
+                        rule.target, rule.pattern
+                    )
+                })?;
                 Ok(Some(match value {
                     serde_json::Value::String(s) => s.clone(),
                     other => other.to_string(),
@@ -402,10 +437,18 @@ mod tests {
 
     fn resolver_with_values() -> VariableResolver {
         let mut resolver = VariableResolver::new();
-        resolver.globals.insert("global".to_string(), "g".to_string());
-        resolver.environment.insert("env".to_string(), "e".to_string());
-        resolver.folder_stack.push(HashMap::from([("folder".to_string(), "f".to_string())]));
-        resolver.request_vars.insert("request".to_string(), "r".to_string());
+        resolver
+            .globals
+            .insert("global".to_string(), "g".to_string());
+        resolver
+            .environment
+            .insert("env".to_string(), "e".to_string());
+        resolver
+            .folder_stack
+            .push(HashMap::from([("folder".to_string(), "f".to_string())]));
+        resolver
+            .request_vars
+            .insert("request".to_string(), "r".to_string());
         resolver
     }
 
@@ -472,8 +515,12 @@ mod tests {
     #[test]
     fn resolve_string_replaces_nested_variables() {
         let mut resolver = VariableResolver::new();
-        resolver.globals.insert("name".to_string(), "Firv".to_string());
-        resolver.globals.insert("greeting".to_string(), "Hello {{name}}".to_string());
+        resolver
+            .globals
+            .insert("name".to_string(), "Firv".to_string());
+        resolver
+            .globals
+            .insert("greeting".to_string(), "Hello {{name}}".to_string());
 
         assert_eq!(resolver.resolve_string("{{greeting}}!"), "Hello Firv!");
     }
@@ -488,9 +535,14 @@ mod tests {
     #[test]
     fn render_liquid_uses_merged_variables() {
         let mut resolver = VariableResolver::new();
-        resolver.globals.insert("name".to_string(), "Firv".to_string());
+        resolver
+            .globals
+            .insert("name".to_string(), "Firv".to_string());
 
-        assert_eq!(resolver.render_liquid("Hello {{ name }}").unwrap(), "Hello Firv");
+        assert_eq!(
+            resolver.render_liquid("Hello {{ name }}").unwrap(),
+            "Hello Firv"
+        );
     }
 
     #[test]
@@ -508,7 +560,9 @@ mod tests {
     fn trace_only_includes_used_variables() {
         let mut resolver = VariableResolver::new();
         resolver.globals.insert("used".to_string(), "1".to_string());
-        resolver.globals.insert("unused".to_string(), "2".to_string());
+        resolver
+            .globals
+            .insert("unused".to_string(), "2".to_string());
 
         assert_eq!(resolver.resolve_string("/items/{{used}}"), "/items/1");
 
@@ -526,7 +580,9 @@ mod tests {
             pattern: "abc123".to_string(),
         };
 
-        let value = resolver.apply_extraction_rule(&rule, "prefix abc123 suffix").unwrap();
+        let value = resolver
+            .apply_extraction_rule(&rule, "prefix abc123 suffix")
+            .unwrap();
         assert_eq!(value.as_deref(), Some("abc123"));
     }
 
@@ -577,8 +633,12 @@ mod tests {
             pattern: "$.token".to_string(),
         };
 
-        let value = resolver.apply_extraction_rule(&rule, r#"{"token":"abc123"}"#).unwrap();
-        resolver.request_vars.insert(rule.target.clone(), value.unwrap());
+        let value = resolver
+            .apply_extraction_rule(&rule, r#"{"token":"abc123"}"#)
+            .unwrap();
+        resolver
+            .request_vars
+            .insert(rule.target.clone(), value.unwrap());
 
         assert_eq!(resolver.resolve_string("Bearer {{token}}"), "Bearer abc123");
     }
@@ -641,7 +701,9 @@ mod tests {
     #[test]
     fn resolve_key_value_falls_back_to_literal_value_when_no_secret_ref() {
         let mut resolver = VariableResolver::new();
-        resolver.globals.insert("name".to_string(), "Firv".to_string());
+        resolver
+            .globals
+            .insert("name".to_string(), "Firv".to_string());
 
         let kv = KeyValue {
             key: "X-App".to_string(),

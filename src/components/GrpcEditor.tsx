@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { twMerge } from 'tailwind-merge';
-import { FolderOpen, Trash2 } from 'lucide-react';
+import { FolderOpen, Trash2, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useSidebarStore } from '../store/sidebarStore';
 import { grpcClient } from '../lib/grpcClient';
@@ -46,6 +46,8 @@ export function GrpcEditor({ requestId, initialUrl, onProtocolChange }: GrpcEdit
   const [message, setMessage] = useState('{}');
   const [activeTab, setActiveTab] = useState<'message' | 'metadata'>('message');
   const [parsedMethods, setParsedMethods] = useState<ServiceMethod[]>([]);
+  const [streamFinished, setStreamFinished] = useState(false);
+  const [hasSentFrame, setHasSentFrame] = useState(false);
 
   const savedStateRef = useRef<any>(null);
   const hasHydratedRef = useRef(false);
@@ -228,9 +230,13 @@ export function GrpcEditor({ requestId, initialUrl, onProtocolChange }: GrpcEdit
       if (isStreaming) {
         await grpcClient.disconnect(requestId);
         setGrpcStatus(requestId, 'disconnected');
+        setStreamFinished(false);
+        setHasSentFrame(false);
         unlistenRef.current.forEach(u => u());
         unlistenRef.current = [];
       } else {
+        setStreamFinished(false);
+        setHasSentFrame(false);
         setGrpcStatus(requestId, 'connecting');
         unlistenRef.current = [
           await grpcClient.onMessage(requestId, (data) => {
@@ -261,9 +267,28 @@ export function GrpcEditor({ requestId, initialUrl, onProtocolChange }: GrpcEdit
   };
 
   const handleSendMessage = async () => {
-    if (!isStreaming) return;
+    if (!isStreaming || streamFinished) return;
     appendGrpcMessage(requestId, { direction: 'out', data: message, timestamp_ms: Date.now() });
     await grpcClient.send(requestId, message);
+    setHasSentFrame(true);
+  };
+
+  const handleFinishStream = async () => {
+    if (!isStreaming || streamFinished || !hasSentFrame) return;
+    await grpcClient.finish(requestId);
+    setStreamFinished(true);
+  };
+
+  const handleStreamingModeChange = async (mode: GrpcStreamingMode) => {
+    if (isStreaming) {
+      await grpcClient.disconnect(requestId);
+      setGrpcStatus(requestId, 'disconnected');
+      setStreamFinished(false);
+      setHasSentFrame(false);
+      unlistenRef.current.forEach(u => u());
+      unlistenRef.current = [];
+    }
+    setStreamingMode(mode);
   };
 
   return (
@@ -340,7 +365,7 @@ export function GrpcEditor({ requestId, initialUrl, onProtocolChange }: GrpcEdit
             {/* Streaming mode */}
             <select
               value={streamingMode}
-              onChange={e => setStreamingMode(e.target.value as GrpcStreamingMode)}
+              onChange={e => handleStreamingModeChange(e.target.value as GrpcStreamingMode)}
               className="h-8 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground outline-none transition-all focus:ring-2 focus:ring-primary/20"
             >
               {streamingModes.map(m => (
@@ -373,10 +398,22 @@ export function GrpcEditor({ requestId, initialUrl, onProtocolChange }: GrpcEdit
                   spellCheck={false}
                 />
                 {(streamingMode === 'ClientStreaming' || streamingMode === 'Bidirectional') && isStreaming && (
-                  <div className="border-t border-border p-2 flex justify-end">
+                  <div className="border-t border-border p-2 flex justify-end gap-2">
+                    {streamFinished && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground mr-auto">
+                        <CheckCircle2 size={12} /> Finished sending
+                      </span>
+                    )}
                     <button onClick={handleSendMessage}
-                      className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg font-bold hover:bg-primary/90 transition-colors">
+                      disabled={streamFinished}
+                      className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                       Send Frame
+                    </button>
+                    <button onClick={handleFinishStream}
+                      disabled={streamFinished || !hasSentFrame}
+                      title="Close the write side and wait for the server's response"
+                      className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground">
+                      Finish
                     </button>
                   </div>
                 )}

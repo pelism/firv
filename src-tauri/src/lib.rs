@@ -1,47 +1,53 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+mod grpc_client;
+mod http_client;
 mod hydration;
 mod lifecycle;
-mod models;
-mod http_client;
 pub mod mcp_server;
 mod mcp_tools;
-mod workspace_context;
-mod request_engine;
+pub mod models;
+pub mod request_engine;
 mod scratchpad;
 pub mod secrets;
 mod storage;
+pub mod workspace_context;
 mod ws_client;
-mod grpc_client;
 
 pub mod variables;
 mod watcher;
 
-use lifecycle::run_firv_request;
+use grpc_client::{
+    grpc_call, grpc_connect, grpc_disconnect, grpc_finish_stream, grpc_send,
+    GrpcConnectionRegistry,
+};
 use lifecycle::run_firv_flow;
-use workspace_context::WorkspaceContext;
-use storage::get_request;
-use storage::update_request;
-use storage::delete_request;
-use storage::get_flow;
-use storage::update_flow;
-use storage::delete_flow;
-use storage::update_manifest_structure;
-use storage::create_workspace;
-use storage::check_workspace_exists;
-use storage::export_workspace;
-use storage::import_firv_export;
-use storage::get_ws_request;
-use storage::update_ws_request;
-use storage::get_grpc_request;
-use storage::update_grpc_request;
-use secrets::{create_secret_value, delete_secret_value, get_secret_value, list_secrets, rename_secret_value, set_secret_value};
-use ws_client::{ws_connect, ws_disconnect, ws_send, WsConnectionRegistry};
-use grpc_client::{grpc_call, grpc_connect, grpc_send, grpc_disconnect, GrpcConnectionRegistry};
+use lifecycle::run_firv_request;
+use secrets::{
+    create_secret_value, delete_secret_value, get_secret_value, list_secrets, rename_secret_value,
+    set_secret_value,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
+use storage::check_workspace_exists;
+use storage::create_workspace;
+use storage::delete_flow;
+use storage::delete_request;
+use storage::export_workspace;
+use storage::get_flow;
+use storage::get_grpc_request;
+use storage::get_request;
+use storage::get_ws_request;
+use storage::import_firv_export;
+use storage::update_flow;
+use storage::update_grpc_request;
+use storage::update_manifest_structure;
+use storage::update_request;
+use storage::update_ws_request;
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent};
 use tokio::sync::oneshot;
+use workspace_context::WorkspaceContext;
+use ws_client::{ws_connect, ws_disconnect, ws_send, WsConnectionRegistry};
 
 pub struct RequestCancellationState(pub Mutex<Option<oneshot::Sender<()>>>);
 
@@ -88,8 +94,7 @@ fn save_window_state(app: &tauri::AppHandle, state: &WindowState) -> Result<(), 
 
     let content = serde_json::to_string(state)
         .map_err(|e| format!("Failed to serialize window state: {}", e))?;
-    std::fs::write(path, content)
-        .map_err(|e| format!("Failed to write window state: {}", e))
+    std::fs::write(path, content).map_err(|e| format!("Failed to write window state: {}", e))
 }
 
 #[tauri::command]
@@ -106,7 +111,11 @@ fn get_manifest(workspace_path: String) -> Result<crate::models::FirvManifest, S
 
 #[tauri::command]
 fn cancel_firv_request(state: tauri::State<'_, RequestCancellationState>) -> Result<(), String> {
-    let sender = state.0.lock().map_err(|e| format!("Failed to lock request cancellation state: {}", e))?.take();
+    let sender = state
+        .0
+        .lock()
+        .map_err(|e| format!("Failed to lock request cancellation state: {}", e))?
+        .take();
     if let Some(sender) = sender {
         let _ = sender.send(());
     }
@@ -211,7 +220,8 @@ pub fn run_with_workspace(cli_workspace_path: Option<String>) {
             }
 
             #[cfg(desktop)]
-            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             Ok(())
         })
@@ -244,11 +254,12 @@ pub fn run_with_workspace(cli_workspace_path: Option<String>) {
             set_secret_value,
             rename_secret_value,
             delete_secret_value,
-	    get_grpc_request,
+            get_grpc_request,
             update_grpc_request,
             grpc_call,
             grpc_connect,
             grpc_send,
+            grpc_finish_stream,
             grpc_disconnect
         ])
         .run(tauri::generate_context!())

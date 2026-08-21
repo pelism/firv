@@ -5,9 +5,9 @@ use std::io::{self, BufRead, Write};
 use crate::mcp_tools::handle_tool_call;
 use crate::models::manifest::{SidebarItem, WorkspaceEnvironment};
 use crate::models::request::KeyValue;
-use crate::workspace_context::WorkspaceContext;
 use crate::scratchpad::Scratchpad;
 use crate::storage;
+use crate::workspace_context::WorkspaceContext;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerInfo {
@@ -44,19 +44,30 @@ impl McpServerState {
     }
 
     pub fn workspace_vars(&self) -> Vec<KeyValue> {
-        self.workspace.as_ref().map(|w| w.workspace_vars()).unwrap_or_default()
+        self.workspace
+            .as_ref()
+            .map(|w| w.workspace_vars())
+            .unwrap_or_default()
     }
 
     pub fn environment_vars(&self) -> Vec<KeyValue> {
-        self.workspace.as_ref().map(|w| w.environment_vars()).unwrap_or_default()
+        self.workspace
+            .as_ref()
+            .map(|w| w.environment_vars())
+            .unwrap_or_default()
     }
 
     pub fn secrets(&self) -> std::collections::HashMap<String, String> {
-        self.workspace.as_ref().map(|w| w.secrets()).unwrap_or_default()
+        self.workspace
+            .as_ref()
+            .map(|w| w.secrets())
+            .unwrap_or_default()
     }
 
     pub fn active_environment_id(&self) -> Option<&str> {
-        self.workspace.as_ref().and_then(|w| w.active_environment_id())
+        self.workspace
+            .as_ref()
+            .and_then(|w| w.active_environment_id())
     }
 
     pub fn set_active_environment(&mut self, id: Option<String>) {
@@ -88,10 +99,7 @@ impl McpServerState {
     }
 }
 
-fn collect_items<'a>(
-    items: &[SidebarItem],
-    path: Vec<String>,
-) -> Vec<(&SidebarItem, Vec<String>)> {
+fn collect_items<'a>(items: &[SidebarItem], path: Vec<String>) -> Vec<(&SidebarItem, Vec<String>)> {
     let mut result = Vec::new();
     for item in items {
         match item {
@@ -175,8 +183,10 @@ pub fn run_server(workspace_root: String, debug: bool) -> Result<(), String> {
 
         let response = handle_message(&body, &mut state);
         if let Some(resp) = response {
-            let json = serde_json::to_string(&resp)
-                .unwrap_or_else(|_| r#"{"jsonrpc":"2.0","error":{"code":-32603,"message":"Internal error"}}"#.to_string());
+            let json = serde_json::to_string(&resp).unwrap_or_else(|_| {
+                r#"{"jsonrpc":"2.0","error":{"code":-32603,"message":"Internal error"}}"#
+                    .to_string()
+            });
 
             if debug {
                 eprintln!("[firv-mcp] send: {}", json);
@@ -216,7 +226,9 @@ fn read_mcp_message(reader: &mut impl BufRead) -> Result<Option<String>, String>
             let mut content_length: Option<usize> = None;
             loop {
                 let mut header_line = String::new();
-                let bytes_read = reader.read_line(&mut header_line).map_err(|e| e.to_string())?;
+                let bytes_read = reader
+                    .read_line(&mut header_line)
+                    .map_err(|e| e.to_string())?;
                 if bytes_read == 0 {
                     return Ok(None);
                 }
@@ -226,11 +238,15 @@ fn read_mcp_message(reader: &mut impl BufRead) -> Result<Option<String>, String>
                 }
                 if let Some(value) = trimmed.strip_prefix("Content-Length:") {
                     content_length = Some(
-                        value.trim().parse::<usize>().map_err(|e| format!("Invalid Content-Length: {}", e))?,
+                        value
+                            .trim()
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid Content-Length: {}", e))?,
                     );
                 }
             }
-            let length = content_length.ok_or_else(|| "Missing Content-Length header".to_string())?;
+            let length =
+                content_length.ok_or_else(|| "Missing Content-Length header".to_string())?;
             let mut body = vec![0u8; length];
             reader.read_exact(&mut body).map_err(|e| e.to_string())?;
             return String::from_utf8(body).map(Some).map_err(|e| e.to_string());
@@ -285,7 +301,11 @@ fn error_response(id: Option<Value>, code: i32, message: String) -> JsonRpcRespo
         jsonrpc: "2.0".to_string(),
         id,
         result: None,
-        error: Some(JsonRpcError { code, message, data: None }),
+        error: Some(JsonRpcError {
+            code,
+            message,
+            data: None,
+        }),
     }
 }
 
@@ -333,14 +353,12 @@ fn tools_call(params: &Value, state: &mut McpServerState) -> Result<Value, Strin
                 ]
             }))
         }
-        Err(e) => {
-            Ok(json!({
-                "content": [
-                    { "type": "text", "text": e }
-                ],
-                "isError": true
-            }))
-        }
+        Err(e) => Ok(json!({
+            "content": [
+                { "type": "text", "text": e }
+            ],
+            "isError": true
+        })),
     }
 }
 
@@ -384,7 +402,11 @@ fn resources_read(params: &Value, state: &McpServerState) -> Result<Value, Strin
 
     let contents = match uri {
         "manifest://firv.yaml" => {
-            let manifest = state.workspace.as_ref().map(|w| w.manifest()).ok_or("No workspace loaded")?;
+            let manifest = state
+                .workspace
+                .as_ref()
+                .map(|w| w.manifest())
+                .ok_or("No workspace loaded")?;
             let yaml = serde_yaml::to_string(manifest).map_err(|e| e.to_string())?;
             vec![json!({ "uri": uri, "mimeType": "text/yaml", "text": yaml })]
         }
@@ -445,7 +467,11 @@ url: "{{base_url}}/hello"
 body:
   mode: none
 "#;
-        std::fs::write(dir.path().join("requests").join("hello.yaml"), request_content).expect("write request");
+        std::fs::write(
+            dir.path().join("requests").join("hello.yaml"),
+            request_content,
+        )
+        .expect("write request");
 
         (dir, root)
     }
@@ -458,7 +484,9 @@ body:
 
     fn tool_result(response: &JsonRpcResponse) -> Value {
         let result = response.result.as_ref().expect("missing result");
-        let text = result["content"][0]["text"].as_str().expect("missing content text");
+        let text = result["content"][0]["text"]
+            .as_str()
+            .expect("missing content text");
         serde_json::from_str(text).expect("content text is not valid JSON")
     }
 
@@ -483,7 +511,10 @@ body:
 
         assert_eq!(response.id, Some(json!(1)));
         assert!(response.error.is_none());
-        assert_eq!(response.result.as_ref().unwrap()["serverInfo"]["name"], "firv");
+        assert_eq!(
+            response.result.as_ref().unwrap()["serverInfo"]["name"],
+            "firv"
+        );
     }
 
     #[test]
@@ -522,8 +553,14 @@ body:
         .expect("load response");
         assert_no_error(&load_response);
 
-        let list_response = handle_message(&message("tools/call", json!({"name": "list_requests", "arguments": {}})), &mut state)
-            .expect("list response");
+        let list_response = handle_message(
+            &message(
+                "tools/call",
+                json!({"name": "list_requests", "arguments": {}}),
+            ),
+            &mut state,
+        )
+        .expect("list response");
         assert_no_error(&list_response);
 
         let inner = tool_result(&list_response);
@@ -579,7 +616,9 @@ body:
             .expect("resources response");
         assert!(response.error.is_none());
 
-        let resources = response.result.as_ref().unwrap()["resources"].as_array().unwrap();
+        let resources = response.result.as_ref().unwrap()["resources"]
+            .as_array()
+            .unwrap();
         let uris: Vec<&str> = resources
             .iter()
             .map(|r| r["uri"].as_str().unwrap())
@@ -594,7 +633,10 @@ body:
         let mut state = McpServerState::new().expect("state");
 
         let load_response = handle_message(
-            &message("tools/call", json!({"name": "load_workspace", "arguments": {"workspace_root": root}})),
+            &message(
+                "tools/call",
+                json!({"name": "load_workspace", "arguments": {"workspace_root": root}}),
+            ),
             &mut state,
         )
         .expect("load response");
@@ -621,10 +663,15 @@ body:
         let inner = tool_result(&create_response);
         assert_eq!(inner["id"], "ping");
 
-        let request_path = std::path::Path::new(&root).join("requests").join("ping.yaml");
+        let request_path = std::path::Path::new(&root)
+            .join("requests")
+            .join("ping.yaml");
         assert!(request_path.exists());
 
-        let manifest = crate::workspace_context::WorkspaceContext::load(root).expect("reload").manifest().clone();
+        let manifest = crate::workspace_context::WorkspaceContext::load(root)
+            .expect("reload")
+            .manifest()
+            .clone();
         let ids: Vec<_> = crate::mcp_tools::collect_request_ids(&manifest.workspace.order);
         assert!(ids.contains(&"ping".to_string()));
     }
@@ -635,7 +682,10 @@ body:
         let mut state = McpServerState::new().expect("state");
 
         let load_response = handle_message(
-            &message("tools/call", json!({"name": "load_workspace", "arguments": {"workspace_root": root}})),
+            &message(
+                "tools/call",
+                json!({"name": "load_workspace", "arguments": {"workspace_root": root}}),
+            ),
             &mut state,
         )
         .expect("load response");
@@ -660,11 +710,15 @@ body:
         .expect("update response");
         assert_no_error(&update_response);
 
-        let request = crate::storage::get_request(root.clone(), "hello".to_string()).expect("read request");
+        let request =
+            crate::storage::get_request(root.clone(), "hello".to_string()).expect("read request");
         assert_eq!(request.name, "Hello Updated");
         assert_eq!(request.method, crate::models::request::HttpMethod::POST);
 
-        let manifest = crate::workspace_context::WorkspaceContext::load(root).expect("reload").manifest().clone();
+        let manifest = crate::workspace_context::WorkspaceContext::load(root)
+            .expect("reload")
+            .manifest()
+            .clone();
         let request_item = manifest.workspace.order.iter().find_map(|item| match item {
             crate::models::manifest::SidebarItem::Request { id, name, method } if id == "hello" => {
                 Some((name.clone(), method.clone()))
@@ -673,7 +727,10 @@ body:
         });
         assert_eq!(
             request_item,
-            Some(("Hello Updated".to_string(), crate::models::request::HttpMethod::POST))
+            Some((
+                "Hello Updated".to_string(),
+                crate::models::request::HttpMethod::POST
+            ))
         );
     }
 
@@ -683,23 +740,34 @@ body:
         let mut state = McpServerState::new().expect("state");
 
         let load_response = handle_message(
-            &message("tools/call", json!({"name": "load_workspace", "arguments": {"workspace_root": root}})),
+            &message(
+                "tools/call",
+                json!({"name": "load_workspace", "arguments": {"workspace_root": root}}),
+            ),
             &mut state,
         )
         .expect("load response");
         assert_no_error(&load_response);
 
         let delete_response = handle_message(
-            &message("tools/call", json!({"name": "delete_request", "arguments": {"request_id": "hello"}})),
+            &message(
+                "tools/call",
+                json!({"name": "delete_request", "arguments": {"request_id": "hello"}}),
+            ),
             &mut state,
         )
         .expect("delete response");
         assert_no_error(&delete_response);
 
-        let request_path = std::path::Path::new(&root).join("requests").join("hello.yaml");
+        let request_path = std::path::Path::new(&root)
+            .join("requests")
+            .join("hello.yaml");
         assert!(!request_path.exists());
 
-        let manifest = crate::workspace_context::WorkspaceContext::load(root).expect("reload").manifest().clone();
+        let manifest = crate::workspace_context::WorkspaceContext::load(root)
+            .expect("reload")
+            .manifest()
+            .clone();
         let ids: Vec<_> = crate::mcp_tools::collect_request_ids(&manifest.workspace.order);
         assert!(!ids.contains(&"hello".to_string()));
     }
@@ -710,7 +778,10 @@ body:
         let mut state = McpServerState::new().expect("state");
 
         let load_response = handle_message(
-            &message("tools/call", json!({"name": "load_workspace", "arguments": {"workspace_root": root}})),
+            &message(
+                "tools/call",
+                json!({"name": "load_workspace", "arguments": {"workspace_root": root}}),
+            ),
             &mut state,
         )
         .expect("load response");
@@ -732,10 +803,14 @@ body:
         let inner = tool_result(&duplicate_response);
         assert_eq!(inner["id"], "hello-copy");
 
-        let request = crate::storage::get_request(root.clone(), "hello-copy".to_string()).expect("read copy");
+        let request =
+            crate::storage::get_request(root.clone(), "hello-copy".to_string()).expect("read copy");
         assert_eq!(request.name, "Hello (copy)");
 
-        let manifest = crate::workspace_context::WorkspaceContext::load(root).expect("reload").manifest().clone();
+        let manifest = crate::workspace_context::WorkspaceContext::load(root)
+            .expect("reload")
+            .manifest()
+            .clone();
         let ids: Vec<_> = crate::mcp_tools::collect_request_ids(&manifest.workspace.order);
         assert!(ids.contains(&"hello-copy".to_string()));
     }

@@ -1,11 +1,13 @@
-use std::collections::HashMap;
-use tokio::sync::oneshot;
-use tauri::Manager;
 use crate::models::flow::FirvFlow;
 use crate::models::request::FirvRequest;
+use crate::request_engine::{
+    execute_chain_with_overrides, execute_flow, FlowResult, LifecycleResult,
+};
 use crate::workspace_context::WorkspaceContext;
-use crate::request_engine::{execute_chain_with_overrides, execute_flow, FlowResult, LifecycleResult};
 use crate::RequestCancellationState;
+use std::collections::HashMap;
+use tauri::Manager;
+use tokio::sync::oneshot;
 
 #[tauri::command]
 pub async fn run_firv_request(
@@ -22,7 +24,10 @@ pub async fn run_firv_request(
     let (cancel_tx, cancel_rx) = oneshot::channel();
     {
         let state = app.state::<RequestCancellationState>();
-        let mut guard = state.0.lock().map_err(|e| format!("Failed to lock request cancellation state: {}", e))?;
+        let mut guard = state
+            .0
+            .lock()
+            .map_err(|e| format!("Failed to lock request cancellation state: {}", e))?;
         *guard = Some(cancel_tx);
     }
 
@@ -53,7 +58,10 @@ pub async fn run_firv_flow(
     let (cancel_tx, cancel_rx) = oneshot::channel();
     {
         let state = app.state::<RequestCancellationState>();
-        let mut guard = state.0.lock().map_err(|e| format!("Failed to lock request cancellation state: {}", e))?;
+        let mut guard = state
+            .0
+            .lock()
+            .map_err(|e| format!("Failed to lock request cancellation state: {}", e))?;
         *guard = Some(cancel_tx);
     }
 

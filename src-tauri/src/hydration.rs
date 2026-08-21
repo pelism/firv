@@ -1,12 +1,12 @@
 use crate::models::{
     manifest::{FirvManifest, SidebarItem},
-    request::{HttpMethod},
+    request::HttpMethod,
 };
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use tokio::fs;
+use ts_rs::TS;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, TS)]
@@ -105,10 +105,7 @@ async fn hydrate_item(
 ) -> HydratedSidebarItem {
     let internal_id = Uuid::new_v4().to_string();
     match item {
-        SidebarItem::Folder {
-            name,
-            items,
-        } => {
+        SidebarItem::Folder { name, items } => {
             let mut hydrated_children = Vec::new();
             for child in items {
                 hydrated_children.push(hydrate_item(child, requests_dir, found_ids).await);
@@ -123,14 +120,10 @@ async fn hydrate_item(
         }
         SidebarItem::Request { id, name, method } => {
             found_ids.insert(id.clone());
-            
+
             HydratedSidebarItem {
                 id: internal_id,
-                kind: SidebarKind::Request {
-                    id,
-                    name,
-                    method,
-                },
+                kind: SidebarKind::Request { id, name, method },
             }
         }
         SidebarItem::Ws { id, name } => {
@@ -149,7 +142,7 @@ async fn hydrate_item(
                 kind: SidebarKind::Flow { id, name },
             }
         }
-	SidebarItem::Grpc { id, name } => {
+        SidebarItem::Grpc { id, name } => {
             found_ids.insert(id.clone());
 
             HydratedSidebarItem {

@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 use tokio::sync::Mutex;
 
-use tokio_tungstenite::WebSocketStream;
-use tokio_tungstenite::MaybeTlsStream;
-use tokio::net::TcpStream;
 use futures_util::{SinkExt, StreamExt};
-use tauri::Emitter;
 use serde::Serialize;
 use tauri::AppHandle;
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tauri::Emitter;
+use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::{HeaderName, HeaderValue};
+use tokio_tungstenite::MaybeTlsStream;
+use tokio_tungstenite::WebSocketStream;
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use crate::models::request::KeyValue;
 
@@ -38,10 +38,7 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
-type WsSink = futures_util::stream::SplitSink<
-    WebSocketStream<MaybeTlsStream<TcpStream>>,
-    Message,
->;
+type WsSink = futures_util::stream::SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
 
 pub struct WsConnectionRegistry(pub Mutex<HashMap<String, WsSink>>);
 

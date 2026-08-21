@@ -102,7 +102,8 @@ fn parse_pool(proto_source: &str) -> Result<DescriptorPool, String> {
         let mut compiler = protox::Compiler::new([&tmp_dir])
             .map_err(|e| format!("Failed to create protox compiler: {}", e))?;
         compiler.include_imports(true);
-        compiler.open_file(&tmp_path)
+        compiler
+            .open_file(&tmp_path)
             .map_err(|e| format!("Failed to compile proto: {}", e))?;
         let file_descriptor_set = compiler.file_descriptor_set();
         DescriptorPool::from_file_descriptor_set(file_descriptor_set)
@@ -125,7 +126,12 @@ fn find_method_descriptors(
     let method = service
         .methods()
         .find(|m| m.name() == method_name)
-        .ok_or_else(|| format!("Method '{}' not found in service '{}'", method_name, service_name))?;
+        .ok_or_else(|| {
+            format!(
+                "Method '{}' not found in service '{}'",
+                method_name, service_name
+            )
+        })?;
 
     let grpc_path = format!("/{}/{}", service.full_name(), method.name());
     Ok((method.input(), method.output(), grpc_path))
@@ -151,12 +157,11 @@ async fn build_channel(url: &str) -> Result<Channel, String> {
         format!("https://{}", url)
     };
 
-    let mut builder = Channel::from_shared(endpoint)
-        .map_err(|e| format!("Invalid gRPC endpoint: {}", e))?;
+    let mut builder =
+        Channel::from_shared(endpoint).map_err(|e| format!("Invalid gRPC endpoint: {}", e))?;
 
     if !is_plaintext {
-        let tls = tonic::transport::ClientTlsConfig::new()
-            .with_native_roots();
+        let tls = tonic::transport::ClientTlsConfig::new().with_native_roots();
         builder = builder
             .tls_config(tls)
             .map_err(|e| format!("TLS config error: {}", e))?;
@@ -173,7 +178,8 @@ fn build_request<T>(message: T, metadata: &[crate::models::request::KeyValue]) -
     for kv in metadata {
         if kv.enabled && !kv.key.is_empty() {
             if let (Ok(k), Ok(v)) = (
-                kv.key.parse::<tonic::metadata::MetadataKey<tonic::metadata::Ascii>>(),
+                kv.key
+                    .parse::<tonic::metadata::MetadataKey<tonic::metadata::Ascii>>(),
                 kv.value.parse::<tonic::metadata::AsciiMetadataValue>(),
             ) {
                 req.metadata_mut().insert(k, v);
@@ -186,11 +192,7 @@ fn build_request<T>(message: T, metadata: &[crate::models::request::KeyValue]) -
 // ---------- Tauri commands ----------
 
 #[tauri::command]
-pub async fn grpc_call(
-    app: AppHandle,
-    id: String,
-    request: GrpcRequest,
-) -> Result<String, String> {
+pub async fn grpc_call(app: AppHandle, id: String, request: GrpcRequest) -> Result<String, String> {
     let pool = parse_pool(&request.proto_source)?;
     let (input_desc, output_desc, grpc_path) =
         find_method_descriptors(&pool, &request.service, &request.method)?;
@@ -205,7 +207,10 @@ pub async fn grpc_call(
     };
 
     let mut client = tonic::client::Grpc::new(channel);
-    client.ready().await.map_err(|e| format!("gRPC channel not ready: {}", e))?;
+    client
+        .ready()
+        .await
+        .map_err(|e| format!("gRPC channel not ready: {}", e))?;
 
     let path: tonic::codegen::http::uri::PathAndQuery = grpc_path
         .parse()
@@ -234,7 +239,8 @@ pub async fn grpc_call(
                     match result {
                         Ok(msg) => {
                             if let Ok(json) = dynamic_to_json(&msg) {
-                                let _ = app_clone.emit(&format!("grpc_message_{}", id_clone), &json);
+                                let _ =
+                                    app_clone.emit(&format!("grpc_message_{}", id_clone), &json);
                             }
                         }
                         Err(e) => {
@@ -279,7 +285,10 @@ pub async fn grpc_connect(
         .map_err(|e| format!("Invalid gRPC path '{}': {}", grpc_path, e))?;
 
     {
-        let mut map = registry.0.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut map = registry
+            .0
+            .lock()
+            .map_err(|e| format!("Lock error: {}", e))?;
         map.insert(
             id.clone(),
             GrpcStreamHandle {
@@ -387,7 +396,10 @@ pub async fn grpc_send(
     registry: tauri::State<'_, GrpcConnectionRegistry>,
 ) -> Result<(), String> {
     let tx = {
-        let map = registry.0.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let map = registry
+            .0
+            .lock()
+            .map_err(|e| format!("Lock error: {}", e))?;
         map.get(&id)
             .and_then(|h| h.send_tx.as_ref())
             .map(|tx| tx.clone())
@@ -402,12 +414,30 @@ pub async fn grpc_send(
 }
 
 #[tauri::command]
+pub async fn grpc_finish_stream(
+    id: String,
+    registry: tauri::State<'_, GrpcConnectionRegistry>,
+) -> Result<(), String> {
+    let mut map = registry
+        .0
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
+    if let Some(h) = map.get_mut(&id) {
+        h.send_tx = None;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn grpc_disconnect(
     id: String,
     registry: tauri::State<'_, GrpcConnectionRegistry>,
 ) -> Result<(), String> {
     let handle = {
-        let mut map = registry.0.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut map = registry
+            .0
+            .lock()
+            .map_err(|e| format!("Lock error: {}", e))?;
         map.remove(&id)
     };
     if let Some(h) = handle {

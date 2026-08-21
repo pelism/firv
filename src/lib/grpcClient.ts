@@ -23,6 +23,10 @@ export const grpcClient = {
     return invoke('grpc_send', { id, message });
   },
 
+  finish(id: string): Promise<void> {
+    return invoke('grpc_finish_stream', { id });
+  },
+
   disconnect(id: string): Promise<void> {
     return invoke('grpc_disconnect', { id });
   },

@@ -91,7 +91,13 @@ pub fn get_workspace_secrets(workspace_id: &str) -> Result<HashMap<String, Strin
 fn env_override_for_name(name: &str) -> Option<String> {
     let key: String = format!("FIRV_SECRET_{}", name.to_ascii_uppercase())
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     std::env::var(key).ok()
 }
@@ -101,7 +107,10 @@ fn env_override_for_name(name: &str) -> Option<String> {
 pub fn list_secret_metas(workspace_id: &str) -> Result<Vec<SecretMeta>, String> {
     let mut metas: Vec<SecretMeta> = get_workspace_secrets_raw(workspace_id)?
         .into_iter()
-        .map(|(id, entry)| SecretMeta { id, name: entry.name })
+        .map(|(id, entry)| SecretMeta {
+            id,
+            name: entry.name,
+        })
         .collect();
     metas.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(metas)
@@ -129,7 +138,10 @@ pub fn create_secret(workspace_id: &str, name: &str, value: &str) -> Result<Stri
     let id = uuid::Uuid::new_v4().to_string();
     workspace_secrets.insert(
         id.clone(),
-        SecretEntry { name: name.to_string(), value: value.to_string() },
+        SecretEntry {
+            name: name.to_string(),
+            value: value.to_string(),
+        },
     );
     save_all(&store)?;
     Ok(id)
@@ -216,7 +228,11 @@ pub fn list_secrets(workspace_id: String) -> Result<Vec<SecretMeta>, String> {
 }
 
 #[tauri::command]
-pub fn create_secret_value(workspace_id: String, name: String, value: String) -> Result<String, String> {
+pub fn create_secret_value(
+    workspace_id: String,
+    name: String,
+    value: String,
+) -> Result<String, String> {
     create_secret(&workspace_id, &name, &value)
 }
 
@@ -249,7 +265,9 @@ mod tests {
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn with_temp_home<F: FnOnce()>(f: F) {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let temp = tempfile::tempdir().unwrap();
         let previous = std::env::var("FIRV_HOME").ok();
         std::env::set_var("FIRV_HOME", temp.path());
@@ -304,7 +322,13 @@ mod tests {
 
             assert_eq!(get_secret("ws-1", &id).unwrap(), "xyz");
             let metas = list_secret_metas("ws-1").unwrap();
-            assert_eq!(metas, vec![SecretMeta { id, name: "token".to_string() }]);
+            assert_eq!(
+                metas,
+                vec![SecretMeta {
+                    id,
+                    name: "token".to_string()
+                }]
+            );
         });
     }
 
@@ -315,7 +339,13 @@ mod tests {
             rename_secret("ws-1", &id, "new_name").unwrap();
 
             let metas = list_secret_metas("ws-1").unwrap();
-            assert_eq!(metas, vec![SecretMeta { id: id.clone(), name: "new_name".to_string() }]);
+            assert_eq!(
+                metas,
+                vec![SecretMeta {
+                    id: id.clone(),
+                    name: "new_name".to_string()
+                }]
+            );
             // The value is still resolvable by the same id after renaming.
             assert_eq!(get_secret("ws-1", &id).unwrap(), "abc");
         });
@@ -344,7 +374,11 @@ mod tests {
         with_temp_home(|| {
             create_secret("ws-1", "zeta", "1").unwrap();
             create_secret("ws-1", "alpha", "2").unwrap();
-            let names: Vec<String> = list_secret_metas("ws-1").unwrap().into_iter().map(|m| m.name).collect();
+            let names: Vec<String> = list_secret_metas("ws-1")
+                .unwrap()
+                .into_iter()
+                .map(|m| m.name)
+                .collect();
             assert_eq!(names, vec!["alpha".to_string(), "zeta".to_string()]);
         });
     }
@@ -355,7 +389,13 @@ mod tests {
             let existing_id = create_secret("ws-1", "existing", "keep-me").unwrap();
 
             let mut incoming = WorkspaceSecrets::new();
-            incoming.insert("imported-id".to_string(), SecretEntry { name: "imported".to_string(), value: "new-value".to_string() });
+            incoming.insert(
+                "imported-id".to_string(),
+                SecretEntry {
+                    name: "imported".to_string(),
+                    value: "new-value".to_string(),
+                },
+            );
             import_secrets("ws-1", &incoming).unwrap();
 
             assert_eq!(get_secret("ws-1", &existing_id).unwrap(), "keep-me");

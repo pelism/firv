@@ -67,14 +67,18 @@ fn append_query_params(url: &str, params: &[(String, String)]) -> String {
 }
 
 pub fn prepare_request(request: &FirvRequest, resolver: &mut VariableResolver) -> PreparedRequest {
-    let url = resolver.render_liquid(&request.url).unwrap_or_else(|_| resolver.resolve_string(&request.url));
+    let url = resolver
+        .render_liquid(&request.url)
+        .unwrap_or_else(|_| resolver.resolve_string(&request.url));
 
     let query_params: Vec<(String, String)> = request
         .params
         .iter()
         .filter(|kv| kv.enabled)
         .map(|kv| {
-            let key = resolver.render_liquid(&kv.key).unwrap_or_else(|_| resolver.resolve_string(&kv.key));
+            let key = resolver
+                .render_liquid(&kv.key)
+                .unwrap_or_else(|_| resolver.resolve_string(&kv.key));
             let value = resolver.resolve_key_value(kv);
             (key, value)
         })
@@ -85,7 +89,9 @@ pub fn prepare_request(request: &FirvRequest, resolver: &mut VariableResolver) -
     let mut headers = HashMap::new();
     for kv in &request.headers {
         if kv.enabled {
-            let res_key = resolver.render_liquid(&kv.key).unwrap_or_else(|_| resolver.resolve_string(&kv.key));
+            let res_key = resolver
+                .render_liquid(&kv.key)
+                .unwrap_or_else(|_| resolver.resolve_string(&kv.key));
             let res_val = resolver.resolve_key_value(kv);
             headers.insert(res_key, res_val);
         }
@@ -95,14 +101,24 @@ pub fn prepare_request(request: &FirvRequest, resolver: &mut VariableResolver) -
         RequestBody::None => PreparedBody::None,
         RequestBody::Json(data) => {
             headers.insert("Content-Type".to_string(), "application/json".to_string());
-            PreparedBody::Text(resolver.render_liquid(data).unwrap_or_else(|_| resolver.resolve_string(data)))
+            PreparedBody::Text(
+                resolver
+                    .render_liquid(data)
+                    .unwrap_or_else(|_| resolver.resolve_string(data)),
+            )
         }
-        RequestBody::Raw(data) => PreparedBody::Text(resolver.render_liquid(data).unwrap_or_else(|_| resolver.resolve_string(data))),
+        RequestBody::Raw(data) => PreparedBody::Text(
+            resolver
+                .render_liquid(data)
+                .unwrap_or_else(|_| resolver.resolve_string(data)),
+        ),
         RequestBody::Formdata(fields) => {
             let mut form_pairs = Vec::new();
             for field in fields {
                 if field.enabled {
-                    let res_key = resolver.render_liquid(&field.key).unwrap_or_else(|_| resolver.resolve_string(&field.key));
+                    let res_key = resolver
+                        .render_liquid(&field.key)
+                        .unwrap_or_else(|_| resolver.resolve_string(&field.key));
                     let res_val = resolver.resolve_key_value(field);
                     form_pairs.push((res_key, res_val));
                 }
@@ -180,8 +196,12 @@ mod tests {
 
     fn resolver_with_values() -> VariableResolver {
         let mut resolver = VariableResolver::new();
-        resolver.globals.insert("name".to_string(), "Firv".to_string());
-        resolver.globals.insert("token".to_string(), "abc123".to_string());
+        resolver
+            .globals
+            .insert("name".to_string(), "Firv".to_string());
+        resolver
+            .globals
+            .insert("token".to_string(), "abc123".to_string());
         resolver
     }
 
@@ -205,15 +225,23 @@ mod tests {
 
     #[test]
     fn prepare_request_renders_url_headers_and_json_body() {
-        let request = base_request(RequestBody::Json(r#"{\"greeting\":\"Hello {{name}}\"}"#.to_string()));
+        let request = base_request(RequestBody::Json(
+            r#"{\"greeting\":\"Hello {{name}}\"}"#.to_string(),
+        ));
         let mut resolver = resolver_with_values();
 
         let prepared = prepare_request(&request, &mut resolver);
 
         assert_eq!(prepared.method, HttpMethod::POST);
         assert_eq!(prepared.url, "https://example.com/Firv");
-        assert_eq!(prepared.headers.get("Authorization").unwrap(), "Bearer abc123");
-        assert_eq!(prepared.headers.get("Content-Type").unwrap(), "application/json");
+        assert_eq!(
+            prepared.headers.get("Authorization").unwrap(),
+            "Bearer abc123"
+        );
+        assert_eq!(
+            prepared.headers.get("Content-Type").unwrap(),
+            "application/json"
+        );
 
         match prepared.body {
             PreparedBody::Text(body) => assert_eq!(body, r#"{\"greeting\":\"Hello Firv\"}"#),
@@ -335,6 +363,9 @@ mod tests {
 
         let prepared = prepare_request(&request, &mut resolver);
 
-        assert!(prepared.url.contains("a+key=a+value%26more") || prepared.url.contains("a%20key=a%20value%26more"));
+        assert!(
+            prepared.url.contains("a+key=a+value%26more")
+                || prepared.url.contains("a%20key=a%20value%26more")
+        );
     }
 }

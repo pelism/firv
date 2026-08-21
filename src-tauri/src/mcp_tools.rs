@@ -6,9 +6,9 @@ use serde_json::{json, Value};
 use crate::mcp_server::McpServerState;
 use crate::models::manifest::SidebarItem;
 use crate::models::request::{FirvRequest, HttpMethod};
-use crate::workspace_context::WorkspaceContext;
 use crate::request_engine::{execute_chain_with_overrides, run_request_by_id_with_overrides};
 use crate::storage;
+use crate::workspace_context::WorkspaceContext;
 
 #[derive(Debug, Deserialize)]
 struct ExecuteRequestArgs {
@@ -353,7 +353,11 @@ pub fn tools_schema() -> Value {
     })
 }
 
-pub fn handle_tool_call(name: &str, arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
+pub fn handle_tool_call(
+    name: &str,
+    arguments: Value,
+    state: &mut McpServerState,
+) -> Result<Value, String> {
     match name {
         "load_workspace" => load_workspace(arguments, state),
         "list_requests" => list_requests(state),
@@ -379,8 +383,8 @@ pub fn handle_tool_call(name: &str, arguments: Value, state: &mut McpServerState
 }
 
 fn load_workspace(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
-    let args: std::collections::HashMap<String, Value> = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+    let args: std::collections::HashMap<String, Value> =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
     let workspace_root = args
         .get("workspace_root")
         .and_then(|v| v.as_str())
@@ -417,16 +421,16 @@ fn list_requests(state: &McpServerState) -> Result<Value, String> {
 }
 
 fn get_request(arguments: Value, state: &McpServerState) -> Result<Value, String> {
-    let args: ExecuteRequestArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+    let args: ExecuteRequestArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
     let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
     let request = storage::get_request(workspace_root.to_string(), args.request_id)?;
     Ok(json!({ "request": request }))
 }
 
 fn execute_request(arguments: Value, state: &McpServerState) -> Result<Value, String> {
-    let args: ExecuteRequestArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+    let args: ExecuteRequestArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
     let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
     let workspace_vars = state.workspace_vars();
     let environment_vars = state.environment_vars();
@@ -445,8 +449,8 @@ fn execute_request(arguments: Value, state: &McpServerState) -> Result<Value, St
 }
 
 fn execute_request_by_payload(arguments: Value, state: &McpServerState) -> Result<Value, String> {
-    let args: RequestPayloadArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+    let args: RequestPayloadArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
     let workspace_root = state.workspace_root().ok_or("No workspace loaded")?;
     let workspace_vars = state.workspace_vars();
     let environment_vars = state.environment_vars();
@@ -478,11 +482,20 @@ fn list_environments(state: &McpServerState) -> Result<Value, String> {
 }
 
 fn set_active_environment(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
-    let args: SetEnvironmentArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+    let args: SetEnvironmentArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
 
-    let manifest = state.workspace.as_ref().map(|w| w.manifest()).ok_or("No workspace loaded")?;
-    if !manifest.workspace.environments.iter().any(|e| e.id == args.environment_id) {
+    let manifest = state
+        .workspace
+        .as_ref()
+        .map(|w| w.manifest())
+        .ok_or("No workspace loaded")?;
+    if !manifest
+        .workspace
+        .environments
+        .iter()
+        .any(|e| e.id == args.environment_id)
+    {
         return Err(format!("Environment {} not found", args.environment_id));
     }
 
@@ -515,8 +528,8 @@ fn list_scratchpad_requests(state: &McpServerState) -> Result<Value, String> {
 }
 
 fn get_scratchpad_request(arguments: Value, state: &McpServerState) -> Result<Value, String> {
-    let args: ScratchpadIdArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+    let args: ScratchpadIdArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
     let request = state
         .scratchpad
         .get(&args.request_id)
@@ -524,9 +537,12 @@ fn get_scratchpad_request(arguments: Value, state: &McpServerState) -> Result<Va
     Ok(json!({ "request": request }))
 }
 
-fn create_scratchpad_request(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
-    let args: CreateScratchpadArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+fn create_scratchpad_request(
+    arguments: Value,
+    state: &mut McpServerState,
+) -> Result<Value, String> {
+    let args: CreateScratchpadArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
 
     let request = FirvRequest {
         id: String::new(),
@@ -543,23 +559,32 @@ fn create_scratchpad_request(arguments: Value, state: &mut McpServerState) -> Re
     Ok(json!({ "id": id }))
 }
 
-fn update_scratchpad_request(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
-    let args: UpdateScratchpadArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+fn update_scratchpad_request(
+    arguments: Value,
+    state: &mut McpServerState,
+) -> Result<Value, String> {
+    let args: UpdateScratchpadArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
     state.scratchpad.update(&args.request_id, args.request)?;
     Ok(json!({ "status": "ok" }))
 }
 
-fn delete_scratchpad_request(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
-    let args: ScratchpadIdArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+fn delete_scratchpad_request(
+    arguments: Value,
+    state: &mut McpServerState,
+) -> Result<Value, String> {
+    let args: ScratchpadIdArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
     state.scratchpad.delete(&args.request_id)?;
     Ok(json!({ "status": "ok" }))
 }
 
-fn execute_scratchpad_request(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
-    let args: ScratchpadIdArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+fn execute_scratchpad_request(
+    arguments: Value,
+    state: &mut McpServerState,
+) -> Result<Value, String> {
+    let args: ScratchpadIdArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
     let request = state
         .scratchpad
         .get(&args.request_id)
@@ -584,16 +609,24 @@ fn execute_scratchpad_request(arguments: Value, state: &mut McpServerState) -> R
     Ok(json!({ "result": result? }))
 }
 
-fn promote_scratchpad_request(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
-    let args: PromoteScratchpadArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+fn promote_scratchpad_request(
+    arguments: Value,
+    state: &mut McpServerState,
+) -> Result<Value, String> {
+    let args: PromoteScratchpadArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
     let mut request = state
         .scratchpad
         .take(&args.request_id)
         .ok_or_else(|| format!("Scratchpad request {} not found", args.request_id))?;
 
-    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?.to_string();
-    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
+    let workspace_root = state
+        .workspace_root()
+        .ok_or("No workspace loaded")?
+        .to_string();
+    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?
+        .manifest()
+        .clone();
 
     if request.id.is_empty() || request.id != args.request_id {
         request.id = args.request_id.clone();
@@ -607,7 +640,11 @@ fn promote_scratchpad_request(arguments: Value, state: &mut McpServerState) -> R
         method: request.method.clone(),
     };
 
-    insert_into_folder(&mut manifest.workspace.order, &args.parent_path, request_item)?;
+    insert_into_folder(
+        &mut manifest.workspace.order,
+        &args.parent_path,
+        request_item,
+    )?;
 
     storage::update_manifest_structure(
         workspace_root.to_string(),
@@ -631,7 +668,11 @@ fn insert_into_folder(
 
     let target = &path[0];
     for item in items.iter_mut() {
-        if let SidebarItem::Folder { name, items: children } = item {
+        if let SidebarItem::Folder {
+            name,
+            items: children,
+        } = item
+        {
             if name == target {
                 return insert_into_folder(children, &path[1..], new_item);
             }
@@ -647,7 +688,9 @@ pub(crate) fn collect_request_ids(items: &[SidebarItem]) -> Vec<String> {
         match item {
             SidebarItem::Request { id, .. } => ids.push(id.clone()),
             SidebarItem::Ws { id, .. } => ids.push(id.clone()),
-            SidebarItem::Folder { items: children, .. } => ids.extend(collect_request_ids(children)),
+            SidebarItem::Folder {
+                items: children, ..
+            } => ids.extend(collect_request_ids(children)),
             SidebarItem::Flow { .. } => {}
             SidebarItem::Grpc { .. } => {}
         }
@@ -663,12 +706,18 @@ fn update_request_in_order(
 ) -> bool {
     for item in items.iter_mut() {
         match item {
-            SidebarItem::Request { id: rid, name: rname, method: rmethod } if rid == id => {
+            SidebarItem::Request {
+                id: rid,
+                name: rname,
+                method: rmethod,
+            } if rid == id => {
                 *rname = name;
                 *rmethod = method;
                 return true;
             }
-            SidebarItem::Folder { items: children, .. } => {
+            SidebarItem::Folder {
+                items: children, ..
+            } => {
                 if update_request_in_order(children, id, name.clone(), method.clone()) {
                     return true;
                 }
@@ -687,7 +736,9 @@ fn remove_from_order(items: &mut Vec<SidebarItem>, id: &str) {
                 items.remove(i);
                 continue;
             }
-            SidebarItem::Folder { items: children, .. } => {
+            SidebarItem::Folder {
+                items: children, ..
+            } => {
                 remove_from_order(children, id);
             }
             _ => {}
@@ -697,11 +748,16 @@ fn remove_from_order(items: &mut Vec<SidebarItem>, id: &str) {
 }
 
 fn create_request(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
-    let args: CreateRequestArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+    let args: CreateRequestArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
 
-    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?.to_string();
-    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
+    let workspace_root = state
+        .workspace_root()
+        .ok_or("No workspace loaded")?
+        .to_string();
+    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?
+        .manifest()
+        .clone();
 
     if collect_request_ids(&manifest.workspace.order).contains(&args.id) {
         return Err(format!("Request {} already exists", args.id));
@@ -726,7 +782,11 @@ fn create_request(arguments: Value, state: &mut McpServerState) -> Result<Value,
         method: request.method.clone(),
     };
 
-    insert_into_folder(&mut manifest.workspace.order, &args.parent_path, request_item)?;
+    insert_into_folder(
+        &mut manifest.workspace.order,
+        &args.parent_path,
+        request_item,
+    )?;
 
     storage::update_manifest_structure(
         workspace_root.to_string(),
@@ -739,11 +799,16 @@ fn create_request(arguments: Value, state: &mut McpServerState) -> Result<Value,
 }
 
 fn update_request(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
-    let args: UpdateRequestArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+    let args: UpdateRequestArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
 
-    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?.to_string();
-    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
+    let workspace_root = state
+        .workspace_root()
+        .ok_or("No workspace loaded")?
+        .to_string();
+    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?
+        .manifest()
+        .clone();
 
     if !collect_request_ids(&manifest.workspace.order).contains(&args.request.id) {
         return Err(format!("Request {} not found", args.request.id));
@@ -768,11 +833,16 @@ fn update_request(arguments: Value, state: &mut McpServerState) -> Result<Value,
 }
 
 fn delete_request(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
-    let args: DeleteRequestArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+    let args: DeleteRequestArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
 
-    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?.to_string();
-    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
+    let workspace_root = state
+        .workspace_root()
+        .ok_or("No workspace loaded")?
+        .to_string();
+    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?
+        .manifest()
+        .clone();
 
     storage::delete_request(workspace_root.to_string(), args.request_id.clone())?;
     remove_from_order(&mut manifest.workspace.order, &args.request_id);
@@ -788,14 +858,21 @@ fn delete_request(arguments: Value, state: &mut McpServerState) -> Result<Value,
 }
 
 fn duplicate_request(arguments: Value, state: &mut McpServerState) -> Result<Value, String> {
-    let args: DuplicateRequestArgs = serde_json::from_value(arguments)
-        .map_err(|e| format!("Invalid arguments: {}", e))?;
+    let args: DuplicateRequestArgs =
+        serde_json::from_value(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
 
-    let workspace_root = state.workspace_root().ok_or("No workspace loaded")?.to_string();
-    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?.manifest().clone();
+    let workspace_root = state
+        .workspace_root()
+        .ok_or("No workspace loaded")?
+        .to_string();
+    let mut manifest = WorkspaceContext::load(workspace_root.to_string())?
+        .manifest()
+        .clone();
 
     let mut request = storage::get_request(workspace_root.to_string(), args.request_id.clone())?;
-    let new_id = args.new_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let new_id = args
+        .new_id
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     if collect_request_ids(&manifest.workspace.order).contains(&new_id) {
         return Err(format!("Request {} already exists", new_id));
@@ -863,14 +940,20 @@ url: "{{base_url}}/hello"
 body:
   mode: none
 "#;
-        std::fs::write(dir.path().join("requests").join("hello.yaml"), request_content).expect("write request");
+        std::fs::write(
+            dir.path().join("requests").join("hello.yaml"),
+            request_content,
+        )
+        .expect("write request");
 
         (dir, root)
     }
 
     fn loaded_state(root: &str) -> McpServerState {
         let mut state = McpServerState::new().expect("state");
-        state.load_workspace(root.to_string()).expect("load workspace");
+        state
+            .load_workspace(root.to_string())
+            .expect("load workspace");
         state
     }
 
@@ -887,7 +970,11 @@ body:
         // `request_id` is required by ExecuteRequestArgs but omitted here.
         let result = handle_tool_call("get_request", json!({}), &mut state);
         let err = result.unwrap_err();
-        assert!(err.starts_with("Invalid arguments:"), "unexpected error: {}", err);
+        assert!(
+            err.starts_with("Invalid arguments:"),
+            "unexpected error: {}",
+            err
+        );
     }
 
     #[test]
@@ -943,7 +1030,8 @@ workspace:
         .expect("create should succeed");
         assert_eq!(create_result["id"], "nested");
 
-        let list_result = handle_tool_call("list_requests", json!({}), &mut state).expect("list should succeed");
+        let list_result =
+            handle_tool_call("list_requests", json!({}), &mut state).expect("list should succeed");
         let requests = list_result["requests"].as_array().expect("requests array");
         assert!(requests.iter().any(|r| r["id"] == "nested"));
     }
@@ -973,14 +1061,20 @@ workspace:
         let (_dir, root) = temp_project();
         let mut state = loaded_state(&root);
 
-        handle_tool_call("delete_request", json!({ "request_id": "hello" }), &mut state)
-            .expect("delete should succeed");
+        handle_tool_call(
+            "delete_request",
+            json!({ "request_id": "hello" }),
+            &mut state,
+        )
+        .expect("delete should succeed");
 
-        let list_result = handle_tool_call("list_requests", json!({}), &mut state).expect("list should succeed");
+        let list_result =
+            handle_tool_call("list_requests", json!({}), &mut state).expect("list should succeed");
         let requests = list_result["requests"].as_array().expect("requests array");
         assert!(requests.is_empty());
 
-        let get_result = handle_tool_call("get_request", json!({ "request_id": "hello" }), &mut state);
+        let get_result =
+            handle_tool_call("get_request", json!({ "request_id": "hello" }), &mut state);
         assert!(get_result.is_err());
     }
 
@@ -989,13 +1083,18 @@ workspace:
         let (_dir, root) = temp_project();
         let mut state = loaded_state(&root);
 
-        let result = handle_tool_call("duplicate_request", json!({ "request_id": "hello" }), &mut state)
-            .expect("duplicate should succeed");
+        let result = handle_tool_call(
+            "duplicate_request",
+            json!({ "request_id": "hello" }),
+            &mut state,
+        )
+        .expect("duplicate should succeed");
         let new_id = result["id"].as_str().expect("id string").to_string();
         assert_ne!(new_id, "hello");
 
-        let get_result = handle_tool_call("get_request", json!({ "request_id": new_id }), &mut state)
-            .expect("get should succeed");
+        let get_result =
+            handle_tool_call("get_request", json!({ "request_id": new_id }), &mut state)
+                .expect("get should succeed");
         assert_eq!(get_result["request"]["name"], "Hello (copy)");
     }
 
@@ -1021,7 +1120,8 @@ workspace:
     }
 
     #[test]
-    fn promote_scratchpad_request_moves_it_into_the_workspace_tree_and_removes_it_from_the_scratchpad() {
+    fn promote_scratchpad_request_moves_it_into_the_workspace_tree_and_removes_it_from_the_scratchpad(
+    ) {
         let (_dir, root) = temp_project();
         let mut state = loaded_state(&root);
 
@@ -1034,7 +1134,10 @@ workspace:
 
         let scratchpad_list = handle_tool_call("list_scratchpad_requests", json!({}), &mut state)
             .expect("list should succeed");
-        let scratch_id = scratchpad_list["requests"][0]["id"].as_str().expect("id").to_string();
+        let scratch_id = scratchpad_list["requests"][0]["id"]
+            .as_str()
+            .expect("id")
+            .to_string();
 
         handle_tool_call(
             "promote_scratchpad_request",
@@ -1047,8 +1150,11 @@ workspace:
             .expect("list should succeed");
         assert!(scratchpad_after["requests"].as_array().unwrap().is_empty());
 
-        let workspace_list = handle_tool_call("list_requests", json!({}), &mut state).expect("list should succeed");
-        let requests = workspace_list["requests"].as_array().expect("requests array");
+        let workspace_list =
+            handle_tool_call("list_requests", json!({}), &mut state).expect("list should succeed");
+        let requests = workspace_list["requests"]
+            .as_array()
+            .expect("requests array");
         assert!(requests.iter().any(|r| r["id"] == scratch_id));
     }
 
@@ -1056,12 +1162,16 @@ workspace:
     fn tools_requiring_a_workspace_fail_clearly_when_none_is_loaded() {
         let mut state = McpServerState::new().expect("state");
 
-        let result = handle_tool_call("create_request", json!({
-            "id": "x",
-            "name": "X",
-            "method": "GET",
-            "url": "https://example.com"
-        }), &mut state);
+        let result = handle_tool_call(
+            "create_request",
+            json!({
+                "id": "x",
+                "name": "X",
+                "method": "GET",
+                "url": "https://example.com"
+            }),
+            &mut state,
+        );
 
         assert_eq!(result.unwrap_err(), "No workspace loaded");
     }

@@ -20,10 +20,20 @@ impl WorkspaceContext {
     /// Load a workspace from disk by its root directory (the directory containing `firv.yaml`).
     pub fn load(workspace_root: String) -> Result<Self, String> {
         let manifest_path = Path::new(&workspace_root).join("firv.yaml");
-        let content = std::fs::read_to_string(&manifest_path)
-            .map_err(|e| format!("Failed to read manifest at {}: {}", manifest_path.display(), e))?;
-        let mut manifest: FirvManifest = serde_yaml::from_str(&content)
-            .map_err(|e| format!("Failed to parse manifest at {}: {}", manifest_path.display(), e))?;
+        let content = std::fs::read_to_string(&manifest_path).map_err(|e| {
+            format!(
+                "Failed to read manifest at {}: {}",
+                manifest_path.display(),
+                e
+            )
+        })?;
+        let mut manifest: FirvManifest = serde_yaml::from_str(&content).map_err(|e| {
+            format!(
+                "Failed to parse manifest at {}: {}",
+                manifest_path.display(),
+                e
+            )
+        })?;
 
         // Backfill a stable workspace id for manifests created before secrets support
         // existed, so the workspace can immediately be used to namespace secrets.
@@ -59,9 +69,11 @@ impl WorkspaceContext {
     /// Returns the active environment id, using the session override if one is set,
     /// otherwise falling back to the value stored in the manifest.
     pub fn active_environment_id(&self) -> Option<&str> {
-        self.active_environment_id
-            .as_deref()
-            .or(self.manifest.workspace.active_environment.as_deref())
+        self.active_environment_id.as_deref().or(self
+            .manifest
+            .workspace
+            .active_environment
+            .as_deref())
     }
 
     /// Override the active environment for the current session. This does not persist

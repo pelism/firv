@@ -1,5 +1,8 @@
 use crate::models::request::{KeyValue, RequestVariable};
-use crate::models::{manifest::{FirvManifest, SidebarItem, Workspace}, FirvFlow, FirvRequest, GrpcRequest, WsRequest};
+use crate::models::{
+    manifest::{FirvManifest, SidebarItem, Workspace},
+    FirvFlow, FirvRequest, GrpcRequest, WsRequest,
+};
 use crate::secrets;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -36,11 +39,12 @@ pub fn save_atomic<T: Serialize>(path: PathBuf, data: &T) -> Result<(), String> 
 
 #[tauri::command]
 pub fn get_request(workspace_root: String, id: String) -> Result<FirvRequest, String> {
-    let target_path = Path::new(&workspace_root).join("requests").join(format!("{}.yaml", id));
+    let target_path = Path::new(&workspace_root)
+        .join("requests")
+        .join(format!("{}.yaml", id));
     let content = std::fs::read_to_string(&target_path)
         .map_err(|e| format!("Failed to read request {}: {}", id, e))?;
-    serde_yaml::from_str(&content)
-        .map_err(|e| format!("Failed to parse request {}: {}", id, e))
+    serde_yaml::from_str(&content).map_err(|e| format!("Failed to parse request {}: {}", id, e))
 }
 
 #[tauri::command]
@@ -77,11 +81,12 @@ pub fn delete_request(workspace_root: String, id: String) -> Result<(), String> 
 
 #[tauri::command]
 pub fn get_flow(workspace_root: String, id: String) -> Result<FirvFlow, String> {
-    let target_path = Path::new(&workspace_root).join("flows").join(format!("{}.yaml", id));
+    let target_path = Path::new(&workspace_root)
+        .join("flows")
+        .join(format!("{}.yaml", id));
     let content = std::fs::read_to_string(&target_path)
         .map_err(|e| format!("Failed to read flow {}: {}", id, e))?;
-    serde_yaml::from_str(&content)
-        .map_err(|e| format!("Failed to parse flow {}: {}", id, e))
+    serde_yaml::from_str(&content).map_err(|e| format!("Failed to parse flow {}: {}", id, e))
 }
 
 #[tauri::command]
@@ -117,7 +122,11 @@ pub fn delete_flow(workspace_root: String, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn update_manifest_structure(workspace_root: String, workspace: Workspace, name: Option<String>) -> Result<(), String> {
+pub fn update_manifest_structure(
+    workspace_root: String,
+    workspace: Workspace,
+    name: Option<String>,
+) -> Result<(), String> {
     let manifest_path = Path::new(&workspace_root).join("firv.yaml");
 
     let content = std::fs::read_to_string(&manifest_path)
@@ -272,11 +281,12 @@ pub fn import_firv_export(workspace_root: String, input_path: String) -> Result<
 
 #[tauri::command]
 pub fn get_ws_request(workspace_root: String, id: String) -> Result<WsRequest, String> {
-    let target_path = Path::new(&workspace_root).join("requests").join(format!("{}.yaml", id));
+    let target_path = Path::new(&workspace_root)
+        .join("requests")
+        .join(format!("{}.yaml", id));
     let content = std::fs::read_to_string(&target_path)
         .map_err(|e| format!("Failed to read ws request {}: {}", id, e))?;
-    serde_yaml::from_str(&content)
-        .map_err(|e| format!("Failed to parse ws request {}: {}", id, e))
+    serde_yaml::from_str(&content).map_err(|e| format!("Failed to parse ws request {}: {}", id, e))
 }
 
 #[tauri::command]
@@ -299,7 +309,9 @@ pub fn update_ws_request(workspace_root: String, request: WsRequest) -> Result<(
 
 #[tauri::command]
 pub fn get_grpc_request(workspace_root: String, id: String) -> Result<GrpcRequest, String> {
-    let target_path = Path::new(&workspace_root).join("requests").join(format!("{}.yaml", id));
+    let target_path = Path::new(&workspace_root)
+        .join("requests")
+        .join(format!("{}.yaml", id));
     let content = std::fs::read_to_string(&target_path)
         .map_err(|e| format!("Failed to read grpc request {}: {}", id, e))?;
     serde_yaml::from_str(&content)
